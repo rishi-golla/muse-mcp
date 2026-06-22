@@ -14,7 +14,7 @@ from creativity_layer.models import (
     TaskContext,
 )
 from creativity_layer.providers import MeteredResponse
-from creativity_layer.transforms import TransformationRequest
+from creativity_layer.transforms import OperatorName, TransformationRequest
 
 DETERMINISTIC_NAMESPACE = UUID("5c174f20-7173-54ec-8a72-10d7217bc63d")
 
@@ -30,6 +30,71 @@ def _stable_uuid(kind: str, payload: object) -> UUID:
 
 def _unique(values: Iterable[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(values))
+
+
+def _structural_mechanism(
+    request: TransformationRequest,
+    parents: tuple[IdeaGenome, ...],
+) -> str:
+    parent = parents[0]
+    goal = request.task_goal
+
+    match request.operator:
+        case OperatorName.INVERT:
+            return (
+                f"{parent.title} becomes an exception-triggered release loop: "
+                f"the default advances {goal}, while evidence derived from "
+                f"'{parent.problem_framing}' can pause or reverse it."
+            )
+        case OperatorName.TRANSFER:
+            return (
+                f"{parent.title} operates as a queueing-control system: signals "
+                f"from '{parent.problem_framing}' set priority, scarce attention "
+                f"becomes capacity, and feedback reallocates service toward {goal}."
+            )
+        case OperatorName.EXAGGERATE:
+            return (
+                f"{parent.title} makes progress toward '{parent.task_value}' the "
+                f"dominant control signal: each outcome amplifies or suppresses "
+                f"the next allocation until the system converges on {goal}."
+            )
+        case OperatorName.SUBTRACT:
+            return (
+                f"{parent.title} removes the central coordinator and replaces it "
+                f"with local state transitions; participants react only to changes "
+                f"in '{parent.problem_framing}' that affect {goal}."
+            )
+        case OperatorName.REFRAME:
+            return (
+                f"{parent.title} treats '{parent.problem_framing}' as a sensing "
+                f"problem: probes create evidence, evidence updates shared state, "
+                f"and the state selects the next action toward {goal}."
+            )
+        case OperatorName.CONTRADICT:
+            return (
+                f"{parent.title} runs two coupled control loops: one protects "
+                f"the state implied by '{parent.problem_framing}', while the other "
+                f"challenges it; action occurs only when both loops improve {goal}."
+            )
+        case OperatorName.PERSONALIZE:
+            return (
+                f"{parent.title} assigns each participant a private threshold "
+                f"derived from '{parent.problem_framing}'; observed responses tune "
+                f"those thresholds before the group advances {goal}."
+            )
+        case OperatorName.DISTILL:
+            return (
+                f"{parent.title} reduces to a signal-update-action cycle: detect "
+                f"changes relevant to '{parent.problem_framing}', update confidence, "
+                f"then trigger the smallest action that advances {goal}."
+            )
+        case OperatorName.COMBINE:
+            first, second = parents
+            return (
+                f"{first.title} supplies state signals that regulate {second.title}; "
+                f"{second.title} feeds outcome evidence back to adjust the first "
+                f"system's thresholds, forming a closed control loop for {goal}."
+            )
 
 
 class DeterministicCreativeProvider:
@@ -108,7 +173,13 @@ class DeterministicCreativeProvider:
                     core_mechanism=mechanism,
                     problem_framing=framing,
                     assumptions_challenged=(
-                        framed_task.assumptions[index % len(framed_task.assumptions)],
+                        (
+                            framed_task.assumptions[
+                                index % len(framed_task.assumptions)
+                            ],
+                        )
+                        if framed_task.assumptions
+                        else ()
                     ),
                     task_value=f"Advances the goal: {framed_task.context.goal}",
                     distinguishing_features=(mechanism,),
@@ -133,14 +204,21 @@ class DeterministicCreativeProvider:
                 "actual parent IDs must exactly match request parent_ids"
             )
 
-        combined_title = " + ".join(item.title for item in parents)
-        combined_mechanisms = " + ".join(
-            item.core_mechanism for item in parents
-        )
-        combined_framings = " + ".join(
-            item.problem_framing for item in parents
-        )
-        combined_values = " + ".join(item.task_value for item in parents)
+        if request.operator is OperatorName.COMBINE:
+            first, second = parents
+            combined_title = f"{first.title} regulates {second.title}"
+            combined_framings = (
+                f"{first.problem_framing} interacts with "
+                f"{second.problem_framing} through feedback."
+            )
+            combined_values = (
+                f"{first.task_value} Outcomes then control how "
+                f"{second.task_value.lower()}"
+            )
+        else:
+            combined_title = parents[0].title
+            combined_framings = parents[0].problem_framing
+            combined_values = parents[0].task_value
         combined_assumptions = _unique(
             assumption
             for parent in parents
@@ -169,10 +247,7 @@ class DeterministicCreativeProvider:
             ),
             generation=max(item.generation for item in parents) + 1,
             title=f"{request.operator.value.title()}: {combined_title}",
-            core_mechanism=(
-                f"{request.operator.value}: structurally transform "
-                f"[{combined_mechanisms}] for '{request.task_goal}'."
-            ),
+            core_mechanism=_structural_mechanism(request, parents),
             problem_framing=f"{request.operator.value}: {combined_framings}",
             assumptions_challenged=combined_assumptions
             + (f"Operator applied: {request.operator.value}",),

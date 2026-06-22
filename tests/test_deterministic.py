@@ -1,7 +1,7 @@
 import pytest
 
 from creativity_layer.deterministic import DeterministicCreativeProvider
-from creativity_layer.models import IdeaGenome, RunConfig, TaskContext
+from creativity_layer.models import FramedTask, IdeaGenome, RunConfig, TaskContext
 from creativity_layer.transforms import OperatorName, TransformationRequest
 
 
@@ -34,6 +34,23 @@ def test_provider_generates_the_exact_seed_count_with_unique_stable_ids() -> Non
     assert len(first.value) == 7
     assert len({candidate.id for candidate in first.value}) == 7
     assert first == second
+
+
+def test_provider_seeds_a_framed_task_without_assumptions() -> None:
+    provider = DeterministicCreativeProvider()
+    framed = FramedTask(
+        context=TaskContext(goal="Invent a calmer decision process."),
+        assumptions=(),
+        obvious_solution="Use a standard voting process.",
+    )
+
+    response = provider.seed(
+        framed,
+        RunConfig(seed_count=2, finalist_count=1),
+    )
+
+    assert len(response.value) == 2
+    assert all(not candidate.assumptions_challenged for candidate in response.value)
 
 
 def test_provider_transforms_the_mechanism_and_records_ancestry() -> None:
@@ -83,8 +100,58 @@ def test_unary_transform_is_reproducible_and_sensitive_to_the_parent() -> None:
     assert first == repeated
     assert first.value.id == repeated.value.id
     assert first != second
-    assert parents[0].core_mechanism in first.value.core_mechanism
-    assert parents[1].core_mechanism in second.value.core_mechanism
+    assert parents[0].title in first.value.core_mechanism
+    assert parents[1].title in second.value.core_mechanism
+
+
+@pytest.mark.parametrize(
+    "operator",
+    tuple(operator for operator in OperatorName if operator is not OperatorName.COMBINE),
+)
+def test_each_unary_operator_changes_the_parent_causal_structure(
+    operator: OperatorName,
+) -> None:
+    provider = DeterministicCreativeProvider()
+    task = TaskContext(goal="Invent a calmer decision process.")
+    parent = provider.seed(
+        provider.frame(task),
+        RunConfig(seed_count=2, finalist_count=1),
+    ).value[0]
+    request = TransformationRequest.for_operator(
+        operator=operator,
+        parents=(parent,),
+        task_goal=task.goal,
+    )
+
+    mechanism = provider.transform(request, (parent,)).value.core_mechanism
+
+    assert mechanism != parent.core_mechanism
+    assert parent.core_mechanism not in mechanism
+    assert parent.title in mechanism
+
+
+def test_unary_operators_produce_distinct_mechanisms_for_the_same_parent() -> None:
+    provider = DeterministicCreativeProvider()
+    task = TaskContext(goal="Invent a calmer decision process.")
+    parent = provider.seed(
+        provider.frame(task),
+        RunConfig(seed_count=2, finalist_count=1),
+    ).value[0]
+
+    mechanisms = {
+        operator: provider.transform(
+            TransformationRequest.for_operator(
+                operator=operator,
+                parents=(parent,),
+                task_goal=task.goal,
+            ),
+            (parent,),
+        ).value.core_mechanism
+        for operator in OperatorName
+        if operator is not OperatorName.COMBINE
+    }
+
+    assert len(set(mechanisms.values())) == len(mechanisms)
 
 
 def test_combine_transform_incorporates_both_parents() -> None:
@@ -104,9 +171,20 @@ def test_combine_transform_incorporates_both_parents() -> None:
 
     assert child.parent_ids == tuple(parent.id for parent in parents)
     for parent in parents:
-        assert parent.core_mechanism in child.core_mechanism
+        assert parent.title in child.core_mechanism
         assert parent.problem_framing in child.problem_framing
         assert set(parent.distinguishing_features) <= set(child.distinguishing_features)
+    assert child.core_mechanism not in {
+        parents[0].core_mechanism,
+        parents[1].core_mechanism,
+        f"{parents[0].core_mechanism} + {parents[1].core_mechanism}",
+    }
+    assert parents[0].core_mechanism not in child.core_mechanism
+    assert parents[1].core_mechanism not in child.core_mechanism
+    assert any(
+        relationship in child.core_mechanism.lower()
+        for relationship in ("feedback", "control", "regulates")
+    )
 
 
 @pytest.mark.parametrize(
