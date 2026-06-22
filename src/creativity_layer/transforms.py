@@ -3,9 +3,9 @@ from __future__ import annotations
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
-from creativity_layer.models import FrozenModel, IdeaGenome
+from creativity_layer.models import FrozenModel, IdeaGenome, RequiredText
 
 
 class OperatorName(StrEnum):
@@ -36,8 +36,19 @@ OPERATOR_INSTRUCTIONS: dict[OperatorName, str] = {
 class TransformationRequest(FrozenModel):
     operator: OperatorName
     parent_ids: tuple[UUID, ...] = Field(min_length=1, max_length=2)
-    task_goal: str = Field(min_length=1)
-    instruction: str = Field(min_length=1)
+    task_goal: RequiredText
+    instruction: RequiredText
+
+    @model_validator(mode="after")
+    def enforce_parent_cardinality(self) -> TransformationRequest:
+        if self.operator is OperatorName.COMBINE:
+            if len(self.parent_ids) != 2:
+                raise ValueError("combine requires exactly two parents")
+            if self.parent_ids[0] == self.parent_ids[1]:
+                raise ValueError("combine requires two distinct parents")
+        elif len(self.parent_ids) != 1:
+            raise ValueError(f"{self.operator.value} requires exactly one parent")
+        return self
 
     @classmethod
     def for_operator(
@@ -47,11 +58,6 @@ class TransformationRequest(FrozenModel):
         parents: tuple[IdeaGenome, ...],
         task_goal: str,
     ) -> TransformationRequest:
-        if operator is OperatorName.COMBINE and len(parents) != 2:
-            raise ValueError("combine requires exactly two parents")
-        if operator is not OperatorName.COMBINE and len(parents) != 1:
-            raise ValueError(f"{operator.value} requires exactly one parent")
-
         instruction = (
             f"{OPERATOR_INSTRUCTIONS[operator]} "
             "Change the idea's causal or structural mechanism. "
