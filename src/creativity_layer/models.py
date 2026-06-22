@@ -5,13 +5,28 @@ from enum import StrEnum
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    model_validator,
+)
 
-Score = Annotated[float, Field(ge=0.0, le=1.0)]
+
+def reject_blank_text(value: str) -> str:
+    if not value.strip():
+        raise ValueError("text must not be blank")
+    return value
+
+
+Score = Annotated[float, Field(strict=True, ge=0.0, le=1.0)]
+RequiredText = Annotated[str, Field(min_length=1), AfterValidator(reject_blank_text)]
 
 
 class FrozenModel(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
 
 class InspirationKind(StrEnum):
@@ -45,12 +60,12 @@ class EvaluationScores(FrozenModel):
 
 class IdeaGenome(FrozenModel):
     id: UUID = Field(default_factory=uuid4)
-    generation: int = Field(ge=0)
-    title: str = Field(min_length=1)
-    core_mechanism: str = Field(min_length=1)
-    problem_framing: str = Field(min_length=1)
+    generation: int = Field(strict=True, ge=0)
+    title: RequiredText
+    core_mechanism: RequiredText
+    problem_framing: RequiredText
     assumptions_challenged: tuple[str, ...] = ()
-    task_value: str = Field(min_length=1)
+    task_value: RequiredText
     distinguishing_features: tuple[str, ...] = ()
     inspiration_principles: tuple[str, ...] = ()
     source_urls: tuple[str, ...] = ()
@@ -63,19 +78,19 @@ class IdeaGenome(FrozenModel):
     transformations: tuple[str, ...] = ()
     inspiration_kind: InspirationKind = InspirationKind.INDEPENDENT
     scores: EvaluationScores | None = None
-    branch_cost_usd: float = Field(default=0.0, ge=0.0)
-    branch_latency_ms: int = Field(default=0, ge=0)
+    branch_cost_usd: float = Field(default=0.0, strict=True, ge=0.0)
+    branch_latency_ms: int = Field(default=0, strict=True, ge=0)
 
 
 class RunConfig(FrozenModel):
-    max_cost_usd: float = Field(default=1.0, gt=0)
-    max_calls: int = Field(default=20, gt=0)
-    max_generations: int = Field(default=2, ge=0)
-    seed_count: int = Field(default=4, ge=2)
-    finalist_count: int = Field(default=3, ge=1)
-    framing_reserve_usd: float = Field(default=0.05, ge=0)
-    finalization_reserve_usd: float = Field(default=0.10, ge=0)
-    random_seed: int = 0
+    max_cost_usd: float = Field(default=1.0, strict=True, gt=0)
+    max_calls: int = Field(default=20, strict=True, gt=0)
+    max_generations: int = Field(default=2, strict=True, ge=0)
+    seed_count: int = Field(default=4, strict=True, ge=2)
+    finalist_count: int = Field(default=3, strict=True, ge=1)
+    framing_reserve_usd: float = Field(default=0.05, strict=True, ge=0)
+    finalization_reserve_usd: float = Field(default=0.10, strict=True, ge=0)
+    random_seed: int = Field(default=0, strict=True)
 
     @model_validator(mode="after")
     def reservations_fit_budget(self) -> RunConfig:
@@ -103,9 +118,9 @@ class FramedTask(FrozenModel):
 class SpendRecord(FrozenModel):
     stage: str
     provider: str
-    cost_usd: float = Field(ge=0)
-    latency_ms: int = Field(ge=0)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    cost_usd: float = Field(strict=True, ge=0)
+    latency_ms: int = Field(strict=True, ge=0)
+    created_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class RunResult(FrozenModel):

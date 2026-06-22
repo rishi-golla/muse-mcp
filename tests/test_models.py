@@ -1,3 +1,5 @@
+from datetime import datetime
+from math import inf, nan
 from uuid import UUID
 
 import pytest
@@ -8,6 +10,7 @@ from creativity_layer.models import (
     IdeaGenome,
     InspirationKind,
     RunConfig,
+    SpendRecord,
     TaskContext,
 )
 
@@ -59,4 +62,103 @@ def test_run_config_rejects_impossible_reservations() -> None:
             max_calls=4,
             framing_reserve_usd=0.6,
             finalization_reserve_usd=0.5,
+        )
+
+
+@pytest.mark.parametrize("value", [inf, -inf, nan])
+@pytest.mark.parametrize(
+    ("model", "field"),
+    [
+        (RunConfig, "max_cost_usd"),
+        (SpendRecord, "cost_usd"),
+    ],
+)
+def test_models_reject_non_finite_floats(
+    model: type[RunConfig] | type[SpendRecord],
+    field: str,
+    value: float,
+) -> None:
+    values = (
+        {
+            "stage": "generation",
+            "provider": "local",
+            "latency_ms": 0,
+            field: value,
+        }
+        if model is SpendRecord
+        else {field: value}
+    )
+
+    with pytest.raises(ValidationError):
+        model(**values)
+
+
+@pytest.mark.parametrize(
+    ("model", "values"),
+    [
+        (
+            IdeaGenome,
+            {
+                "generation": True,
+                "title": "Boolean generation",
+                "core_mechanism": "Treat truth as an integer.",
+                "problem_framing": "Boolean values are numeric in Python.",
+                "task_value": "Protects domain semantics.",
+            },
+        ),
+        (RunConfig, {"max_calls": True}),
+        (
+            SpendRecord,
+            {
+                "stage": "generation",
+                "provider": "local",
+                "cost_usd": True,
+                "latency_ms": 0,
+            },
+        ),
+        (
+            SpendRecord,
+            {
+                "stage": "generation",
+                "provider": "local",
+                "cost_usd": 0.0,
+                "latency_ms": False,
+            },
+        ),
+    ],
+)
+def test_numeric_domain_fields_reject_bool(
+    model: type[IdeaGenome] | type[RunConfig] | type[SpendRecord],
+    values: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        model(**values)
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["title", "core_mechanism", "problem_framing", "task_value"],
+)
+def test_idea_genome_rejects_whitespace_only_required_text(field: str) -> None:
+    values = {
+        "generation": 0,
+        "title": "Useful title",
+        "core_mechanism": "A concrete mechanism.",
+        "problem_framing": "A clear framing.",
+        "task_value": "A useful outcome.",
+        field: "   ",
+    }
+
+    with pytest.raises(ValidationError):
+        IdeaGenome(**values)
+
+
+def test_spend_record_requires_timezone_aware_created_at() -> None:
+    with pytest.raises(ValidationError):
+        SpendRecord(
+            stage="generation",
+            provider="local",
+            cost_usd=0.1,
+            latency_ms=10,
+            created_at=datetime(2026, 6, 22, 12, 0),
         )
