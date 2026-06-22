@@ -25,6 +25,11 @@ creativity-layer "Invent a calmer way for distributed teams to make decisions" `
   --trace-dir .traces
 ```
 
-The command prints a JSON summary and writes the complete structured run trace to
-`.traces/<run-id>.json`. This milestone uses deterministic local providers; it makes
-no external model or search calls.
+The command prints a JSON summary containing the resolved absolute trace path and
+writes the complete structured run trace to `.traces/<run-id>.json`. Exit status `0`
+means at least one scored finalist is usable, including a valid frontier returned
+after budget exhaustion. Provider failures, empty frontiers, and trace-write failures
+return status `1`; invalid command input returns status `2`.
+
+This milestone uses deterministic local providers; it makes no external model or
+search calls.

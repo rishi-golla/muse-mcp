@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections.abc import Sequence
 from pathlib import Path
+
+from pydantic import ValidationError
 
 from creativity_layer.deterministic import DeterministicCreativeProvider
 from creativity_layer.engine import CreativeEngine
@@ -27,7 +30,24 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run_cli(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        task = TaskContext(goal=args.goal)
+        config = RunConfig(
+            max_cost_usd=args.max_cost_usd,
+            max_calls=args.max_calls,
+            max_generations=args.generations,
+            seed_count=args.seed_count,
+            finalist_count=args.finalist_count,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0.05,
+        )
+    except ValidationError as error:
+        message = error.errors()[0]["msg"]
+        message = message.removeprefix("Value error, ").removeprefix("Input should be ")
+        parser.error(message)
+
     provider = DeterministicCreativeProvider()
     engine = CreativeEngine(
         framer=provider,
@@ -36,18 +56,19 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
         evaluator=provider,
     )
     result = engine.run(
-        TaskContext(goal=args.goal),
-        RunConfig(
-            max_cost_usd=args.max_cost_usd,
-            max_calls=args.max_calls,
-            max_generations=args.generations,
-            seed_count=args.seed_count,
-            finalist_count=args.finalist_count,
-            framing_reserve_usd=0,
-            finalization_reserve_usd=0.05,
-        ),
+        task,
+        config,
     )
-    trace_path = JsonTraceStore(args.trace_dir).save(result)
+    trace_root = args.trace_dir.resolve()
+    try:
+        trace_path = JsonTraceStore(trace_root).save(result)
+    except OSError as error:
+        print(
+            f"error: could not write trace to {trace_root}: {error}",
+            file=sys.stderr,
+        )
+        return 1
+
     print(
         json.dumps(
             {
@@ -71,12 +92,17 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
             indent=2,
         )
     )
-    return 0
+    has_usable_finalist = any(
+        candidate.scores is not None for candidate in result.finalists
+    )
+    return int(
+        result.stopped_reason == "provider_error" or not has_usable_finalist
+    )
 
 
-def main() -> None:
-    raise SystemExit(run_cli())
+def main(argv: Sequence[str] | None = None) -> int:
+    return run_cli(argv)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
