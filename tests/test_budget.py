@@ -1,6 +1,12 @@
+from decimal import Decimal
+
 import pytest
 
-from creativity_layer.budget import BudgetController, BudgetExceeded
+from creativity_layer.budget import (
+    BudgetController,
+    BudgetExceeded,
+    BudgetReservation,
+)
 from creativity_layer.models import RunConfig
 
 
@@ -219,3 +225,103 @@ def test_reserved_charge_rejects_invalid_costs(cost_usd: float) -> None:
         reservation.charge("transform", "local", cost_usd, 1)
 
     assert budget.records == ()
+
+
+def test_forged_reservation_cannot_charge_controller() -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=2,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+    forged = BudgetReservation(budget, Decimal("1"), 2)
+
+    with pytest.raises(RuntimeError, match="not active"):
+        forged.charge("forged", "local", 1.0, 1)
+
+    assert budget.records == ()
+    assert budget.remaining_usd == 1.0
+
+
+def test_forged_reservation_cannot_release_controller_capacity() -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=2,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+    reservation = budget.reserve(
+        0.5,
+        required_calls=1,
+        preserve_finalization=False,
+    )
+    forged = BudgetReservation(budget, Decimal("0.5"), 1)
+
+    with pytest.raises(RuntimeError, match="not active"):
+        forged.release()
+
+    assert budget._reserved_cost == Decimal("0.5")
+    assert budget._reserved_calls == 1
+    with pytest.raises(BudgetExceeded, match="cost limit"):
+        budget.charge("overspend", "local", 0.6, 1)
+
+    reservation.release()
+    assert budget._reserved_cost == Decimal("0")
+    assert budget._reserved_calls == 0
+    budget.charge("valid", "local", 1.0, 1)
+
+    assert [record.stage for record in budget.records] == ["valid"]
+
+
+@pytest.mark.parametrize("method_name", ["can_afford", "charge", "reserve"])
+def test_public_budget_methods_reject_string_costs(method_name: str) -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=2,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+
+    with pytest.raises(ValueError, match="int or float"):
+        if method_name == "can_afford":
+            budget.can_afford("0.1", preserve_finalization=False)  # type: ignore[arg-type]
+        elif method_name == "charge":
+            budget.charge("seed", "local", "0.1", 1)  # type: ignore[arg-type]
+        else:
+            budget.reserve(  # type: ignore[arg-type]
+                "0.1",
+                required_calls=1,
+                preserve_finalization=False,
+            )
+
+
+def test_reserved_charge_rejects_string_cost() -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+
+    with (
+        budget.reserve(
+            0.1,
+            required_calls=1,
+            preserve_finalization=False,
+        ) as reservation,
+        pytest.raises(ValueError, match="int or float"),
+    ):
+        reservation.charge(  # type: ignore[arg-type]
+            "transform",
+            "local",
+            "0.1",
+            1,
+        )
