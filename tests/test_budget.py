@@ -36,3 +36,186 @@ def test_budget_rejects_cost_or_call_overruns() -> None:
 
     with pytest.raises(BudgetExceeded, match="call limit"):
         budget.charge("transform", "local", 0.01, 1)
+
+
+def test_budget_allows_exact_cost_exhaustion() -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=0.3,
+            max_calls=2,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+
+    budget.charge("seed", "local", 0.1, 1)
+    budget.charge("evaluate", "local", 0.2, 1)
+
+    assert budget.remaining_usd == 0.0
+
+
+def test_budget_rejects_a_tiny_exact_overspend() -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=0.3,
+            max_calls=2,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+    budget.charge("seed", "local", 0.1, 1)
+
+    with pytest.raises(BudgetExceeded, match="cost limit"):
+        budget.charge("evaluate", "local", 0.20000000000000004, 1)
+
+
+@pytest.mark.parametrize("cost_usd", [-0.01, float("nan"), float("inf"), -float("inf")])
+@pytest.mark.parametrize("method_name", ["can_afford", "charge"])
+def test_budget_methods_reject_invalid_costs(
+    cost_usd: float,
+    method_name: str,
+) -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=2,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+
+    with pytest.raises(ValueError, match="finite non-negative"):
+        if method_name == "can_afford":
+            budget.can_afford(cost_usd, preserve_finalization=False)
+        else:
+            budget.charge("seed", "local", cost_usd, 1)
+
+
+def test_rejected_charge_does_not_create_a_record() -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=0.1,
+            max_calls=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+
+    with pytest.raises(BudgetExceeded, match="cost limit"):
+        budget.charge("seed", "local", 0.2, 1)
+
+    assert budget.records == ()
+
+
+def test_direct_exploration_charge_preserves_finalization_reserve() -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=3,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0.2,
+        )
+    )
+    budget.charge("seed", "local", 0.8, 1, preserve_finalization=True)
+
+    with pytest.raises(BudgetExceeded, match="cost limit"):
+        budget.charge("transform", "local", 0.01, 1, preserve_finalization=True)
+
+    assert len(budget.records) == 1
+
+
+def test_affordability_and_reservation_require_two_call_capacity() -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+
+    assert (
+        budget.can_afford(
+            0.1,
+            preserve_finalization=True,
+            required_calls=2,
+        )
+        is False
+    )
+    with pytest.raises(BudgetExceeded, match="call limit"):
+        budget.reserve(0.1, required_calls=2, preserve_finalization=True)
+
+
+def test_reservation_atomically_holds_cost_and_calls_for_a_sequence() -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=3,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0.2,
+        )
+    )
+
+    with budget.reserve(
+        0.7,
+        required_calls=2,
+        preserve_finalization=True,
+    ) as reservation:
+        with pytest.raises(BudgetExceeded, match="cost limit"):
+            budget.charge(
+                "competing-exploration",
+                "local",
+                0.11,
+                1,
+                preserve_finalization=True,
+            )
+
+        reservation.charge("transform", "local", 0.3, 1)
+        reservation.charge("evaluate", "local", 0.4, 1)
+
+    budget.charge("finalize", "local", 0.2, 1)
+
+    assert [record.stage for record in budget.records] == [
+        "transform",
+        "evaluate",
+        "finalize",
+    ]
+
+
+@pytest.mark.parametrize("cost_usd", [-0.01, float("nan"), float("inf"), -float("inf")])
+def test_reservation_rejects_invalid_costs(cost_usd: float) -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=2,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+
+    with pytest.raises(ValueError, match="finite non-negative"):
+        budget.reserve(cost_usd, required_calls=2, preserve_finalization=True)
+
+
+@pytest.mark.parametrize("cost_usd", [-0.01, float("nan"), float("inf"), -float("inf")])
+def test_reserved_charge_rejects_invalid_costs(cost_usd: float) -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+
+    with (
+        budget.reserve(
+            0.1,
+            required_calls=1,
+            preserve_finalization=True,
+        ) as reservation,
+        pytest.raises(ValueError, match="finite non-negative"),
+    ):
+        reservation.charge("transform", "local", cost_usd, 1)
+
+    assert budget.records == ()

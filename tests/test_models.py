@@ -162,3 +162,17 @@ def test_spend_record_requires_timezone_aware_created_at() -> None:
             latency_ms=10,
             created_at=datetime(2026, 6, 22, 12, 0),
         )
+
+
+@pytest.mark.parametrize("field", ["stage", "provider"])
+def test_spend_record_rejects_blank_labels(field: str) -> None:
+    values = {
+        "stage": "generation",
+        "provider": "local",
+        "cost_usd": 0.1,
+        "latency_ms": 10,
+        field: "   ",
+    }
+
+    with pytest.raises(ValidationError):
+        SpendRecord(**values)

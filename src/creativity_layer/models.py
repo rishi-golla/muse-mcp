@@ -116,8 +116,8 @@ class FramedTask(FrozenModel):
 
 
 class SpendRecord(FrozenModel):
-    stage: str
-    provider: str
+    stage: RequiredText
+    provider: RequiredText
     cost_usd: float = Field(strict=True, ge=0)
     latency_ms: int = Field(strict=True, ge=0)
     created_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
