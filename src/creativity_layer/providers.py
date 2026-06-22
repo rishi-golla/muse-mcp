@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Literal, Protocol
 
 from pydantic import Field
 
@@ -24,8 +24,14 @@ class MeteredResponse[T](FrozenModel):
 
 
 class OperationQuote(FrozenModel):
+    """Upper bound for one accountable provider call.
+
+    Hidden internal calls are unsupported in this milestone. Supporting them
+    requires extending the provider and spend-accounting contracts.
+    """
+
     max_cost_usd: float = Field(strict=True, ge=0)
-    calls: int = Field(strict=True, gt=0)
+    calls: Literal[1] = 1
 
 
 class TaskFramer(Protocol):

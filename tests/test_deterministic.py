@@ -1,9 +1,16 @@
 import pytest
+from pydantic import ValidationError
 
 from creativity_layer.deterministic import DeterministicCreativeProvider
 from creativity_layer.models import FramedTask, IdeaGenome, RunConfig, TaskContext
 from creativity_layer.providers import OperationQuote
 from creativity_layer.transforms import OperatorName, TransformationRequest
+
+
+@pytest.mark.parametrize("calls", [0, 2, 3])
+def test_operation_quote_rejects_call_counts_other_than_one(calls: int) -> None:
+    with pytest.raises(ValidationError):
+        OperationQuote(max_cost_usd=0.01, calls=calls)
 
 
 def test_provider_returns_exact_typed_operation_quotes() -> None:

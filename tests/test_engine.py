@@ -59,6 +59,7 @@ class AdversarialProvider(DeterministicCreativeProvider):
         raise_evaluation_at: int | None = None,
         duplicate_transform_id: bool = False,
         duplicate_seed_ids: bool = False,
+        raise_frame: bool = False,
         raise_seed_quote: bool = False,
         raise_transform_quote: bool = False,
     ) -> None:
@@ -80,11 +81,17 @@ class AdversarialProvider(DeterministicCreativeProvider):
         self.raise_evaluation_at = raise_evaluation_at
         self.duplicate_transform_id = duplicate_transform_id
         self.duplicate_seed_ids = duplicate_seed_ids
+        self.raise_frame = raise_frame
         self.raise_seed_quote = raise_seed_quote
         self.raise_transform_quote = raise_transform_quote
         self.seed_calls = 0
         self.transform_calls = 0
         self.evaluation_calls = 0
+
+    def frame(self, task: TaskContext) -> FramedTask:
+        if self.raise_frame:
+            raise RuntimeError("framing failed")
+        return super().frame(task)
 
     def quote_seed(
         self,
@@ -420,13 +427,13 @@ def test_engine_handles_seed_exception_without_fabricating_spend() -> None:
     assert result.stopped_reason == "provider_error"
 
 
-def test_engine_handles_seed_cost_above_quote_without_partial_accounting() -> None:
-    provider = AdversarialProvider(seed_cost_usd=0.011)
+def test_engine_records_seed_cost_above_quote_even_past_budget() -> None:
+    provider = AdversarialProvider(seed_cost_usd=0.021)
 
     result = build_engine(provider).run(
         TaskContext(goal="Invent a new decision process."),
         RunConfig(
-            max_cost_usd=1,
+            max_cost_usd=0.02,
             max_calls=10,
             max_generations=1,
             seed_count=2,
@@ -437,11 +444,13 @@ def test_engine_handles_seed_cost_above_quote_without_partial_accounting() -> No
     )
 
     assert result.all_candidates == ()
-    assert result.spend_records == ()
+    assert [record.stage for record in result.spend_records] == ["seeding"]
+    assert result.spend_records[0].cost_usd == 0.021
+    assert sum(record.cost_usd for record in result.spend_records) > 0.02
     assert result.stopped_reason == "provider_error"
 
 
-def test_engine_preserves_completed_seed_evaluations_when_later_evaluation_fails() -> None:
+def test_engine_hides_seed_batch_when_later_evaluation_fails() -> None:
     provider = AdversarialProvider(raise_evaluation_at=2)
 
     result = build_engine(provider).run(
@@ -457,8 +466,8 @@ def test_engine_preserves_completed_seed_evaluations_when_later_evaluation_fails
         ),
     )
 
-    assert len(result.all_candidates) == 1
-    assert len(result.finalists) == 1
+    assert result.all_candidates == ()
+    assert result.finalists == ()
     assert [record.stage for record in result.spend_records] == [
         "seeding",
         "evaluation",
@@ -466,7 +475,7 @@ def test_engine_preserves_completed_seed_evaluations_when_later_evaluation_fails
     assert result.stopped_reason == "provider_error"
 
 
-def test_engine_handles_evaluation_cost_above_quote_without_charging_that_call() -> None:
+def test_engine_records_evaluation_cost_above_quote() -> None:
     provider = AdversarialProvider(evaluation_cost_usd=0.006)
 
     result = build_engine(provider).run(
@@ -483,7 +492,11 @@ def test_engine_handles_evaluation_cost_above_quote_without_charging_that_call()
     )
 
     assert result.all_candidates == ()
-    assert [record.stage for record in result.spend_records] == ["seeding"]
+    assert [record.stage for record in result.spend_records] == [
+        "seeding",
+        "evaluation",
+    ]
+    assert result.spend_records[-1].cost_usd == 0.006
     assert result.stopped_reason == "provider_error"
 
 
@@ -513,7 +526,7 @@ def test_engine_preserves_seed_frontier_when_transform_raises() -> None:
     assert result.stopped_reason == "provider_error"
 
 
-def test_engine_rejects_transform_cost_above_its_quote_without_charging_it() -> None:
+def test_engine_records_transform_cost_above_quote() -> None:
     provider = AdversarialProvider(transform_cost_usd=0.011)
 
     result = build_engine(provider).run(
@@ -534,7 +547,9 @@ def test_engine_rejects_transform_cost_above_its_quote_without_charging_it() -> 
         "seeding",
         "evaluation",
         "evaluation",
+        "transformation",
     ]
+    assert result.spend_records[-1].cost_usd == 0.011
     assert result.stopped_reason == "provider_error"
 
 
@@ -635,29 +650,6 @@ def test_engine_releases_unused_reservation_after_provider_error(
     assert budget._reserved_calls == 0
 
 
-def test_engine_uses_quoted_call_counts_before_invoking_seed_provider() -> None:
-    provider = AdversarialProvider(
-        seed_quote=OperationQuote(max_cost_usd=0.01, calls=2),
-    )
-
-    result = build_engine(provider).run(
-        TaskContext(goal="Invent a new decision process."),
-        RunConfig(
-            max_cost_usd=1,
-            max_calls=3,
-            max_generations=0,
-            seed_count=2,
-            finalist_count=1,
-            framing_reserve_usd=0,
-            finalization_reserve_usd=0,
-        ),
-    )
-
-    assert provider.seed_calls == 0
-    assert result.spend_records == ()
-    assert result.stopped_reason == "budget_exhausted"
-
-
 def test_engine_rejects_oversized_seed_batch_before_evaluation() -> None:
     provider = AdversarialProvider(seed_cardinality=3)
 
@@ -741,6 +733,34 @@ def test_engine_handles_transform_quote_exception_with_seed_frontier() -> None:
 
     assert provider.transform_calls == 0
     assert len(result.all_candidates) == 2
+    assert result.stopped_reason == "provider_error"
+
+
+def test_engine_handles_framing_exception_with_explicit_fallback() -> None:
+    provider = AdversarialProvider(raise_frame=True)
+    task = TaskContext(goal="Invent a new decision process.")
+
+    result = build_engine(provider).run(
+        task,
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=1,
+            seed_count=2,
+            finalist_count=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert result.framed_task == FramedTask(
+        context=task,
+        assumptions=(),
+        obvious_solution="Unavailable: task framing failed.",
+    )
+    assert result.all_candidates == ()
+    assert result.finalists == ()
+    assert result.spend_records == ()
     assert result.stopped_reason == "provider_error"
 
 

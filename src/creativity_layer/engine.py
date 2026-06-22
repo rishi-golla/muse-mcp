@@ -50,7 +50,21 @@ class CreativeEngine:
 
     def run(self, task: TaskContext, config: RunConfig) -> RunResult:
         budget = BudgetController(config)
-        framed = self._framer.frame(task)
+        try:
+            framed = self._framer.frame(task)
+        except Exception:
+            framed = FramedTask(
+                context=task,
+                assumptions=(),
+                obvious_solution="Unavailable: task framing failed.",
+            )
+            return self._result(
+                framed,
+                (),
+                budget,
+                config,
+                "provider_error",
+            )
         candidates, stopped_reason = self._seed_and_evaluate(framed, config, budget)
         if stopped_reason is not None:
             return self._result(
@@ -150,6 +164,14 @@ class CreativeEngine:
             except Exception:
                 return [], "provider_error"
             if _exceeds_quote(seeded, seed_quote):
+                budget._record_audited_overage(
+                    reservation,
+                    "seeding",
+                    seeded.provider,
+                    seeded.cost_usd,
+                    seeded.latency_ms,
+                    quoted_cost_usd=seed_quote.max_cost_usd,
+                )
                 return [], "provider_error"
             try:
                 reservation.charge(
@@ -174,9 +196,10 @@ class CreativeEngine:
                     framed_task,
                     evaluation_quote,
                     reservation,
+                    budget,
                 )
                 if result is None:
-                    return evaluated, "provider_error"
+                    return [], "provider_error"
                 evaluated.append(result)
             return evaluated, None
 
@@ -207,6 +230,14 @@ class CreativeEngine:
             except Exception:
                 return None, "provider_error"
             if _exceeds_quote(transformed, transform_quote):
+                budget._record_audited_overage(
+                    reservation,
+                    "transformation",
+                    transformed.provider,
+                    transformed.cost_usd,
+                    transformed.latency_ms,
+                    quoted_cost_usd=transform_quote.max_cost_usd,
+                )
                 return None, "provider_error"
             try:
                 reservation.charge(
@@ -225,6 +256,7 @@ class CreativeEngine:
                 framed_task,
                 evaluation_quote,
                 reservation,
+                budget,
             )
             if evaluated is None:
                 return None, "provider_error"
@@ -236,12 +268,21 @@ class CreativeEngine:
         framed_task: FramedTask,
         quote: OperationQuote,
         reservation: BudgetReservation,
+        budget: BudgetController,
     ) -> IdeaGenome | None:
         try:
             response = self._evaluator.evaluate(candidate, framed_task)
         except Exception:
             return None
         if _exceeds_quote(response, quote):
+            budget._record_audited_overage(
+                reservation,
+                "evaluation",
+                response.provider,
+                response.cost_usd,
+                response.latency_ms,
+                quoted_cost_usd=quote.max_cost_usd,
+            )
             return None
         try:
             reservation.charge(
