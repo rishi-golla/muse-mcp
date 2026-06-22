@@ -13,7 +13,7 @@ from creativity_layer.models import (
     RunConfig,
     TaskContext,
 )
-from creativity_layer.providers import MeteredResponse
+from creativity_layer.providers import MeteredResponse, OperationQuote
 from creativity_layer.transforms import OperatorName, TransformationRequest
 
 DETERMINISTIC_NAMESPACE = UUID("5c174f20-7173-54ec-8a72-10d7217bc63d")
@@ -99,6 +99,23 @@ def _structural_mechanism(
 
 class DeterministicCreativeProvider:
     name = "deterministic-local"
+
+    def quote_seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> OperationQuote:
+        return OperationQuote(max_cost_usd=0.01, calls=1)
+
+    def quote_transform(
+        self,
+        request: TransformationRequest,
+        parents: tuple[IdeaGenome, ...],
+    ) -> OperationQuote:
+        return OperationQuote(max_cost_usd=0.01, calls=1)
+
+    def quote_evaluation(self, framed_task: FramedTask) -> OperationQuote:
+        return OperationQuote(max_cost_usd=0.005, calls=1)
 
     def frame(self, task: TaskContext) -> FramedTask:
         return FramedTask(

@@ -23,11 +23,22 @@ class MeteredResponse[T](FrozenModel):
     latency_ms: int = Field(strict=True, ge=0)
 
 
+class OperationQuote(FrozenModel):
+    max_cost_usd: float = Field(strict=True, ge=0)
+    calls: int = Field(strict=True, gt=0)
+
+
 class TaskFramer(Protocol):
     def frame(self, task: TaskContext) -> FramedTask: ...
 
 
 class IdeaSeeder(Protocol):
+    def quote_seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> OperationQuote: ...
+
     def seed(
         self,
         framed_task: FramedTask,
@@ -36,6 +47,12 @@ class IdeaSeeder(Protocol):
 
 
 class IdeaTransformer(Protocol):
+    def quote_transform(
+        self,
+        request: TransformationRequest,
+        parents: tuple[IdeaGenome, ...],
+    ) -> OperationQuote: ...
+
     def transform(
         self,
         request: TransformationRequest,
@@ -44,6 +61,8 @@ class IdeaTransformer(Protocol):
 
 
 class IdeaEvaluator(Protocol):
+    def quote_evaluation(self, framed_task: FramedTask) -> OperationQuote: ...
+
     def evaluate(
         self,
         candidate: IdeaGenome,

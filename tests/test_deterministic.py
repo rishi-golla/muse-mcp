@@ -2,7 +2,34 @@ import pytest
 
 from creativity_layer.deterministic import DeterministicCreativeProvider
 from creativity_layer.models import FramedTask, IdeaGenome, RunConfig, TaskContext
+from creativity_layer.providers import OperationQuote
 from creativity_layer.transforms import OperatorName, TransformationRequest
+
+
+def test_provider_returns_exact_typed_operation_quotes() -> None:
+    provider = DeterministicCreativeProvider()
+    task = TaskContext(goal="Invent a calmer decision process.")
+    framed = provider.frame(task)
+    config = RunConfig(seed_count=2, finalist_count=1)
+    parent = provider.seed(framed, config).value[0]
+    request = TransformationRequest.for_operator(
+        operator=OperatorName.INVERT,
+        parents=(parent,),
+        task_goal=task.goal,
+    )
+
+    assert provider.quote_seed(framed, config) == OperationQuote(
+        max_cost_usd=0.01,
+        calls=1,
+    )
+    assert provider.quote_transform(request, (parent,)) == OperationQuote(
+        max_cost_usd=0.01,
+        calls=1,
+    )
+    assert provider.quote_evaluation(framed) == OperationQuote(
+        max_cost_usd=0.005,
+        calls=1,
+    )
 
 
 def test_provider_frames_and_seeds_reproducibly() -> None:
