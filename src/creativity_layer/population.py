@@ -8,6 +8,14 @@ def _require_scores(candidate: IdeaGenome) -> None:
         raise ValueError(f"candidate {candidate.id} has no evaluation scores")
 
 
+def _validate_candidates(candidates: tuple[IdeaGenome, ...]) -> None:
+    candidate_ids = [candidate.id for candidate in candidates]
+    if len(candidate_ids) != len(set(candidate_ids)):
+        raise ValueError("duplicate candidate id")
+    for candidate in candidates:
+        _require_scores(candidate)
+
+
 def _dominates(left: IdeaGenome, right: IdeaGenome) -> bool:
     _require_scores(left)
     _require_scores(right)
@@ -29,8 +37,7 @@ class PopulationManager:
         self,
         candidates: tuple[IdeaGenome, ...],
     ) -> tuple[IdeaGenome, ...]:
-        for candidate in candidates:
-            _require_scores(candidate)
+        _validate_candidates(candidates)
         return tuple(
             candidate
             for candidate in candidates
@@ -50,8 +57,7 @@ class PopulationManager:
             raise ValueError("finalist_count must be positive")
         if not candidates:
             raise ValueError("candidates must not be empty")
-        for candidate in candidates:
-            _require_scores(candidate)
+        _validate_candidates(candidates)
 
         frontier = sorted(
             self.pareto_frontier(candidates),
@@ -70,13 +76,15 @@ class PopulationManager:
                 if candidate.scores is not None
                 and candidate.scores.coherence >= self._minimum_wildcard_coherence
             ),
-            key=lambda candidate: candidate.scores.originality
-            if candidate.scores is not None
-            else -1,
+            key=lambda candidate: (
+                candidate.scores.originality if candidate.scores is not None else -1,
+                str(candidate.id),
+            ),
+            default=None,
         )
 
         selected = list((frontier + remaining)[:finalist_count])
-        if wildcard not in selected:
+        if wildcard is not None and wildcard not in selected:
             if len(selected) >= finalist_count:
                 selected[-1] = wildcard
             else:
@@ -84,8 +92,8 @@ class PopulationManager:
         return tuple(selected)
 
     @staticmethod
-    def _balanced_rank(candidate: IdeaGenome) -> tuple[float, float, float]:
+    def _balanced_rank(candidate: IdeaGenome) -> tuple[float, float, float, str]:
         assert candidate.scores is not None
         joint = min(candidate.scores.originality, candidate.scores.usefulness)
         total = candidate.scores.originality + candidate.scores.usefulness
-        return joint, total, candidate.scores.coherence
+        return joint, total, candidate.scores.coherence, str(candidate.id)
