@@ -1,5 +1,6 @@
 """Creativity Layer research prototype."""
 
+from creativity_layer.engine import CreativeEngine
 from creativity_layer.models import (
     EvaluationScores,
     FramedTask,
@@ -13,6 +14,7 @@ from creativity_layer.models import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "CreativeEngine",
     "EvaluationScores",
     "FramedTask",
     "IdeaGenome",
