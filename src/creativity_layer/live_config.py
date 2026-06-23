@@ -1,11 +1,28 @@
 from __future__ import annotations
 
 import os
+import unicodedata
 from enum import StrEnum
+from typing import Annotated
 
-from pydantic import Field, SecretStr
+from pydantic import AfterValidator, Field, SecretStr
 
-from creativity_layer.models import FrozenModel, RequiredText
+from creativity_layer.models import FrozenModel
+
+
+def reject_invalid_model_identifier(value: str) -> str:
+    if value != value.strip():
+        raise ValueError("model identifier must not have leading or trailing whitespace")
+    if any(unicodedata.category(character) == "Cc" for character in value):
+        raise ValueError("model identifier must not contain control characters")
+    return value
+
+
+ModelIdentifier = Annotated[
+    str,
+    Field(min_length=1),
+    AfterValidator(reject_invalid_model_identifier),
+]
 
 
 class PrivacyMode(StrEnum):
@@ -19,15 +36,15 @@ class OpenAICredentials(FrozenModel):
     @classmethod
     def from_environment(cls) -> OpenAICredentials:
         value = os.getenv("OPENAI_API_KEY")
-        if not value:
+        if not value or not value.strip():
             raise ValueError("OPENAI_API_KEY is required for live OpenAI runs")
-        return cls(api_key=SecretStr(value))
+        return cls(api_key=SecretStr(value.strip()))
 
 
 class LiveModelConfig(FrozenModel):
-    economy_model: RequiredText
-    strong_model: RequiredText
-    embedding_model: RequiredText = "text-embedding-3-small"
+    economy_model: ModelIdentifier
+    strong_model: ModelIdentifier
+    embedding_model: ModelIdentifier = "text-embedding-3-small"
     default_budget_usd: float = Field(default=0.10, strict=True, gt=0)
     timeout_seconds: float = Field(default=30.0, strict=True, gt=0)
     max_retries: int = Field(default=2, strict=True, ge=0, le=5)
@@ -39,7 +56,7 @@ class LiveModelConfig(FrozenModel):
     def from_environment(cls) -> LiveModelConfig:
         economy = os.getenv("OPENAI_ECONOMY_MODEL")
         strong = os.getenv("OPENAI_STRONG_MODEL")
-        if not economy or not strong:
+        if not economy or not economy.strip() or not strong or not strong.strip():
             raise ValueError(
                 "OPENAI_ECONOMY_MODEL and OPENAI_STRONG_MODEL are required"
             )
