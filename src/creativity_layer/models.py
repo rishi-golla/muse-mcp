@@ -4,7 +4,6 @@ import hashlib
 import json
 import re
 from datetime import UTC, datetime
-from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated
 from uuid import UUID, uuid4
@@ -15,6 +14,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    field_validator,
     model_validator,
 )
 
@@ -133,14 +133,74 @@ class TokenUsage(FrozenModel):
 
 
 class CostEstimate(FrozenModel):
-    estimated_cost_usd: Decimal = Field(ge=0)
+    estimated_cost_usd: float = Field(strict=True, ge=0)
     pricing_version: RequiredText
-    is_estimated: bool = True
+    is_estimated: bool = Field(default=True, strict=True)
 
 
 class OperationTrace(FrozenModel):
-    request: dict[str, object] = Field(default_factory=dict)
-    response: dict[str, object] = Field(default_factory=dict)
+    request_json: str
+    response_json: str
+
+    @classmethod
+    def from_payload(
+        cls,
+        *,
+        request: object,
+        response: object,
+    ) -> OperationTrace:
+        _reject_trace_secrets(request)
+        _reject_trace_secrets(response)
+        return cls(
+            request_json=_canonical_json(request),
+            response_json=_canonical_json(response),
+        )
+
+    @field_validator("request_json", "response_json")
+    @classmethod
+    def require_canonical_json(cls, value: str) -> str:
+        try:
+            parsed = json.loads(value)
+        except (TypeError, ValueError) as error:
+            raise ValueError("operation trace must contain valid JSON") from error
+        if value != _canonical_json(parsed):
+            raise ValueError("operation trace JSON must be canonical")
+        _reject_trace_secrets(parsed)
+        return value
+
+
+SECRET_TRACE_KEYS = frozenset(
+    {"api_key", "authorization", "token", "secret", "password"}
+)
+SECRET_TRACE_VALUE = re.compile(
+    r"(?:\bBearer\s+\S+|\bsk-[A-Za-z0-9_-]{10,})",
+    re.IGNORECASE,
+)
+
+
+def _reject_trace_secrets(value: object) -> None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if str(key).casefold() in SECRET_TRACE_KEYS:
+                raise ValueError("operation trace contains a secret-bearing key")
+            _reject_trace_secrets(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            _reject_trace_secrets(item)
+    elif isinstance(value, str) and SECRET_TRACE_VALUE.search(value):
+        raise ValueError("operation trace contains an apparent secret value")
+
+
+def _canonical_json(value: object) -> str:
+    try:
+        return json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+    except (TypeError, ValueError) as error:
+        raise ValueError("operation trace payload must be JSON-safe") from error
 
 
 class SpendRecord(FrozenModel):
@@ -151,7 +211,7 @@ class SpendRecord(FrozenModel):
     latency_ms: int = Field(strict=True, ge=0)
     usage: TokenUsage = Field(default_factory=TokenUsage)
     pricing_version: RequiredText | None = None
-    cost_is_estimated: bool = False
+    cost_is_estimated: bool = Field(default=False, strict=True)
     request_id: RequiredText | None = None
     operation_trace: OperationTrace | None = None
     created_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -222,6 +282,23 @@ def canonical_run_payload(result: RunResult) -> dict[str, object]:
     )
     for record in payload["spend_records"]:
         record.pop("created_at", None)
+        if record["model"] is None:
+            record.pop("model")
+        if record["usage"] == {
+            "input_tokens": 0,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_tokens": 0,
+        }:
+            record.pop("usage")
+        if record["pricing_version"] is None:
+            record.pop("pricing_version")
+        if record["cost_is_estimated"] is False:
+            record.pop("cost_is_estimated")
+        if record["request_id"] is None:
+            record.pop("request_id")
+        if record["operation_trace"] is None:
+            record.pop("operation_trace")
     return payload
 
 

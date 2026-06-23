@@ -26,7 +26,7 @@ class MeteredResponse[T](FrozenModel):
     latency_ms: int = Field(strict=True, ge=0)
     usage: TokenUsage = Field(default_factory=TokenUsage)
     pricing_version: RequiredText | None = None
-    cost_is_estimated: bool = False
+    cost_is_estimated: bool = Field(default=False, strict=True)
     request_id: RequiredText | None = None
     operation_trace: OperationTrace | None = None
 

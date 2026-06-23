@@ -1,5 +1,5 @@
+import json
 from datetime import datetime
-from decimal import Decimal
 from math import inf, nan
 from uuid import UUID
 
@@ -13,6 +13,7 @@ from creativity_layer.models import (
     InspirationKind,
     OperationTrace,
     RunConfig,
+    RunResult,
     SpendRecord,
     TaskContext,
     TokenUsage,
@@ -183,7 +184,7 @@ def test_spend_record_rejects_blank_labels(field: str) -> None:
 
 
 def test_spend_record_preserves_live_operation_metadata() -> None:
-    trace = OperationTrace(
+    trace = OperationTrace.from_payload(
         request={"model_role": "economy"},
         response={"status": "complete"},
     )
@@ -209,13 +210,17 @@ def test_spend_record_preserves_live_operation_metadata() -> None:
     assert record.operation_trace == trace
 
 
-def test_cost_estimate_uses_exact_decimal_values() -> None:
+def test_cost_estimate_uses_strict_finite_float() -> None:
     estimate = CostEstimate(
-        estimated_cost_usd=Decimal("0.0000000000000000001"),
+        estimated_cost_usd=0.125,
         pricing_version="test",
     )
 
-    assert estimate.estimated_cost_usd == Decimal("0.0000000000000000001")
+    assert estimate.estimated_cost_usd == 0.125
+    with pytest.raises(ValidationError):
+        CostEstimate(estimated_cost_usd="0.125", pricing_version="test")
+    with pytest.raises(ValidationError):
+        CostEstimate(estimated_cost_usd=inf, pricing_version="test")
 
 
 @pytest.mark.parametrize(
@@ -236,7 +241,7 @@ def test_token_usage_rejects_invalid_counts(values: dict[str, object]) -> None:
 def test_live_metadata_labels_reject_blank_text() -> None:
     with pytest.raises(ValidationError):
         CostEstimate(
-            estimated_cost_usd=Decimal("0"),
+            estimated_cost_usd=0.0,
             pricing_version=" ",
         )
     with pytest.raises(ValidationError):
@@ -247,3 +252,139 @@ def test_live_metadata_labels_reject_blank_text() -> None:
             cost_usd=0.0,
             latency_ms=0,
         )
+
+
+@pytest.mark.parametrize("value", [0, 1, "true"])
+def test_estimate_flags_reject_non_boolean_values(value: object) -> None:
+    with pytest.raises(ValidationError):
+        CostEstimate(
+            estimated_cost_usd=0.0,
+            pricing_version="test",
+            is_estimated=value,  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValidationError):
+        SpendRecord(
+            stage="seeding",
+            provider="openai",
+            cost_usd=0.0,
+            latency_ms=0,
+            cost_is_estimated=value,  # type: ignore[arg-type]
+        )
+
+
+def test_operation_trace_canonicalizes_payloads_and_is_deeply_immutable() -> None:
+    trace = OperationTrace.from_payload(
+        request={"z": [2, 1], "a": {"nested": True}},
+        response={"ok": True},
+    )
+
+    assert trace.request_json == '{"a":{"nested":true},"z":[2,1]}'
+    assert trace.response_json == '{"ok":true}'
+    assert json.loads(trace.request_json)["a"]["nested"] is True
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"nested": {"Authorization": "safe-looking"}},
+        {"api_KEY": "safe-looking"},
+        {"value": "Bearer abcdefghijklmnopqrstuvwxyz"},
+        {"value": "sk-abcdefghijklmnopqrstuvwxyz123456"},
+    ],
+)
+def test_operation_trace_rejects_secret_material(payload: object) -> None:
+    with pytest.raises(ValueError, match="secret"):
+        OperationTrace.from_payload(request=payload, response={})
+
+
+def test_operation_trace_rejects_noncanonical_constructor_json() -> None:
+    with pytest.raises(ValidationError):
+        OperationTrace(request_json='{"b": 2, "a": 1}', response_json="{}")
+    with pytest.raises(ValidationError):
+        OperationTrace(request_json="{", response_json="{}")
+
+
+def test_legacy_run_json_retains_pre_task_2_fingerprint() -> None:
+    candidate_id = "00000000-0000-0000-0000-000000000001"
+    legacy_payload = {
+        "run_id": "00000000-0000-0000-0000-000000000002",
+        "config": {
+            "max_cost_usd": 1.0,
+            "max_calls": 20,
+            "max_generations": 0,
+            "seed_count": 2,
+            "finalist_count": 1,
+            "framing_reserve_usd": 0.0,
+            "finalization_reserve_usd": 0.0,
+            "random_seed": 0,
+        },
+        "providers": {
+            role: {"name": "local", "version": "1"}
+            for role in ("framer", "seeder", "transformer", "evaluator")
+        },
+        "operator_schedule": ["invert"],
+        "framed_task": {
+            "context": {
+                "goal": "Legacy task",
+                "audience": None,
+                "constraints": [],
+                "preferences": [],
+                "risk_tolerance": 0.5,
+            },
+            "assumptions": [],
+            "obvious_solution": "Legacy answer",
+            "evaluation_dimensions": [
+                "originality",
+                "usefulness",
+                "coherence",
+                "feasibility",
+                "user_fit",
+            ],
+        },
+        "finalists": [],
+        "all_candidates": [
+            {
+                "id": candidate_id,
+                "generation": 0,
+                "title": "Legacy idea",
+                "core_mechanism": "Legacy mechanism",
+                "problem_framing": "Legacy framing",
+                "assumptions_challenged": [],
+                "task_value": "Legacy value",
+                "distinguishing_features": [],
+                "inspiration_principles": [],
+                "source_urls": [],
+                "first_order_effects": [],
+                "second_order_effects": [],
+                "feasibility_assumptions": [],
+                "uncertainties": [],
+                "weaknesses": [],
+                "parent_ids": [],
+                "transformations": [],
+                "inspiration_kind": "independent",
+                "scores": None,
+                "branch_cost_usd": 0.0,
+                "branch_latency_ms": 0.0,
+            }
+        ],
+        "spend_records": [
+            {
+                "stage": "seed",
+                "provider": "local",
+                "cost_usd": 0.01,
+                "latency_ms": 1,
+                "created_at": "2026-06-23T12:00:00Z",
+            }
+        ],
+        "errors": [],
+        "stopped_reason": "generation_limit",
+        "reproducibility_fingerprint": (
+            "bc39704d67e06abc4b48dc5d793253eefc7dddd4b057e0b1809baf457e6fb240"
+        ),
+    }
+
+    restored = RunResult.model_validate(legacy_payload)
+
+    assert restored.reproducibility_fingerprint == legacy_payload[
+        "reproducibility_fingerprint"
+    ]

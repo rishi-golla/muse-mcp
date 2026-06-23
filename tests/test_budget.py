@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 
 import pytest
@@ -420,7 +421,7 @@ def _live_metadata() -> dict[str, object]:
         "pricing_version": "test",
         "cost_is_estimated": True,
         "request_id": "req_test",
-        "operation_trace": OperationTrace(
+        "operation_trace": OperationTrace.from_payload(
             request={"operation": "seed"},
             response={"status": "complete"},
         ),
@@ -441,7 +442,7 @@ def test_direct_charge_preserves_live_metadata() -> None:
 
     assert record.model == "economy-test-model"
     assert record.usage == TokenUsage(input_tokens=10, output_tokens=4)
-    assert record.operation_trace.response["status"] == "complete"
+    assert json.loads(record.operation_trace.response_json)["status"] == "complete"
 
 
 def test_reserved_charge_preserves_live_metadata() -> None:
@@ -501,7 +502,15 @@ def test_audited_overage_preserves_live_metadata() -> None:
     assert record.request_id == "req_test"
 
 
-def test_engine_charge_response_propagates_all_live_metadata() -> None:
+@pytest.mark.parametrize(
+    ("response_cost", "quote_cost", "expected_charged"),
+    [(0.01, 0.01, True), (0.02, 0.01, False)],
+)
+def test_engine_charge_response_propagates_all_live_metadata(
+    response_cost: float,
+    quote_cost: float,
+    expected_charged: bool,
+) -> None:
     budget = BudgetController(
         RunConfig(
             max_cost_usd=1,
@@ -513,20 +522,20 @@ def test_engine_charge_response_propagates_all_live_metadata() -> None:
     response = MeteredResponse(
         value="result",
         provider="openai",
-        cost_usd=0.01,
+        cost_usd=response_cost,
         latency_ms=2,
         **_live_metadata(),
     )
     errors: list[RunError] = []
 
     with budget.reserve(
-        0.01,
+        quote_cost,
         required_calls=1,
         preserve_finalization=False,
     ) as reservation:
         charged = CreativeEngine._charge_response(
             response,
-            OperationQuote(max_cost_usd=0.01),
+            OperationQuote(max_cost_usd=quote_cost),
             reservation,
             budget,
             stage="seed",
@@ -534,8 +543,11 @@ def test_engine_charge_response_propagates_all_live_metadata() -> None:
             errors=errors,
         )
 
-    assert charged is True
-    assert errors == []
+    assert charged is expected_charged
+    if expected_charged:
+        assert errors == []
+    else:
+        assert errors[-1].category == "overage_error"
     assert budget.records[0].model == response.model
     assert budget.records[0].usage == response.usage
     assert budget.records[0].pricing_version == response.pricing_version
