@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from decimal import Decimal
 
 from pydantic import Field, model_validator
@@ -34,6 +35,26 @@ class PricingTable(FrozenModel):
     models: tuple[TextModelPricing, ...]
     embeddings: tuple[EmbeddingModelPricing, ...] = ()
 
+    @model_validator(mode="before")
+    @classmethod
+    def canonicalize_mapping_config(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        payload = dict(value)
+        models = payload.get("models")
+        if isinstance(models, Mapping):
+            payload["models"] = tuple(
+                {"model": model, "price": price}
+                for model, price in models.items()
+            )
+        embeddings = payload.get("embeddings")
+        if isinstance(embeddings, Mapping):
+            payload["embeddings"] = tuple(
+                {"model": model, "price": price}
+                for model, price in embeddings.items()
+            )
+        return payload
+
     @model_validator(mode="after")
     def reject_duplicate_models(self) -> PricingTable:
         text_models = tuple(entry.model for entry in self.models)
@@ -55,6 +76,19 @@ class PricingTable(FrozenModel):
             if entry.model == model:
                 return entry.price
         raise KeyError(f"no embedding pricing configured for model: {model}")
+
+    def to_config_dict(self) -> dict[str, object]:
+        return {
+            "version": self.version,
+            "models": {
+                entry.model: entry.price.model_dump(mode="json")
+                for entry in self.models
+            },
+            "embeddings": {
+                entry.model: entry.price.model_dump(mode="json")
+                for entry in self.embeddings
+            },
+        }
 
     def estimate(self, model: str, usage: TokenUsage) -> CostEstimate:
         price = self.text_price(model)

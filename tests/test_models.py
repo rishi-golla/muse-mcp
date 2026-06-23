@@ -283,11 +283,32 @@ def test_operation_trace_canonicalizes_payloads_and_is_deeply_immutable() -> Non
     assert json.loads(trace.request_json)["a"]["nested"] is True
 
 
+def test_operation_trace_constructor_accepts_payload_aliases() -> None:
+    trace = OperationTrace(
+        request={"z": 2, "a": 1},
+        response={"status": "complete"},
+    )
+
+    assert trace.request_json == '{"a":1,"z":2}'
+    assert trace.response_json == '{"status":"complete"}'
+
+
 @pytest.mark.parametrize(
     "payload",
     [
         {"nested": {"Authorization": "safe-looking"}},
         {"api_KEY": "safe-looking"},
+        {"headers": {"x-api-key": "safe-looking"}},
+        {"nested": {"oauth.access-token": "safe-looking"}},
+        {"nested": {"refresh token value": "safe-looking"}},
+        {"nested": {"id.token": "safe-looking"}},
+        {"nested": {"client-secret-value": "safe-looking"}},
+        {"nested": {"db_passwd": "safe-looking"}},
+        {"nested": {"password_policy": "safe-looking"}},
+        {"nested": {"session_cookie": "safe-looking"}},
+        {"nested": {"cookie_preferences": "safe-looking"}},
+        {"nested": {"response.set-cookie": "safe-looking"}},
+        {"nested": {"bearer": "safe-looking"}},
         {"value": "Bearer abcdefghijklmnopqrstuvwxyz"},
         {"value": "sk-abcdefghijklmnopqrstuvwxyz123456"},
     ],
@@ -295,6 +316,24 @@ def test_operation_trace_canonicalizes_payloads_and_is_deeply_immutable() -> Non
 def test_operation_trace_rejects_secret_material(payload: object) -> None:
     with pytest.raises(ValueError, match="secret"):
         OperationTrace.from_payload(request=payload, response={})
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["token_count", "secret_sauce"],
+)
+def test_operation_trace_allows_noncredential_metadata_keys(key: str) -> None:
+    trace = OperationTrace(request={key: 1}, response={})
+
+    assert json.loads(trace.request_json)[key] == 1
+
+
+def test_operation_trace_aliases_do_not_bypass_secret_checks() -> None:
+    with pytest.raises(ValidationError, match="secret"):
+        OperationTrace(
+            request={"nested": {"x-api-key": "value"}},
+            response={},
+        )
 
 
 def test_operation_trace_rejects_noncanonical_constructor_json() -> None:

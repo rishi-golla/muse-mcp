@@ -42,6 +42,61 @@ def test_pricing_table_calculates_cached_and_uncached_tokens_exactly() -> None:
     assert estimate.is_estimated is True
 
 
+def test_pricing_table_accepts_exact_plan_mapping_constructor() -> None:
+    table = PricingTable(
+        version="test-2026-06-23",
+        models={
+            "economy-test-model": ModelPrice(
+                input_per_million=1.00,
+                cached_input_per_million=0.10,
+                output_per_million=4.00,
+            )
+        },
+        embeddings={
+            "embedding-test-model": EmbeddingPrice(input_per_million=0.02)
+        },
+    )
+
+    assert isinstance(table.models, tuple)
+    assert table.text_price("economy-test-model").output_per_million == 4.0
+    assert table.embedding_price("embedding-test-model").input_per_million == 0.02
+
+
+def test_pricing_table_config_dump_uses_stable_mapping_shape() -> None:
+    table = PricingTable(
+        version="test",
+        models={
+            "model": ModelPrice(
+                input_per_million=1.0,
+                cached_input_per_million=0.1,
+                output_per_million=4.0,
+            )
+        },
+        embeddings={
+            "embedding": EmbeddingPrice(input_per_million=0.02),
+        },
+    )
+
+    config = table.to_config_dict()
+
+    assert config == {
+        "version": "test",
+        "models": {
+            "model": {
+                "input_per_million": 1.0,
+                "cached_input_per_million": 0.1,
+                "output_per_million": 4.0,
+            }
+        },
+        "embeddings": {
+            "embedding": {
+                "input_per_million": 0.02,
+            }
+        },
+    }
+    assert PricingTable.model_validate(config) == table
+
+
 def test_reasoning_tokens_are_metadata_not_additional_billable_output() -> None:
     table = PricingTable(
         version="test",

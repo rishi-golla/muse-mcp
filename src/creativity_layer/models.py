@@ -142,6 +142,25 @@ class OperationTrace(FrozenModel):
     request_json: str
     response_json: str
 
+    @model_validator(mode="before")
+    @classmethod
+    def canonicalize_payload_aliases(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        payload = dict(value)
+        for alias, field in (
+            ("request", "request_json"),
+            ("response", "response_json"),
+        ):
+            if alias not in payload:
+                continue
+            if field in payload:
+                raise ValueError(f"operation trace cannot provide both {alias} and {field}")
+            raw_payload = payload.pop(alias)
+            _reject_trace_secrets(raw_payload)
+            payload[field] = _canonical_json(raw_payload)
+        return payload
+
     @classmethod
     def from_payload(
         cls,
@@ -169,8 +188,24 @@ class OperationTrace(FrozenModel):
         return value
 
 
-SECRET_TRACE_KEYS = frozenset(
-    {"api_key", "authorization", "token", "secret", "password"}
+SECRET_TRACE_CONTAINED_KEYS = frozenset(
+    {
+        "api_key",
+        "apikey",
+        "authorization",
+        "access_token",
+        "refresh_token",
+        "id_token",
+        "client_secret",
+        "set_cookie",
+        "bearer",
+        "password",
+        "passwd",
+        "cookie",
+    }
+)
+SECRET_TRACE_SUFFIX_KEYS = frozenset(
+    {"token", "secret"}
 )
 SECRET_TRACE_VALUE = re.compile(
     r"(?:\bBearer\s+\S+|\bsk-[A-Za-z0-9_-]{10,})",
@@ -181,7 +216,7 @@ SECRET_TRACE_VALUE = re.compile(
 def _reject_trace_secrets(value: object) -> None:
     if isinstance(value, dict):
         for key, item in value.items():
-            if str(key).casefold() in SECRET_TRACE_KEYS:
+            if _is_secret_trace_key(str(key)):
                 raise ValueError("operation trace contains a secret-bearing key")
             _reject_trace_secrets(item)
     elif isinstance(value, (list, tuple)):
@@ -189,6 +224,18 @@ def _reject_trace_secrets(value: object) -> None:
             _reject_trace_secrets(item)
     elif isinstance(value, str) and SECRET_TRACE_VALUE.search(value):
         raise ValueError("operation trace contains an apparent secret value")
+
+
+def _is_secret_trace_key(key: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", "_", key.casefold()).strip("_")
+    compact = normalized.replace("_", "")
+    for marker in SECRET_TRACE_CONTAINED_KEYS:
+        if marker in normalized or marker.replace("_", "") in compact:
+            return True
+    return any(
+        normalized == marker or normalized.endswith(f"_{marker}")
+        for marker in SECRET_TRACE_SUFFIX_KEYS
+    )
 
 
 def _canonical_json(value: object) -> str:
