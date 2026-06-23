@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from math import inf, nan
 from uuid import UUID
 
@@ -6,12 +7,15 @@ import pytest
 from pydantic import ValidationError
 
 from creativity_layer.models import (
+    CostEstimate,
     EvaluationScores,
     IdeaGenome,
     InspirationKind,
+    OperationTrace,
     RunConfig,
     SpendRecord,
     TaskContext,
+    TokenUsage,
 )
 
 
@@ -176,3 +180,70 @@ def test_spend_record_rejects_blank_labels(field: str) -> None:
 
     with pytest.raises(ValidationError):
         SpendRecord(**values)
+
+
+def test_spend_record_preserves_live_operation_metadata() -> None:
+    trace = OperationTrace(
+        request={"model_role": "economy"},
+        response={"status": "complete"},
+    )
+    usage = TokenUsage(input_tokens=10, output_tokens=20)
+    record = SpendRecord(
+        stage="seeding",
+        provider="openai",
+        model="economy-test-model",
+        cost_usd=0.001,
+        latency_ms=25,
+        usage=usage,
+        pricing_version="test",
+        cost_is_estimated=True,
+        request_id="req_test",
+        operation_trace=trace,
+    )
+
+    assert record.usage == usage
+    assert record.model == "economy-test-model"
+    assert record.pricing_version == "test"
+    assert record.cost_is_estimated is True
+    assert record.request_id == "req_test"
+    assert record.operation_trace == trace
+
+
+def test_cost_estimate_uses_exact_decimal_values() -> None:
+    estimate = CostEstimate(
+        estimated_cost_usd=Decimal("0.0000000000000000001"),
+        pricing_version="test",
+    )
+
+    assert estimate.estimated_cost_usd == Decimal("0.0000000000000000001")
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"input_tokens": -1},
+        {"cached_input_tokens": -1},
+        {"output_tokens": -1},
+        {"reasoning_tokens": -1},
+        {"input_tokens": True},
+    ],
+)
+def test_token_usage_rejects_invalid_counts(values: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        TokenUsage(**values)
+
+
+def test_live_metadata_labels_reject_blank_text() -> None:
+    with pytest.raises(ValidationError):
+        CostEstimate(
+            estimated_cost_usd=Decimal("0"),
+            pricing_version=" ",
+        )
+    with pytest.raises(ValidationError):
+        SpendRecord(
+            stage="seeding",
+            provider="openai",
+            model=" ",
+            cost_usd=0.0,
+            latency_ms=0,
+        )

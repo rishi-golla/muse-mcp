@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 from datetime import UTC, datetime
+from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated
 from uuid import UUID, uuid4
@@ -118,11 +119,41 @@ class FramedTask(FrozenModel):
     )
 
 
+class TokenUsage(FrozenModel):
+    input_tokens: int = Field(default=0, strict=True, ge=0)
+    cached_input_tokens: int = Field(default=0, strict=True, ge=0)
+    output_tokens: int = Field(default=0, strict=True, ge=0)
+    reasoning_tokens: int = Field(default=0, strict=True, ge=0)
+
+    @model_validator(mode="after")
+    def cached_tokens_fit_input(self) -> TokenUsage:
+        if self.cached_input_tokens > self.input_tokens:
+            raise ValueError("cached input tokens cannot exceed input tokens")
+        return self
+
+
+class CostEstimate(FrozenModel):
+    estimated_cost_usd: Decimal = Field(ge=0)
+    pricing_version: RequiredText
+    is_estimated: bool = True
+
+
+class OperationTrace(FrozenModel):
+    request: dict[str, object] = Field(default_factory=dict)
+    response: dict[str, object] = Field(default_factory=dict)
+
+
 class SpendRecord(FrozenModel):
     stage: RequiredText
     provider: RequiredText
+    model: RequiredText | None = None
     cost_usd: float = Field(strict=True, ge=0)
     latency_ms: int = Field(strict=True, ge=0)
+    usage: TokenUsage = Field(default_factory=TokenUsage)
+    pricing_version: RequiredText | None = None
+    cost_is_estimated: bool = False
+    request_id: RequiredText | None = None
+    operation_trace: OperationTrace | None = None
     created_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

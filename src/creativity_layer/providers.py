@@ -9,9 +9,11 @@ from creativity_layer.models import (
     FramedTask,
     FrozenModel,
     IdeaGenome,
+    OperationTrace,
     RequiredText,
     RunConfig,
     TaskContext,
+    TokenUsage,
 )
 from creativity_layer.transforms import TransformationRequest
 
@@ -19,8 +21,14 @@ from creativity_layer.transforms import TransformationRequest
 class MeteredResponse[T](FrozenModel):
     value: T
     provider: RequiredText
+    model: RequiredText | None = None
     cost_usd: float = Field(strict=True, ge=0)
     latency_ms: int = Field(strict=True, ge=0)
+    usage: TokenUsage = Field(default_factory=TokenUsage)
+    pricing_version: RequiredText | None = None
+    cost_is_estimated: bool = False
+    request_id: RequiredText | None = None
+    operation_trace: OperationTrace | None = None
 
 
 class OperationQuote(FrozenModel):

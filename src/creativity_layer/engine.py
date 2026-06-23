@@ -590,6 +590,12 @@ class CreativeEngine:
                     response.cost_usd,
                     response.latency_ms,
                     quoted_cost_usd=quote.max_cost_usd,
+                    model=response.model,
+                    usage=response.usage,
+                    pricing_version=response.pricing_version,
+                    cost_is_estimated=response.cost_is_estimated,
+                    request_id=response.request_id,
+                    operation_trace=response.operation_trace,
                 )
             except Exception:
                 _error(
@@ -608,6 +614,12 @@ class CreativeEngine:
                     expected_provider,
                     response.cost_usd,
                     response.latency_ms,
+                    model=response.model,
+                    usage=response.usage,
+                    pricing_version=response.pricing_version,
+                    cost_is_estimated=response.cost_is_estimated,
+                    request_id=response.request_id,
+                    operation_trace=response.operation_trace,
                 )
             except BudgetExceeded:
                 _error(
