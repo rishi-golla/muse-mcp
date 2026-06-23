@@ -59,6 +59,7 @@ class LiveModelConfig(FrozenModel):
     transform_max_output_tokens: int = Field(default=1_500, strict=True, ge=1)
     evaluation_max_input_tokens: int = Field(default=3_000, strict=True, ge=1)
     evaluation_max_output_tokens: int = Field(default=800, strict=True, ge=1)
+    embedding_max_input_tokens: int = Field(default=8_000, strict=True, ge=1)
 
     @classmethod
     def from_environment(cls) -> LiveModelConfig:
