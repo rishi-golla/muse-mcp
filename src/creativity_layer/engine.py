@@ -224,10 +224,9 @@ class CreativeEngine:
             return self._fallback_framed_task(task), "provider_error"
 
         try:
-            reservation = budget.reserve(
+            reservation = budget.reserve_for_framing(
                 quote.max_cost_usd,
                 required_calls=quote.calls,
-                preserve_finalization=False,
             )
         except BudgetExceeded:
             _error(
@@ -244,23 +243,35 @@ class CreativeEngine:
             try:
                 response = validate_metered_envelope(self._framer.frame(task))
             except ValidationError:
+                self._charge_attempt_from_quote(
+                    quote,
+                    reservation,
+                    stage="framing",
+                    provider=providers.framer.name,
+                )
                 _error(
                     errors,
                     stage="framing",
                     provider=providers.framer.name,
-                    category="validation_error",
+                    category="validation_error_after_response",
                     message="provider returned invalid metered response",
-                    cost_incurred=False,
+                    cost_incurred=True,
                 )
                 return self._fallback_framed_task(task), "provider_error"
             except Exception:
+                self._charge_attempt_from_quote(
+                    quote,
+                    reservation,
+                    stage="framing",
+                    provider=providers.framer.name,
+                )
                 _error(
                     errors,
                     stage="framing",
                     provider=providers.framer.name,
-                    category="provider_error",
-                    message="provider operation failed",
-                    cost_incurred=False,
+                    category="provider_error_after_attempt",
+                    message="provider operation failed after invocation",
+                    cost_incurred=True,
                 )
                 return self._fallback_framed_task(task), "provider_error"
 
@@ -282,7 +293,7 @@ class CreativeEngine:
                     errors,
                     stage="framing",
                     provider=providers.framer.name,
-                    category="validation_error",
+                    category="validation_error_after_response",
                     message="provider returned invalid framed task",
                     cost_incurred=True,
                 )
@@ -290,6 +301,22 @@ class CreativeEngine:
 
         budget.release_framing_reserve()
         return framed, None
+
+    @staticmethod
+    def _charge_attempt_from_quote(
+        quote: OperationQuote,
+        reservation: BudgetReservation,
+        *,
+        stage: str,
+        provider: str,
+    ) -> None:
+        reservation.charge(
+            stage,
+            provider,
+            quote.max_cost_usd,
+            0,
+            cost_is_estimated=True,
+        )
 
     @staticmethod
     def _fallback_framed_task(task: TaskContext) -> FramedTask:

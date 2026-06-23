@@ -51,8 +51,9 @@ class BudgetController:
         self._reservations: dict[object, _ReservationState] = {}
         self._max_cost = _money(config.max_cost_usd)
         self._framing_reserve = _money(config.framing_reserve_usd)
+        self._finalization_reserve = _money(config.finalization_reserve_usd)
         self._exploration_reserve = (
-            self._framing_reserve + _money(config.finalization_reserve_usd)
+            self._framing_reserve + self._finalization_reserve
         )
 
     @property
@@ -133,6 +134,40 @@ class BudgetController:
             - self._exploration_reserve
             if preserve_finalization
             else self._max_cost - self._spent - self._reserved_cost
+        )
+        if cost > available:
+            raise BudgetExceeded("cost limit exceeded")
+
+        self._reserved_cost += cost
+        self._reserved_calls += calls
+        token = object()
+        reservation = BudgetReservation(self, cost, calls, _token=token)
+        self._reservations[token] = _ReservationState(
+            reservation=reservation,
+            remaining_cost=cost,
+            remaining_calls=calls,
+        )
+        return reservation
+
+    def reserve_for_framing(
+        self,
+        cost_usd: int | float,
+        *,
+        required_calls: int,
+    ) -> BudgetReservation:
+        cost = _money(cost_usd)
+        calls = _call_count(required_calls)
+        calls_available = (
+            self._config.max_calls - self.calls_used - self._reserved_calls
+        )
+        if calls > calls_available:
+            raise BudgetExceeded("call limit exceeded")
+
+        available = (
+            self._max_cost
+            - self._spent
+            - self._reserved_cost
+            - self._finalization_reserve
         )
         if cost > available:
             raise BudgetExceeded("cost limit exceeded")

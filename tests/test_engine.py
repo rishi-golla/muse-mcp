@@ -780,7 +780,11 @@ def test_engine_handles_framing_exception_with_explicit_fallback() -> None:
     )
     assert result.all_candidates == ()
     assert result.finalists == ()
-    assert result.spend_records == ()
+    assert [record.stage for record in result.spend_records] == ["framing"]
+    assert result.spend_records[0].cost_usd == 0
+    assert result.spend_records[0].cost_is_estimated is True
+    assert result.errors[-1].category == "provider_error_after_attempt"
+    assert result.errors[-1].cost_incurred is True
     assert result.stopped_reason == "provider_error"
 
 
