@@ -325,3 +325,63 @@ def test_reserved_charge_rejects_string_cost() -> None:
             "0.1",
             1,
         )
+
+
+def test_audited_overage_records_actual_cost_beyond_budget() -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=0.1,
+            max_calls=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+
+    with budget.reserve(
+        0.1,
+        required_calls=1,
+        preserve_finalization=False,
+    ) as reservation:
+        budget._record_audited_overage(
+            reservation,
+            "seed",
+            "misquoting-provider",
+            0.12,
+            4,
+            quoted_cost_usd=0.1,
+        )
+
+    assert budget.spent_usd == 0.12
+    assert budget.calls_used == 1
+    assert budget.remaining_usd == 0
+    assert budget.records[0].cost_usd == 0.12
+
+
+def test_audited_overage_cannot_authorize_an_in_quote_charge() -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+
+    with (
+        budget.reserve(
+            0.1,
+            required_calls=1,
+            preserve_finalization=False,
+        ) as reservation,
+        pytest.raises(ValueError, match="exceed quoted cost"),
+    ):
+        budget._record_audited_overage(
+            reservation,
+            "seed",
+            "local",
+            0.1,
+            1,
+            quoted_cost_usd=0.1,
+        )
+
+    assert budget.records == ()
