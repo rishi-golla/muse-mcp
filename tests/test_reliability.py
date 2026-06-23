@@ -4,10 +4,14 @@ import httpx
 import pytest
 from openai import (
     APIConnectionError,
+    APIStatusError,
     APITimeoutError,
     AuthenticationError,
     BadRequestError,
+    NotFoundError,
+    PermissionDeniedError,
     RateLimitError,
+    UnprocessableEntityError,
 )
 
 from creativity_layer.reliability import (
@@ -19,9 +23,13 @@ from creativity_layer.reliability import (
 )
 
 
-def _response(status_code: int) -> httpx.Response:
+def _response(
+    status_code: int,
+    *,
+    headers: dict[str, str] | None = None,
+) -> httpx.Response:
     request = httpx.Request("POST", "https://api.openai.com/v1/responses")
-    return httpx.Response(status_code, request=request)
+    return httpx.Response(status_code, request=request, headers=headers)
 
 
 def _request() -> httpx.Request:
@@ -32,12 +40,15 @@ def _request() -> httpx.Request:
     ("field", "value"),
     [
         ("max_retries", -1),
+        ("max_retries", 6),
         ("max_retries", True),
         ("max_retries", 1.5),
         ("base_delay_seconds", -0.1),
+        ("base_delay_seconds", 0),
         ("base_delay_seconds", float("nan")),
         ("base_delay_seconds", float("inf")),
         ("maximum_delay_seconds", -0.1),
+        ("maximum_delay_seconds", 0),
         ("maximum_delay_seconds", float("nan")),
         ("maximum_delay_seconds", float("inf")),
     ],
@@ -74,7 +85,7 @@ def test_retry_executor_retries_rate_limits_with_exponential_backoff() -> None:
     assert delays == [0.1, 0.2]
 
 
-def test_retry_executor_caps_backoff_and_applies_jitter() -> None:
+def test_retry_executor_caps_final_jittered_delay() -> None:
     attempts = 0
     delays: list[float] = []
 
@@ -101,7 +112,125 @@ def test_retry_executor_caps_backoff_and_applies_jitter() -> None:
     )
 
     assert result == "ok"
-    assert delays == [1.25, 2.5, 2.5]
+    assert delays == [1.25, 2.0, 2.0]
+
+
+@pytest.mark.parametrize(
+    "jitter",
+    [-0.1, 1.1, float("nan"), float("inf"), float("-inf")],
+)
+def test_retry_executor_rejects_invalid_jitter_before_sleep(jitter: float) -> None:
+    delays: list[float] = []
+
+    def operation() -> None:
+        raise RateLimitError(
+            "rate limited",
+            response=_response(429),
+            body=None,
+        )
+
+    with pytest.raises(ValueError, match="random_value"):
+        execute_with_retries(
+            operation,
+            policy=RetryPolicy(max_retries=1),
+            sleep=delays.append,
+            random_value=lambda: jitter,
+        )
+
+    assert delays == []
+
+
+def test_retry_after_milliseconds_header_takes_precedence() -> None:
+    attempts = 0
+    delays: list[float] = []
+
+    def operation() -> str:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RateLimitError(
+                "rate limited",
+                response=_response(
+                    429,
+                    headers={
+                        "retry-after-ms": "1500",
+                        "Retry-After": "9",
+                    },
+                ),
+                body=None,
+            )
+        return "ok"
+
+    assert execute_with_retries(
+        operation,
+        policy=RetryPolicy(max_retries=1, maximum_delay_seconds=5.0),
+        sleep=delays.append,
+        random_value=lambda: pytest.fail("header delay used random jitter"),
+    ) == "ok"
+    assert delays == [1.5]
+
+
+def test_retry_after_seconds_header_is_honored_and_capped() -> None:
+    attempts = 0
+    delays: list[float] = []
+
+    def operation() -> str:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RateLimitError(
+                "rate limited",
+                response=_response(429, headers={"Retry-After": "9"}),
+                body=None,
+            )
+        return "ok"
+
+    assert execute_with_retries(
+        operation,
+        policy=RetryPolicy(max_retries=1, maximum_delay_seconds=2.0),
+        sleep=delays.append,
+        random_value=lambda: pytest.fail("header delay used random jitter"),
+    ) == "ok"
+    assert delays == [2.0]
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"retry-after-ms": "malformed", "Retry-After": "-1"},
+        {"retry-after-ms": "-10"},
+        {"Retry-After": "nan"},
+        {"Retry-After": "inf"},
+    ],
+)
+def test_invalid_retry_headers_fall_back_to_local_backoff(
+    headers: dict[str, str],
+) -> None:
+    attempts = 0
+    delays: list[float] = []
+
+    def operation() -> str:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RateLimitError(
+                "rate limited",
+                response=_response(429, headers=headers),
+                body=None,
+            )
+        return "ok"
+
+    assert execute_with_retries(
+        operation,
+        policy=RetryPolicy(
+            max_retries=1,
+            base_delay_seconds=0.4,
+            maximum_delay_seconds=2.0,
+        ),
+        sleep=delays.append,
+        random_value=lambda: 0.0,
+    ) == "ok"
+    assert delays == [0.4]
 
 
 @pytest.mark.parametrize(
@@ -116,6 +245,17 @@ def test_retryable_openai_exception_classification(error: Exception) -> None:
     assert is_retryable_openai_exception(error) is True
 
 
+@pytest.mark.parametrize("status_code", [408, 409, 500, 503, 599])
+def test_transient_api_status_errors_are_retryable(status_code: int) -> None:
+    error = APIStatusError(
+        "transient status",
+        response=_response(status_code),
+        body=None,
+    )
+
+    assert is_retryable_openai_exception(error) is True
+
+
 @pytest.mark.parametrize(
     "error",
     [
@@ -127,6 +267,26 @@ def test_retryable_openai_exception_classification(error: Exception) -> None:
         BadRequestError(
             "bad request",
             response=_response(400),
+            body=None,
+        ),
+        PermissionDeniedError(
+            "forbidden",
+            response=_response(403),
+            body=None,
+        ),
+        NotFoundError(
+            "missing",
+            response=_response(404),
+            body=None,
+        ),
+        UnprocessableEntityError(
+            "invalid",
+            response=_response(422),
+            body=None,
+        ),
+        APIStatusError(
+            "other client error",
+            response=_response(418),
             body=None,
         ),
         RuntimeError("local failure"),
@@ -157,7 +317,7 @@ def test_retry_executor_retries_connection_and_timeout_errors(
 
     assert execute_with_retries(
         operation,
-        policy=RetryPolicy(max_retries=1, base_delay_seconds=0),
+        policy=RetryPolicy(max_retries=1, base_delay_seconds=0.01),
         sleep=lambda _: None,
     ) == "ok"
     assert attempts == 2
@@ -204,7 +364,7 @@ def test_retry_exhaustion_reraises_the_final_sdk_exception() -> None:
     with pytest.raises(RateLimitError) as raised:
         execute_with_retries(
             operation,
-            policy=RetryPolicy(max_retries=1, base_delay_seconds=0),
+            policy=RetryPolicy(max_retries=1, base_delay_seconds=0.01),
             sleep=lambda _: None,
         )
 
@@ -242,8 +402,18 @@ def test_success_resets_consecutive_failure_count() -> None:
     breaker.before_call()
 
 
-def test_retry_success_resets_breaker_failure_count() -> None:
-    breaker = CircuitBreaker(failure_threshold=2)
+def test_record_success_closes_an_open_circuit() -> None:
+    breaker = CircuitBreaker(failure_threshold=1)
+    breaker.record_failure()
+
+    breaker.record_success()
+
+    assert breaker.is_open is False
+    breaker.before_call()
+
+
+def test_threshold_one_retry_then_success_keeps_circuit_closed() -> None:
+    breaker = CircuitBreaker(failure_threshold=1)
     attempts = 0
 
     def operation() -> str:
@@ -259,16 +429,15 @@ def test_retry_success_resets_breaker_failure_count() -> None:
 
     assert execute_with_retries(
         operation,
-        policy=RetryPolicy(max_retries=1, base_delay_seconds=0),
+        policy=RetryPolicy(max_retries=1, base_delay_seconds=0.01),
         breaker=breaker,
         sleep=lambda _: None,
     ) == "ok"
 
-    breaker.record_failure()
     assert breaker.is_open is False
 
 
-def test_retry_exhaustion_records_failures_and_opens_circuit() -> None:
+def test_exhausted_operation_records_one_logical_failure() -> None:
     breaker = CircuitBreaker(failure_threshold=2)
 
     def operation() -> None:
@@ -281,12 +450,68 @@ def test_retry_exhaustion_records_failures_and_opens_circuit() -> None:
     with pytest.raises(RateLimitError):
         execute_with_retries(
             operation,
-            policy=RetryPolicy(max_retries=1, base_delay_seconds=0),
+            policy=RetryPolicy(max_retries=2, base_delay_seconds=0.01),
             breaker=breaker,
             sleep=lambda _: None,
         )
 
+    assert breaker.is_open is False
+    breaker.before_call()
+
+
+def test_circuit_opens_after_threshold_exhausted_operations() -> None:
+    breaker = CircuitBreaker(failure_threshold=2)
+    calls = 0
+
+    def operation() -> None:
+        nonlocal calls
+        calls += 1
+        raise RateLimitError(
+            "rate limited",
+            response=_response(429),
+            body=None,
+        )
+
+    for _ in range(2):
+        with pytest.raises(RateLimitError):
+            execute_with_retries(
+                operation,
+                policy=RetryPolicy(max_retries=1, base_delay_seconds=0.01),
+                breaker=breaker,
+                sleep=lambda _: None,
+            )
+
+    assert calls == 4
     assert breaker.is_open is True
+
+
+def test_nonretryable_exception_does_not_count_as_circuit_failure() -> None:
+    breaker = CircuitBreaker(failure_threshold=1)
+
+    def operation() -> None:
+        raise AuthenticationError(
+            "invalid key",
+            response=_response(401),
+            body=None,
+        )
+
+    with pytest.raises(AuthenticationError):
+        execute_with_retries(
+            operation,
+            policy=RetryPolicy(),
+            breaker=breaker,
+        )
+
+    assert breaker.is_open is False
+    breaker.before_call()
+
+
+def test_retry_policy_requires_maximum_delay_at_least_base_delay() -> None:
+    with pytest.raises(ValueError, match="maximum_delay_seconds"):
+        RetryPolicy(
+            base_delay_seconds=2.0,
+            maximum_delay_seconds=1.0,
+        )
 
 
 def test_open_circuit_performs_no_provider_call() -> None:
