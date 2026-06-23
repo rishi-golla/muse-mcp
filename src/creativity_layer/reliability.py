@@ -5,6 +5,8 @@ import random
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 
 from openai import APIConnectionError, APIStatusError, APITimeoutError, RateLimitError
 
@@ -73,10 +75,31 @@ def _valid_non_negative_float(value: str | None) -> float | None:
     return parsed
 
 
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _http_date_delay(
+    value: str | None,
+    *,
+    now: Callable[[], datetime],
+) -> float | None:
+    if value is None:
+        return None
+    try:
+        retry_at = parsedate_to_datetime(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if retry_at.tzinfo is None or retry_at.utcoffset() is None:
+        return None
+    return max(0.0, (retry_at - now()).total_seconds())
+
+
 def _retry_header_delay(
     error: BaseException,
     *,
     maximum_delay_seconds: float,
+    now: Callable[[], datetime],
 ) -> float | None:
     if not isinstance(error, APIStatusError):
         return None
@@ -85,9 +108,13 @@ def _retry_header_delay(
     )
     if milliseconds is not None:
         return min(milliseconds / 1_000, maximum_delay_seconds)
-    seconds = _valid_non_negative_float(error.response.headers.get("Retry-After"))
+    retry_after = error.response.headers.get("Retry-After")
+    seconds = _valid_non_negative_float(retry_after)
     if seconds is not None:
         return min(seconds, maximum_delay_seconds)
+    date_delay = _http_date_delay(retry_after, now=now)
+    if date_delay is not None:
+        return min(date_delay, maximum_delay_seconds)
     return None
 
 
@@ -142,6 +169,7 @@ def execute_with_retries[T](
     breaker: CircuitBreaker | None = None,
     sleep: Callable[[float], None] = time.sleep,
     random_value: Callable[[], float] = random.random,
+    now: Callable[[], datetime] = _utc_now,
 ) -> T:
     if breaker is not None:
         breaker.before_call()
@@ -158,6 +186,7 @@ def execute_with_retries[T](
             delay = _retry_header_delay(
                 error,
                 maximum_delay_seconds=policy.maximum_delay_seconds,
+                now=now,
             )
             if delay is None:
                 delay = _local_backoff_delay(

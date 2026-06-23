@@ -1,4 +1,6 @@
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
 
 import httpx
 import pytest
@@ -192,6 +194,128 @@ def test_retry_after_seconds_header_is_honored_and_capped() -> None:
         random_value=lambda: pytest.fail("header delay used random jitter"),
     ) == "ok"
     assert delays == [2.0]
+
+
+def test_future_http_date_retry_after_is_honored() -> None:
+    current = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+    retry_at = current + timedelta(seconds=3)
+    attempts = 0
+    delays: list[float] = []
+
+    def operation() -> str:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RateLimitError(
+                "rate limited",
+                response=_response(
+                    429,
+                    headers={"Retry-After": format_datetime(retry_at, usegmt=True)},
+                ),
+                body=None,
+            )
+        return "ok"
+
+    assert execute_with_retries(
+        operation,
+        policy=RetryPolicy(max_retries=1, maximum_delay_seconds=5.0),
+        sleep=delays.append,
+        random_value=lambda: pytest.fail("HTTP-date used local backoff"),
+        now=lambda: current,
+    ) == "ok"
+    assert delays == [3.0]
+
+
+def test_future_http_date_retry_after_is_capped() -> None:
+    current = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+    retry_at = current + timedelta(seconds=30)
+    attempts = 0
+    delays: list[float] = []
+
+    def operation() -> str:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RateLimitError(
+                "rate limited",
+                response=_response(
+                    429,
+                    headers={"Retry-After": format_datetime(retry_at, usegmt=True)},
+                ),
+                body=None,
+            )
+        return "ok"
+
+    assert execute_with_retries(
+        operation,
+        policy=RetryPolicy(max_retries=1, maximum_delay_seconds=2.0),
+        sleep=delays.append,
+        random_value=lambda: pytest.fail("HTTP-date used local backoff"),
+        now=lambda: current,
+    ) == "ok"
+    assert delays == [2.0]
+
+
+def test_past_http_date_retry_after_requests_immediate_retry() -> None:
+    current = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+    retry_at = current - timedelta(seconds=30)
+    attempts = 0
+    delays: list[float] = []
+
+    def operation() -> str:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RateLimitError(
+                "rate limited",
+                response=_response(
+                    429,
+                    headers={"Retry-After": format_datetime(retry_at, usegmt=True)},
+                ),
+                body=None,
+            )
+        return "ok"
+
+    assert execute_with_retries(
+        operation,
+        policy=RetryPolicy(max_retries=1),
+        sleep=delays.append,
+        random_value=lambda: pytest.fail("HTTP-date used local backoff"),
+        now=lambda: current,
+    ) == "ok"
+    assert delays == [0.0]
+
+
+def test_malformed_http_date_retry_after_uses_local_backoff() -> None:
+    attempts = 0
+    delays: list[float] = []
+
+    def operation() -> str:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RateLimitError(
+                "rate limited",
+                response=_response(
+                    429,
+                    headers={"Retry-After": "Tuesday, definitely not a date"},
+                ),
+                body=None,
+            )
+        return "ok"
+
+    assert execute_with_retries(
+        operation,
+        policy=RetryPolicy(
+            max_retries=1,
+            base_delay_seconds=0.4,
+            maximum_delay_seconds=2.0,
+        ),
+        sleep=delays.append,
+        random_value=lambda: 0.0,
+        now=lambda: pytest.fail("malformed HTTP-date used injected clock"),
+    ) == "ok"
+    assert delays == [0.4]
 
 
 @pytest.mark.parametrize(
