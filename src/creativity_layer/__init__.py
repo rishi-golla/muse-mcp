@@ -13,6 +13,7 @@ from creativity_layer.models import (
     RunResult,
     TaskContext,
 )
+from creativity_layer.openai_provider import OpenAICreativeProvider
 
 __version__ = "0.1.0"
 
@@ -22,6 +23,7 @@ __all__ = [
     "FramedTask",
     "IdeaGenome",
     "InspirationKind",
+    "OpenAICreativeProvider",
     "ProviderIdentity",
     "RunConfig",
     "RunError",

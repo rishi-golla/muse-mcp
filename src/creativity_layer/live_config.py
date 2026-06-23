@@ -51,6 +51,14 @@ class LiveModelConfig(FrozenModel):
     repair_attempts: int = Field(default=1, strict=True, ge=0, le=2)
     circuit_failure_threshold: int = Field(default=3, strict=True, ge=1)
     privacy_mode: PrivacyMode = PrivacyMode.RESEARCH
+    frame_max_input_tokens: int = Field(default=2_000, strict=True, ge=1)
+    frame_max_output_tokens: int = Field(default=800, strict=True, ge=1)
+    seed_max_input_tokens: int = Field(default=3_000, strict=True, ge=1)
+    seed_max_output_tokens: int = Field(default=2_500, strict=True, ge=1)
+    transform_max_input_tokens: int = Field(default=3_000, strict=True, ge=1)
+    transform_max_output_tokens: int = Field(default=1_500, strict=True, ge=1)
+    evaluation_max_input_tokens: int = Field(default=3_000, strict=True, ge=1)
+    evaluation_max_output_tokens: int = Field(default=800, strict=True, ge=1)
 
     @classmethod
     def from_environment(cls) -> LiveModelConfig:
