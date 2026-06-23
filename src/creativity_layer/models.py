@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Annotated
@@ -145,6 +146,9 @@ class RunError(FrozenModel):
     cost_incurred: bool
 
 
+FINGERPRINT_PATTERN = re.compile(r"[0-9a-fA-F]{64}\Z")
+
+
 class RunResult(FrozenModel):
     run_id: UUID = Field(default_factory=uuid4)
     config: RunConfig
@@ -160,21 +164,40 @@ class RunResult(FrozenModel):
 
     @model_validator(mode="after")
     def set_reproducibility_fingerprint(self) -> RunResult:
-        if self.reproducibility_fingerprint:
-            if len(self.reproducibility_fingerprint) != 64:
+        expected = compute_reproducibility_fingerprint(self)
+        supplied = self.reproducibility_fingerprint
+        if supplied:
+            if FINGERPRINT_PATTERN.fullmatch(supplied) is None:
                 raise ValueError("reproducibility_fingerprint must be a SHA-256 hex digest")
-            return self
-
-        payload = self.model_dump(
-            mode="json",
-            exclude={"run_id", "reproducibility_fingerprint"},
-        )
-        for record in payload["spend_records"]:
-            record.pop("created_at", None)
-        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+            normalized = supplied.lower()
+            if normalized != expected:
+                raise ValueError(
+                    "reproducibility_fingerprint does not match canonical payload"
+                )
+        else:
+            normalized = expected
         object.__setattr__(
             self,
             "reproducibility_fingerprint",
-            hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+            normalized,
         )
         return self
+
+
+def canonical_run_payload(result: RunResult) -> dict[str, object]:
+    payload = result.model_dump(
+        mode="json",
+        exclude={"run_id", "reproducibility_fingerprint"},
+    )
+    for record in payload["spend_records"]:
+        record.pop("created_at", None)
+    return payload
+
+
+def compute_reproducibility_fingerprint(result: RunResult) -> str:
+    canonical = json.dumps(
+        canonical_run_payload(result),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

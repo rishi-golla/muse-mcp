@@ -102,16 +102,17 @@ class CreativeEngine:
         self._transformer = transformer
         self._evaluator = evaluator
         self._population = population or PopulationManager()
+        self._providers = RunProviders(
+            framer=provider_identity(framer),
+            seeder=provider_identity(seeder),
+            transformer=provider_identity(transformer),
+            evaluator=provider_identity(evaluator),
+        )
 
     def run(self, task: TaskContext, config: RunConfig) -> RunResult:
         budget = BudgetController(config)
         errors: list[RunError] = []
-        providers = RunProviders(
-            framer=provider_identity(self._framer),
-            seeder=provider_identity(self._seeder),
-            transformer=provider_identity(self._transformer),
-            evaluator=provider_identity(self._evaluator),
-        )
+        providers = self._providers
         try:
             framed = validate_framed_task(self._framer.frame(task))
         except ValidationError:
@@ -314,6 +315,7 @@ class CreativeEngine:
                 reservation,
                 budget,
                 stage="seeding",
+                expected_provider=providers.seeder.name,
                 errors=errors,
             ):
                 return [], "provider_error"
@@ -329,7 +331,7 @@ class CreativeEngine:
                 _error(
                     errors,
                     stage="seeding",
-                    provider=seeded.provider,
+                    provider=providers.seeder.name,
                     category=category,
                     message="provider returned invalid seed candidates",
                     cost_incurred=True,
@@ -447,6 +449,7 @@ class CreativeEngine:
                 reservation,
                 budget,
                 stage="transformation",
+                expected_provider=providers.transformer.name,
                 errors=errors,
             ):
                 return None, "provider_error"
@@ -462,7 +465,7 @@ class CreativeEngine:
                 _error(
                     errors,
                     stage="transformation",
-                    provider=transformed.provider,
+                    provider=providers.transformer.name,
                     category="validation_error",
                     message="provider returned invalid transform candidate",
                     cost_incurred=True,
@@ -536,6 +539,7 @@ class CreativeEngine:
             reservation,
             budget,
             stage="evaluation",
+            expected_provider=providers.evaluator.name,
             errors=errors,
         ):
             return None
@@ -545,7 +549,7 @@ class CreativeEngine:
             _error(
                 errors,
                 stage="evaluation",
-                provider=response.provider,
+                provider=providers.evaluator.name,
                 category="validation_error",
                 message="provider returned invalid evaluation scores",
                 cost_incurred=True,
@@ -573,14 +577,16 @@ class CreativeEngine:
         budget: BudgetController,
         *,
         stage: str,
+        expected_provider: str,
         errors: list[RunError],
     ) -> bool:
-        if _exceeds_quote(response, quote):
+        exceeds_quote = _exceeds_quote(response, quote)
+        if exceeds_quote:
             try:
                 budget.record_audited_overage(
                     reservation,
                     stage,
-                    response.provider,
+                    expected_provider,
                     response.cost_usd,
                     response.latency_ms,
                     quoted_cost_usd=quote.max_cost_usd,
@@ -589,36 +595,47 @@ class CreativeEngine:
                 _error(
                     errors,
                     stage=stage,
-                    provider=response.provider,
+                    provider=expected_provider,
                     category="accounting_error",
                     message="failed to record provider overage",
                     cost_incurred=True,
                 )
                 return False
+        else:
+            try:
+                reservation.charge(
+                    stage,
+                    expected_provider,
+                    response.cost_usd,
+                    response.latency_ms,
+                )
+            except BudgetExceeded:
+                _error(
+                    errors,
+                    stage=stage,
+                    provider=expected_provider,
+                    category="accounting_error",
+                    message="provider cost could not be charged",
+                    cost_incurred=True,
+                )
+                return False
+        if response.provider != expected_provider:
             _error(
                 errors,
                 stage=stage,
-                provider=response.provider,
-                category="overage_error",
-                message="provider cost exceeded quote",
+                provider=expected_provider,
+                category="provider_error",
+                message="provider identity mismatch",
                 cost_incurred=True,
             )
             return False
-
-        try:
-            reservation.charge(
-                stage,
-                response.provider,
-                response.cost_usd,
-                response.latency_ms,
-            )
-        except BudgetExceeded:
+        if exceeds_quote:
             _error(
                 errors,
                 stage=stage,
-                provider=response.provider,
-                category="accounting_error",
-                message="provider cost could not be charged",
+                provider=expected_provider,
+                category="overage_error",
+                message="provider cost exceeded quote",
                 cost_incurred=True,
             )
             return False

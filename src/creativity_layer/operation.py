@@ -13,7 +13,10 @@ from creativity_layer.models import (
     RunConfig,
 )
 from creativity_layer.providers import MeteredResponse, OperationQuote
-from creativity_layer.transforms import TransformationRequest
+from creativity_layer.transforms import (
+    TransformationRequest,
+    expected_transformation_history,
+)
 
 
 def _validation_data(value: object) -> object:
@@ -23,12 +26,15 @@ def _validation_data(value: object) -> object:
 
 
 def provider_identity(provider: object) -> ProviderIdentity:
-    return ProviderIdentity.model_validate(
-        {
-            "name": getattr(provider, "name", type(provider).__name__),
-            "version": getattr(provider, "version", "unknown"),
-        }
-    )
+    try:
+        return ProviderIdentity.model_validate(
+            {
+                "name": getattr(provider, "name", None),
+                "version": getattr(provider, "version", None),
+            }
+        )
+    except ValueError as error:
+        raise ValueError("invalid provider metadata") from error
 
 
 def validate_framed_task(value: object) -> FramedTask:
@@ -83,10 +89,9 @@ def validate_transform_payload(
         raise ValueError("transform generation does not follow its parents")
     if candidate.parent_ids != expected_parent_ids or candidate.parent_ids != request.parent_ids:
         raise ValueError("transform parent IDs do not match the request")
-    if not candidate.transformations:
-        raise ValueError("transform output must record its operator")
-    if candidate.transformations[-1] != request.operator.value:
-        raise ValueError("transform output records the wrong operator")
+    expected_history = expected_transformation_history(request.operator, parents)
+    if candidate.transformations != expected_history:
+        raise ValueError("transform history does not exactly match its ancestry")
     if candidate.id in candidate_ids:
         raise ValueError("transform output ID must be new")
     return candidate

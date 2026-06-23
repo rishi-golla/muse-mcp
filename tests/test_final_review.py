@@ -9,7 +9,14 @@ from creativity_layer.budget import BudgetController
 from creativity_layer.cli import run_cli
 from creativity_layer.deterministic import DeterministicCreativeProvider
 from creativity_layer.engine import CreativeEngine
-from creativity_layer.models import EvaluationScores, FramedTask, IdeaGenome, RunConfig, TaskContext
+from creativity_layer.models import (
+    EvaluationScores,
+    FramedTask,
+    IdeaGenome,
+    RunConfig,
+    RunResult,
+    TaskContext,
+)
 from creativity_layer.providers import MeteredResponse
 from creativity_layer.transforms import TransformationRequest
 
@@ -72,6 +79,43 @@ def test_trace_naturally_persists_reproducibility_fields(tmp_path: Path) -> None
     assert payload["operator_schedule"] == ["invert", "reframe", "subtract", "contradict"]
     assert payload["errors"] == []
     assert payload["reproducibility_fingerprint"] == result.reproducibility_fingerprint
+
+
+def test_run_result_normalizes_uppercase_fingerprint_hex() -> None:
+    result = build_engine(DeterministicCreativeProvider()).run(
+        TaskContext(goal="Invent a calmer decision process."),
+        config(generations=0),
+    )
+    payload = result.model_dump(mode="json")
+    payload["reproducibility_fingerprint"] = result.reproducibility_fingerprint.upper()
+
+    restored = RunResult.model_validate(payload)
+
+    assert restored.reproducibility_fingerprint == result.reproducibility_fingerprint
+
+
+def test_run_result_rejects_non_hex_fingerprint() -> None:
+    result = build_engine(DeterministicCreativeProvider()).run(
+        TaskContext(goal="Invent a calmer decision process."),
+        config(generations=0),
+    )
+    payload = result.model_dump(mode="json")
+    payload["reproducibility_fingerprint"] = "g" * 64
+
+    with pytest.raises(ValueError, match="SHA-256 hex digest"):
+        RunResult.model_validate(payload)
+
+
+def test_run_result_rejects_stale_fingerprint_after_payload_tampering() -> None:
+    result = build_engine(DeterministicCreativeProvider()).run(
+        TaskContext(goal="Invent a calmer decision process."),
+        config(generations=0),
+    )
+    payload = result.model_dump(mode="json")
+    payload["stopped_reason"] = "tampered"
+
+    with pytest.raises(ValueError, match="does not match canonical payload"):
+        RunResult.model_validate(payload)
 
 
 class MalformedEvaluationProvider(DeterministicCreativeProvider):
@@ -196,6 +240,123 @@ def test_provider_exception_message_is_sanitized() -> None:
     assert error.message == "provider operation failed"
     assert "secret-token" not in result.model_dump_json()
     assert error.cost_incurred is False
+
+
+class SpoofingProvider(DeterministicCreativeProvider):
+    def __init__(self, stage: str, *, overage: bool = False) -> None:
+        self.stage = stage
+        self.overage = overage
+
+    def seed(
+        self,
+        framed_task: FramedTask,
+        run_config: RunConfig,
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        response = super().seed(framed_task, run_config)
+        if self.stage == "seeding":
+            return response.model_copy(
+                update={
+                    "provider": "spoofed-provider",
+                    "cost_usd": 0.02 if self.overage else response.cost_usd,
+                }
+            )
+        return response
+
+    def transform(
+        self,
+        request: TransformationRequest,
+        parents: tuple[IdeaGenome, ...],
+    ) -> MeteredResponse[IdeaGenome]:
+        response = super().transform(request, parents)
+        if self.stage == "transformation":
+            return response.model_copy(update={"provider": "spoofed-provider"})
+        return response
+
+    def evaluate(
+        self,
+        candidate: IdeaGenome,
+        framed_task: FramedTask,
+    ) -> MeteredResponse[EvaluationScores]:
+        response = super().evaluate(candidate, framed_task)
+        if self.stage == "evaluation":
+            return response.model_copy(update={"provider": "spoofed-provider"})
+        return response
+
+
+@pytest.mark.parametrize(
+    ("stage", "expected_cost"),
+    (
+        ("seeding", 0.01),
+        ("transformation", 0.01),
+        ("evaluation", 0.005),
+    ),
+)
+def test_metered_response_provider_spoofing_is_rejected_after_recording_actual_cost(
+    stage: str,
+    expected_cost: float,
+) -> None:
+    result = build_engine(SpoofingProvider(stage)).run(
+        TaskContext(goal="Invent a calmer decision process."),
+        config(generations=1),
+    )
+
+    assert result.stopped_reason == "provider_error"
+    assert result.spend_records[-1].stage == stage
+    assert result.spend_records[-1].provider == "deterministic-local"
+    assert result.spend_records[-1].cost_usd == expected_cost
+    assert result.errors[-1].stage == stage
+    assert result.errors[-1].provider == "deterministic-local"
+    assert result.errors[-1].category == "provider_error"
+    assert result.errors[-1].message == "provider identity mismatch"
+    assert result.errors[-1].cost_incurred is True
+
+
+def test_provider_spoofing_remains_provider_error_when_cost_exceeds_quote() -> None:
+    result = build_engine(SpoofingProvider("seeding", overage=True)).run(
+        TaskContext(goal="Invent a calmer decision process."),
+        config(generations=0),
+    )
+
+    assert len(result.spend_records) == 1
+    assert result.spend_records[0].provider == "deterministic-local"
+    assert result.spend_records[0].cost_usd == 0.02
+    assert result.errors[-1].provider == "deterministic-local"
+    assert result.errors[-1].category == "provider_error"
+    assert result.errors[-1].message == "provider identity mismatch"
+
+
+class InvalidMetadataProvider:
+    def __init__(self, name: object, version: object) -> None:
+        self.name = name
+        self.version = version
+
+
+@pytest.mark.parametrize(
+    ("name", "version"),
+    (
+        ("", "1"),
+        ("   ", "1"),
+        ("provider", ""),
+        ("provider", "   "),
+        (None, "1"),
+        ("provider", None),
+        (123, "1"),
+        ("provider", 1),
+    ),
+)
+def test_engine_rejects_invalid_provider_metadata_at_construction(
+    name: object,
+    version: object,
+) -> None:
+    provider = InvalidMetadataProvider(name, version)
+
+    with pytest.raises(ValueError, match="invalid provider metadata"):
+        CreativeEngine(
+            framer=provider,  # type: ignore[arg-type]
+            seeder=provider,  # type: ignore[arg-type]
+            transformer=provider,  # type: ignore[arg-type]
+            evaluator=provider,  # type: ignore[arg-type]
+        )
 
 
 def test_branch_attribution_is_cumulative_across_seed_and_child_lineage() -> None:

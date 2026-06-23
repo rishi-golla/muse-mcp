@@ -4,6 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from creativity_layer.models import IdeaGenome
+from creativity_layer.operation import validate_transform_payload
+from creativity_layer.providers import MeteredResponse
 from creativity_layer.transforms import (
     OPERATOR_INSTRUCTIONS,
     OperatorName,
@@ -42,6 +44,90 @@ def test_transformation_request_records_structural_intent() -> None:
     assert request.parent_ids == (source.id,)
     assert "Reverse a foundational assumption" in request.instruction
     assert "Do not merely rename" in request.instruction
+
+
+@pytest.mark.parametrize(
+    "history",
+    (
+        ("invert", "reframe"),
+        ("invert", "transfer", "extra", "reframe"),
+        ("forged", "invert", "transfer", "reframe"),
+    ),
+)
+def test_transform_validation_rejects_missing_extra_or_forged_unary_history(
+    history: tuple[str, ...],
+) -> None:
+    source = parent().model_copy(
+        update={"transformations": ("invert", "transfer")}
+    )
+    request = TransformationRequest.for_operator(
+        operator=OperatorName.REFRAME,
+        parents=(source,),
+        task_goal="Improve access.",
+    )
+    candidate = parent("Child").model_copy(
+        update={
+            "generation": 1,
+            "parent_ids": (source.id,),
+            "transformations": history,
+        }
+    )
+    response = MeteredResponse(
+        value=candidate,
+        provider="local",
+        cost_usd=0.01,
+        latency_ms=1,
+    )
+
+    with pytest.raises(ValueError, match="history"):
+        validate_transform_payload(
+            response,
+            request=request,
+            parents=(source,),
+            candidate_ids=set(),
+        )
+
+
+def test_transform_validation_accepts_only_the_exact_combine_history() -> None:
+    first = parent("First").model_copy(
+        update={"transformations": ("invert", "invert")}
+    )
+    second = parent("Second").model_copy(
+        update={"transformations": ("invert", "reframe", "subtract")}
+    )
+    request = TransformationRequest.for_operator(
+        operator=OperatorName.COMBINE,
+        parents=(first, second),
+        task_goal="Improve access.",
+    )
+    expected = ("invert", "invert", "reframe", "subtract", "combine")
+
+    for history in (
+        expected[:-1],
+        expected + ("extra",),
+        ("forged",) + expected,
+    ):
+        candidate = parent("Child").model_copy(
+            update={
+                "generation": 1,
+                "parent_ids": (first.id, second.id),
+                "transformations": history,
+            }
+        )
+        response = MeteredResponse(
+            value=candidate,
+            provider="local",
+            cost_usd=0.01,
+            latency_ms=1,
+        )
+
+        with pytest.raises(ValueError, match="history"):
+            validate_transform_payload(
+                response,
+                request=request,
+                parents=(first, second),
+                candidate_ids=set(),
+            )
 
 
 def test_combine_requires_two_parents() -> None:
