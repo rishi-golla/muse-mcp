@@ -77,7 +77,7 @@ def test_pricing_table_config_dump_uses_stable_mapping_shape() -> None:
         },
     )
 
-    config = table.to_config_dict()
+    config = table.model_dump(mode="json")
 
     assert config == {
         "version": "test",
@@ -94,7 +94,9 @@ def test_pricing_table_config_dump_uses_stable_mapping_shape() -> None:
             }
         },
     }
+    assert json.loads(table.model_dump_json()) == config
     assert PricingTable.model_validate(config) == table
+    assert PricingTable.model_validate_json(table.model_dump_json()) == table
 
 
 def test_reasoning_tokens_are_metadata_not_additional_billable_output() -> None:
@@ -160,7 +162,7 @@ def test_public_pricing_and_estimate_json_values_are_numbers() -> None:
     estimate_json = json.loads(estimate.model_dump_json())
 
     assert isinstance(
-        table_json["models"][0]["price"]["input_per_million"],
+        table_json["models"]["economy-test-model"]["input_per_million"],
         float,
     )
     assert isinstance(estimate_json["estimated_cost_usd"], float)

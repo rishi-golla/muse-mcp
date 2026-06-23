@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Annotated
@@ -15,6 +16,7 @@ from pydantic import (
     ConfigDict,
     Field,
     field_validator,
+    model_serializer,
     model_validator,
 )
 
@@ -187,25 +189,40 @@ class OperationTrace(FrozenModel):
         _reject_trace_secrets(parsed)
         return value
 
+    @model_serializer(mode="plain")
+    def serialize_public_payloads(self) -> dict[str, object]:
+        return {
+            "request": json.loads(self.request_json),
+            "response": json.loads(self.response_json),
+        }
 
-SECRET_TRACE_CONTAINED_KEYS = frozenset(
+
+SAFE_TRACE_TOKEN_METRICS = frozenset(
     {
-        "api_key",
-        "apikey",
+        "token_count",
+        "input_tokens",
+        "output_tokens",
+        "cached_tokens",
+        "reasoning_tokens",
+    }
+)
+SECRET_TRACE_KEY_TERMS = frozenset(
+    {
+        "auth",
         "authorization",
-        "access_token",
-        "refresh_token",
-        "id_token",
-        "client_secret",
-        "set_cookie",
+        "credential",
+        "privatekey",
+        "apikey",
         "bearer",
+        "accesstoken",
+        "refreshtoken",
+        "idtoken",
+        "secret",
         "password",
         "passwd",
         "cookie",
+        "token",
     }
-)
-SECRET_TRACE_SUFFIX_KEYS = frozenset(
-    {"token", "secret"}
 )
 SECRET_TRACE_VALUE = re.compile(
     r"(?:\bBearer\s+\S+|\bsk-[A-Za-z0-9_-]{10,})",
@@ -227,15 +244,12 @@ def _reject_trace_secrets(value: object) -> None:
 
 
 def _is_secret_trace_key(key: str) -> bool:
-    normalized = re.sub(r"[^a-z0-9]+", "_", key.casefold()).strip("_")
+    normalized_unicode = unicodedata.normalize("NFKC", key).casefold()
+    normalized = re.sub(r"[^a-z0-9]+", "_", normalized_unicode).strip("_")
+    if normalized in SAFE_TRACE_TOKEN_METRICS:
+        return False
     compact = normalized.replace("_", "")
-    for marker in SECRET_TRACE_CONTAINED_KEYS:
-        if marker in normalized or marker.replace("_", "") in compact:
-            return True
-    return any(
-        normalized == marker or normalized.endswith(f"_{marker}")
-        for marker in SECRET_TRACE_SUFFIX_KEYS
-    )
+    return any(term in compact for term in SECRET_TRACE_KEY_TERMS)
 
 
 def _canonical_json(value: object) -> str:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from decimal import Decimal
 
-from pydantic import Field, model_validator
+from pydantic import Field, model_serializer, model_validator
 
 from creativity_layer.models import CostEstimate, FrozenModel, RequiredText, TokenUsage
 
@@ -89,6 +89,10 @@ class PricingTable(FrozenModel):
                 for entry in self.embeddings
             },
         }
+
+    @model_serializer(mode="plain")
+    def serialize_config_shape(self) -> dict[str, object]:
+        return self.to_config_dict()
 
     def estimate(self, model: str, usage: TokenUsage) -> CostEstimate:
         price = self.text_price(model)

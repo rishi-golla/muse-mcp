@@ -293,6 +293,22 @@ def test_operation_trace_constructor_accepts_payload_aliases() -> None:
     assert trace.response_json == '{"status":"complete"}'
 
 
+def test_operation_trace_standard_serialization_uses_public_payload_shape() -> None:
+    trace = OperationTrace.from_payload(
+        request={"z": 2, "a": {"value": 1}},
+        response={"status": "complete"},
+    )
+
+    dumped = trace.model_dump(mode="json")
+
+    assert dumped == {
+        "request": {"a": {"value": 1}, "z": 2},
+        "response": {"status": "complete"},
+    }
+    assert json.loads(trace.model_dump_json()) == dumped
+    assert OperationTrace.model_validate(dumped) == trace
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -309,6 +325,11 @@ def test_operation_trace_constructor_accepts_payload_aliases() -> None:
         {"nested": {"cookie_preferences": "safe-looking"}},
         {"nested": {"response.set-cookie": "safe-looking"}},
         {"nested": {"bearer": "safe-looking"}},
+        {"nested": {"auth_token_value": "safe-looking"}},
+        {"nested": {"secret_value": "safe-looking"}},
+        {"nested": {"service_credential": "safe-looking"}},
+        {"nested": {"private_key": "safe-looking"}},
+        {"nested": {"ＰＲＩＶＡＴＥ－ＫＥＹ": "safe-looking"}},
         {"value": "Bearer abcdefghijklmnopqrstuvwxyz"},
         {"value": "sk-abcdefghijklmnopqrstuvwxyz123456"},
     ],
@@ -320,9 +341,15 @@ def test_operation_trace_rejects_secret_material(payload: object) -> None:
 
 @pytest.mark.parametrize(
     "key",
-    ["token_count", "secret_sauce"],
+    [
+        "token_count",
+        "input_tokens",
+        "output_tokens",
+        "cached_tokens",
+        "reasoning_tokens",
+    ],
 )
-def test_operation_trace_allows_noncredential_metadata_keys(key: str) -> None:
+def test_operation_trace_allows_explicit_token_usage_metric_keys(key: str) -> None:
     trace = OperationTrace(request={key: 1}, response={})
 
     assert json.loads(trace.request_json)[key] == 1
@@ -427,3 +454,79 @@ def test_legacy_run_json_retains_pre_task_2_fingerprint() -> None:
     assert restored.reproducibility_fingerprint == legacy_payload[
         "reproducibility_fingerprint"
     ]
+
+
+def test_nested_run_result_serialization_uses_public_trace_shape_and_round_trips() -> None:
+    legacy_payload = {
+        "run_id": "00000000-0000-0000-0000-000000000012",
+        "config": {
+            "max_cost_usd": 1.0,
+            "max_calls": 20,
+            "max_generations": 0,
+            "seed_count": 2,
+            "finalist_count": 1,
+            "framing_reserve_usd": 0.0,
+            "finalization_reserve_usd": 0.0,
+            "random_seed": 0,
+        },
+        "providers": {
+            role: {"name": "local", "version": "1"}
+            for role in ("framer", "seeder", "transformer", "evaluator")
+        },
+        "operator_schedule": ["invert"],
+        "framed_task": {
+            "context": {
+                "goal": "Trace task",
+                "audience": None,
+                "constraints": [],
+                "preferences": [],
+                "risk_tolerance": 0.5,
+            },
+            "assumptions": [],
+            "obvious_solution": "Trace answer",
+            "evaluation_dimensions": [
+                "originality",
+                "usefulness",
+                "coherence",
+                "feasibility",
+                "user_fit",
+            ],
+        },
+        "finalists": [],
+        "all_candidates": [],
+        "spend_records": [
+            {
+                "stage": "seed",
+                "provider": "openai",
+                "model": "model",
+                "cost_usd": 0.01,
+                "latency_ms": 1,
+                "usage": {
+                    "input_tokens": 2,
+                    "cached_input_tokens": 0,
+                    "output_tokens": 1,
+                    "reasoning_tokens": 1,
+                },
+                "pricing_version": "test",
+                "cost_is_estimated": True,
+                "request_id": "req_1",
+                "operation_trace": {
+                    "request": {"operation": "seed"},
+                    "response": {"status": "complete"},
+                },
+                "created_at": "2026-06-23T12:00:00Z",
+            }
+        ],
+        "errors": [],
+        "stopped_reason": "generation_limit",
+    }
+    result = RunResult.model_validate(legacy_payload)
+
+    dumped = result.model_dump(mode="json")
+
+    assert dumped["spend_records"][0]["operation_trace"] == {
+        "request": {"operation": "seed"},
+        "response": {"status": "complete"},
+    }
+    assert RunResult.model_validate(dumped) == result
+    assert RunResult.model_validate_json(result.model_dump_json()) == result
