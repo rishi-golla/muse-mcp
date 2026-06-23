@@ -33,6 +33,23 @@ OPERATOR_INSTRUCTIONS: dict[OperatorName, str] = {
 }
 
 
+def expected_transformation_history(
+    operator: OperatorName,
+    parents: tuple[IdeaGenome, ...],
+) -> tuple[str, ...]:
+    if operator is not OperatorName.COMBINE:
+        return parents[0].transformations + (operator.value,)
+
+    first_history = parents[0].transformations
+    merged = list(first_history)
+    seen = set(first_history)
+    for transformation in parents[1].transformations:
+        if transformation not in seen:
+            merged.append(transformation)
+            seen.add(transformation)
+    return (*merged, operator.value)
+
+
 class TransformationRequest(FrozenModel):
     operator: OperatorName
     parent_ids: tuple[UUID, ...] = Field(min_length=1, max_length=2)

@@ -109,6 +109,64 @@ def test_provider_transforms_the_mechanism_and_records_ancestry() -> None:
     assert child.core_mechanism != parent.core_mechanism
 
 
+def test_unary_transform_preserves_the_parent_history_exactly() -> None:
+    provider = DeterministicCreativeProvider()
+    task = TaskContext(goal="Invent a calmer decision process.")
+    seeded = provider.seed(
+        provider.frame(task),
+        RunConfig(seed_count=2, finalist_count=1),
+    ).value[0]
+    parent = seeded.model_copy(
+        update={"transformations": ("invert", "invert", "transfer")}
+    )
+    request = TransformationRequest.for_operator(
+        operator=OperatorName.REFRAME,
+        parents=(parent,),
+        task_goal=task.goal,
+    )
+
+    child = provider.transform(request, (parent,)).value
+
+    assert child.transformations == ("invert", "invert", "transfer", "reframe")
+
+
+def test_combine_transform_merges_histories_in_parent_order() -> None:
+    provider = DeterministicCreativeProvider()
+    task = TaskContext(goal="Invent a calmer decision process.")
+    seeded = provider.seed(
+        provider.frame(task),
+        RunConfig(seed_count=2, finalist_count=1),
+    ).value
+    parents = (
+        seeded[0].model_copy(update={"transformations": ("invert", "invert")}),
+        seeded[1].model_copy(
+            update={
+                "transformations": (
+                    "invert",
+                    "reframe",
+                    "reframe",
+                    "subtract",
+                )
+            }
+        ),
+    )
+    request = TransformationRequest.for_operator(
+        operator=OperatorName.COMBINE,
+        parents=parents,
+        task_goal=task.goal,
+    )
+
+    child = provider.transform(request, parents).value
+
+    assert child.transformations == (
+        "invert",
+        "invert",
+        "reframe",
+        "subtract",
+        "combine",
+    )
+
+
 def test_unary_transform_is_reproducible_and_sensitive_to_the_parent() -> None:
     provider = DeterministicCreativeProvider()
     task = TaskContext(goal="Invent a calmer decision process.")

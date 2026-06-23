@@ -7,6 +7,9 @@ import pytest
 from creativity_layer.models import (
     FramedTask,
     IdeaGenome,
+    ProviderIdentity,
+    RunConfig,
+    RunProviders,
     RunResult,
     SpendRecord,
     TaskContext,
@@ -24,6 +27,14 @@ def run_result() -> RunResult:
     )
     return RunResult(
         run_id=uuid4(),
+        config=RunConfig(seed_count=2, finalist_count=1),
+        providers=RunProviders(
+            framer=ProviderIdentity(name="local", version="1"),
+            seeder=ProviderIdentity(name="local", version="1"),
+            transformer=ProviderIdentity(name="local", version="1"),
+            evaluator=ProviderIdentity(name="local", version="1"),
+        ),
+        operator_schedule=("invert",),
         framed_task=FramedTask(
             context=TaskContext(goal="Test creativity"),
             assumptions=("Obvious assumption",),

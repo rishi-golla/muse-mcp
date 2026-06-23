@@ -20,12 +20,36 @@ def test_budget_reserves_finalization_capacity() -> None:
         )
     )
 
-    budget.charge("framing", "local", 0.1, 10)
     budget.charge("seeding", "local", 0.69, 20)
 
     assert budget.available_for_exploration_usd == pytest.approx(0.01)
     assert budget.can_afford(0.02, preserve_finalization=True) is False
     assert budget.can_afford(0.2, preserve_finalization=False) is True
+
+
+def test_framing_reserve_reduces_exploration_and_remains_unconsumed() -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1.0,
+            max_calls=3,
+            framing_reserve_usd=0.1,
+            finalization_reserve_usd=0.2,
+        )
+    )
+
+    assert budget.available_for_exploration_usd == pytest.approx(0.7)
+    assert budget.can_afford(0.7, preserve_finalization=True) is True
+    assert budget.can_afford(0.71, preserve_finalization=True) is False
+
+    with budget.reserve(
+        0.7,
+        required_calls=1,
+        preserve_finalization=True,
+    ) as reservation:
+        reservation.charge("seed", "local", 0.7, 1)
+
+    assert budget.available_for_exploration_usd == 0
+    assert budget.remaining_usd == pytest.approx(0.3)
 
 
 def test_budget_rejects_cost_or_call_overruns() -> None:
@@ -342,7 +366,7 @@ def test_audited_overage_records_actual_cost_beyond_budget() -> None:
         required_calls=1,
         preserve_finalization=False,
     ) as reservation:
-        budget._record_audited_overage(
+        budget.record_audited_overage(
             reservation,
             "seed",
             "misquoting-provider",
@@ -375,7 +399,7 @@ def test_audited_overage_cannot_authorize_an_in_quote_charge() -> None:
         ) as reservation,
         pytest.raises(ValueError, match="exceed quoted cost"),
     ):
-        budget._record_audited_overage(
+        budget.record_audited_overage(
             reservation,
             "seed",
             "local",

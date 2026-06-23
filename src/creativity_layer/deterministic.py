@@ -14,7 +14,11 @@ from creativity_layer.models import (
     TaskContext,
 )
 from creativity_layer.providers import MeteredResponse, OperationQuote
-from creativity_layer.transforms import OperatorName, TransformationRequest
+from creativity_layer.transforms import (
+    OperatorName,
+    TransformationRequest,
+    expected_transformation_history,
+)
 
 DETERMINISTIC_NAMESPACE = UUID("5c174f20-7173-54ec-8a72-10d7217bc63d")
 
@@ -99,6 +103,7 @@ def _structural_mechanism(
 
 class DeterministicCreativeProvider:
     name = "deterministic-local"
+    version = "1"
 
     def quote_seed(
         self,
@@ -246,11 +251,6 @@ class DeterministicCreativeProvider:
             for parent in parents
             for feature in parent.distinguishing_features
         )
-        prior_transformations = _unique(
-            transformation
-            for parent in parents
-            for transformation in parent.transformations
-        )
         child = IdeaGenome(
             id=_stable_uuid(
                 "transform",
@@ -271,7 +271,10 @@ class DeterministicCreativeProvider:
             task_value=combined_values,
             distinguishing_features=combined_features + (request.instruction,),
             parent_ids=actual_parent_ids,
-            transformations=prior_transformations + (request.operator.value,),
+            transformations=expected_transformation_history(
+                request.operator,
+                parents,
+            ),
             inspiration_kind=InspirationKind.SYNTHESIZED,
         )
         return MeteredResponse(

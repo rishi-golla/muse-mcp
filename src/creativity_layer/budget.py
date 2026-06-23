@@ -45,8 +45,10 @@ class BudgetController:
         self._reserved_calls = 0
         self._reservations: dict[object, _ReservationState] = {}
         self._max_cost = _money(config.max_cost_usd)
-        # Framing is unmetered here; only finalization capacity is protected.
-        self._finalization_reserve = _money(config.finalization_reserve_usd)
+        self._exploration_reserve = (
+            _money(config.framing_reserve_usd)
+            + _money(config.finalization_reserve_usd)
+        )
 
     @property
     def records(self) -> tuple[SpendRecord, ...]:
@@ -72,7 +74,7 @@ class BudgetController:
                 self._max_cost
                 - self._spent
                 - self._reserved_cost
-                - self._finalization_reserve,
+                - self._exploration_reserve,
             )
         )
 
@@ -89,7 +91,7 @@ class BudgetController:
             self._max_cost
             - self._spent
             - self._reserved_cost
-            - self._finalization_reserve
+            - self._exploration_reserve
             if preserve_finalization
             else self._max_cost - self._spent - self._reserved_cost
         )
@@ -117,7 +119,7 @@ class BudgetController:
             self._max_cost
             - self._spent
             - self._reserved_cost
-            - self._finalization_reserve
+            - self._exploration_reserve
             if preserve_finalization
             else self._max_cost - self._spent - self._reserved_cost
         )
@@ -152,7 +154,7 @@ class BudgetController:
             raise BudgetExceeded("call limit exceeded")
         available = self._max_cost - self._spent - self._reserved_cost
         if preserve_finalization:
-            available -= self._finalization_reserve
+            available -= self._exploration_reserve
         if cost > available:
             raise BudgetExceeded("cost limit exceeded")
 
@@ -200,7 +202,7 @@ class BudgetController:
         reservation._remaining_calls -= 1
         return record
 
-    def _record_audited_overage(
+    def record_audited_overage(
         self,
         reservation: BudgetReservation,
         stage: str,

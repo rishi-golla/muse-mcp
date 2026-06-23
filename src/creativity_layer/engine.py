@@ -4,6 +4,8 @@ from decimal import Decimal
 from itertools import cycle
 from uuid import UUID
 
+from pydantic import ValidationError
+
 from creativity_layer.budget import (
     BudgetController,
     BudgetExceeded,
@@ -13,8 +15,19 @@ from creativity_layer.models import (
     FramedTask,
     IdeaGenome,
     RunConfig,
+    RunError,
+    RunProviders,
     RunResult,
     TaskContext,
+)
+from creativity_layer.operation import (
+    provider_identity,
+    validate_evaluation_payload,
+    validate_framed_task,
+    validate_metered_envelope,
+    validate_quote,
+    validate_seed_payload,
+    validate_transform_payload,
 )
 from creativity_layer.population import PopulationManager
 from creativity_layer.providers import (
@@ -27,9 +40,51 @@ from creativity_layer.providers import (
 )
 from creativity_layer.transforms import OperatorName, TransformationRequest
 
+OPERATOR_SCHEDULE = (
+    OperatorName.INVERT,
+    OperatorName.REFRAME,
+    OperatorName.SUBTRACT,
+    OperatorName.CONTRADICT,
+)
+
 
 def _exceeds_quote(response: MeteredResponse[object], quote: OperationQuote) -> bool:
     return Decimal(str(response.cost_usd)) > Decimal(str(quote.max_cost_usd))
+
+
+def _error(
+    errors: list[RunError],
+    *,
+    stage: str,
+    provider: str,
+    category: str,
+    message: str,
+    cost_incurred: bool,
+) -> None:
+    errors.append(
+        RunError(
+            stage=stage,
+            provider=provider,
+            category=category,
+            message=message,
+            cost_incurred=cost_incurred,
+        )
+    )
+
+
+def _validated_candidate(
+    candidate: IdeaGenome,
+    *,
+    scores: object | None = None,
+    branch_cost: Decimal,
+    branch_latency: Decimal,
+) -> IdeaGenome:
+    payload = candidate.model_dump(mode="python")
+    if scores is not None:
+        payload["scores"] = scores
+    payload["branch_cost_usd"] = float(branch_cost)
+    payload["branch_latency_ms"] = float(branch_latency)
+    return IdeaGenome.model_validate(payload)
 
 
 class CreativeEngine:
@@ -47,31 +102,61 @@ class CreativeEngine:
         self._transformer = transformer
         self._evaluator = evaluator
         self._population = population or PopulationManager()
+        self._providers = RunProviders(
+            framer=provider_identity(framer),
+            seeder=provider_identity(seeder),
+            transformer=provider_identity(transformer),
+            evaluator=provider_identity(evaluator),
+        )
 
     def run(self, task: TaskContext, config: RunConfig) -> RunResult:
         budget = BudgetController(config)
+        errors: list[RunError] = []
+        providers = self._providers
         try:
-            framed = self._framer.frame(task)
-        except Exception:
-            framed = FramedTask(
-                context=task,
-                assumptions=(),
-                obvious_solution="Unavailable: task framing failed.",
+            framed = validate_framed_task(self._framer.frame(task))
+        except ValidationError:
+            _error(
+                errors,
+                stage="framing",
+                provider=providers.framer.name,
+                category="validation_error",
+                message="provider returned invalid framed task",
+                cost_incurred=False,
             )
+            framed = self._fallback_framed_task(task)
             return self._result(
-                framed,
-                (),
-                budget,
-                config,
-                "provider_error",
+                framed, (), budget, config, providers, errors, "provider_error"
             )
-        candidates, stopped_reason = self._seed_and_evaluate(framed, config, budget)
+        except Exception:
+            _error(
+                errors,
+                stage="framing",
+                provider=providers.framer.name,
+                category="provider_error",
+                message="provider operation failed",
+                cost_incurred=False,
+            )
+            framed = self._fallback_framed_task(task)
+            return self._result(
+                framed, (), budget, config, providers, errors, "provider_error"
+            )
+
+        candidates, stopped_reason = self._seed_and_evaluate(
+            framed,
+            config,
+            budget,
+            errors,
+            providers,
+        )
         if stopped_reason is not None:
             return self._result(
                 framed,
                 tuple(candidates),
                 budget,
                 config,
+                providers,
+                errors,
                 stopped_reason,
             )
 
@@ -79,14 +164,7 @@ class CreativeEngine:
         candidate_ids = {candidate.id for candidate in candidates}
         current_generation = tuple(candidates)
         attempted: set[tuple[tuple[UUID, ...], OperatorName]] = set()
-        operators = cycle(
-            (
-                OperatorName.INVERT,
-                OperatorName.REFRAME,
-                OperatorName.SUBTRACT,
-                OperatorName.CONTRADICT,
-            )
-        )
+        operators = cycle(OPERATOR_SCHEDULE)
 
         for _generation in range(config.max_generations):
             parents = self._population.select(
@@ -112,6 +190,8 @@ class CreativeEngine:
                     framed,
                     budget,
                     candidate_ids,
+                    errors,
+                    providers,
                 )
                 if descendant is not None:
                     descendants.append(descendant)
@@ -123,6 +203,8 @@ class CreativeEngine:
                         tuple(all_candidates),
                         budget,
                         config,
+                        providers,
+                        errors,
                         stopped_reason,
                     )
 
@@ -134,7 +216,17 @@ class CreativeEngine:
             tuple(all_candidates),
             budget,
             config,
+            providers,
+            errors,
             "generation_limit",
+        )
+
+    @staticmethod
+    def _fallback_framed_task(task: TaskContext) -> FramedTask:
+        return FramedTask(
+            context=task,
+            assumptions=(),
+            obvious_solution="Unavailable: task framing failed.",
         )
 
     def _seed_and_evaluate(
@@ -142,10 +234,37 @@ class CreativeEngine:
         framed_task: FramedTask,
         config: RunConfig,
         budget: BudgetController,
+        errors: list[RunError],
+        providers: RunProviders,
     ) -> tuple[list[IdeaGenome], str | None]:
         try:
-            seed_quote = self._seeder.quote_seed(framed_task, config)
-            evaluation_quote = self._evaluator.quote_evaluation(framed_task)
+            seed_quote = validate_quote(self._seeder.quote_seed(framed_task, config))
+        except Exception:
+            _error(
+                errors,
+                stage="seeding",
+                provider=providers.seeder.name,
+                category="quote_error",
+                message="provider quote failed validation",
+                cost_incurred=False,
+            )
+            return [], "provider_error"
+        try:
+            evaluation_quote = validate_quote(
+                self._evaluator.quote_evaluation(framed_task)
+            )
+        except Exception:
+            _error(
+                errors,
+                stage="evaluation",
+                provider=providers.evaluator.name,
+                category="quote_error",
+                message="provider quote failed validation",
+                cost_incurred=False,
+            )
+            return [], "provider_error"
+
+        try:
             reservation = budget.reserve(
                 seed_quote.max_cost_usd
                 + evaluation_quote.max_cost_usd * config.seed_count,
@@ -154,49 +273,88 @@ class CreativeEngine:
                 preserve_finalization=True,
             )
         except BudgetExceeded:
+            _error(
+                errors,
+                stage="seeding",
+                provider=providers.seeder.name,
+                category="budget_error",
+                message="insufficient budget for seed batch",
+                cost_incurred=False,
+            )
             return [], "budget_exhausted"
-        except Exception:
-            return [], "provider_error"
 
         with reservation:
             try:
-                seeded = self._seeder.seed(framed_task, config)
+                seeded = validate_metered_envelope(
+                    self._seeder.seed(framed_task, config)
+                )
+            except ValidationError:
+                _error(
+                    errors,
+                    stage="seeding",
+                    provider=providers.seeder.name,
+                    category="validation_error",
+                    message="provider returned invalid metered response",
+                    cost_incurred=False,
+                )
+                return [], "provider_error"
             except Exception:
-                return [], "provider_error"
-            if _exceeds_quote(seeded, seed_quote):
-                budget._record_audited_overage(
-                    reservation,
-                    "seeding",
-                    seeded.provider,
-                    seeded.cost_usd,
-                    seeded.latency_ms,
-                    quoted_cost_usd=seed_quote.max_cost_usd,
+                _error(
+                    errors,
+                    stage="seeding",
+                    provider=providers.seeder.name,
+                    category="provider_error",
+                    message="provider operation failed",
+                    cost_incurred=False,
                 )
                 return [], "provider_error"
+
+            if not self._charge_response(
+                seeded,
+                seed_quote,
+                reservation,
+                budget,
+                stage="seeding",
+                expected_provider=providers.seeder.name,
+                errors=errors,
+            ):
+                return [], "provider_error"
+
             try:
-                reservation.charge(
-                    "seeding",
-                    seeded.provider,
-                    seeded.cost_usd,
-                    seeded.latency_ms,
+                seeds = validate_seed_payload(seeded, config=config)
+            except (ValidationError, ValueError) as error:
+                category = (
+                    "cardinality_error"
+                    if "cardinality" in str(error).lower()
+                    else "validation_error"
                 )
-            except BudgetExceeded:
+                _error(
+                    errors,
+                    stage="seeding",
+                    provider=providers.seeder.name,
+                    category=category,
+                    message="provider returned invalid seed candidates",
+                    cost_incurred=True,
+                )
                 return [], "provider_error"
 
-            if len(seeded.value) != config.seed_count:
-                return [], "provider_error"
-            seed_ids = [candidate.id for candidate in seeded.value]
-            if len(seed_ids) != len(set(seed_ids)):
-                return [], "provider_error"
-
+            seed_cost = Decimal(str(seeded.cost_usd)) / Decimal(len(seeds))
+            seed_latency = Decimal(str(seeded.latency_ms)) / Decimal(len(seeds))
             evaluated: list[IdeaGenome] = []
-            for candidate in seeded.value:
-                result = self._evaluate(
+            for candidate in seeds:
+                attributed = _validated_candidate(
                     candidate,
+                    branch_cost=seed_cost,
+                    branch_latency=seed_latency,
+                )
+                result = self._evaluate(
+                    attributed,
                     framed_task,
                     evaluation_quote,
                     reservation,
                     budget,
+                    errors,
+                    providers,
                 )
                 if result is None:
                     return [], "provider_error"
@@ -210,53 +368,131 @@ class CreativeEngine:
         framed_task: FramedTask,
         budget: BudgetController,
         candidate_ids: set[UUID],
+        errors: list[RunError],
+        providers: RunProviders,
     ) -> tuple[IdeaGenome | None, str | None]:
         try:
-            transform_quote = self._transformer.quote_transform(request, parents)
-            evaluation_quote = self._evaluator.quote_evaluation(framed_task)
+            transform_quote = validate_quote(
+                self._transformer.quote_transform(request, parents)
+            )
+        except Exception:
+            _error(
+                errors,
+                stage="transformation",
+                provider=providers.transformer.name,
+                category="quote_error",
+                message="provider quote failed validation",
+                cost_incurred=False,
+            )
+            return None, "provider_error"
+        try:
+            evaluation_quote = validate_quote(
+                self._evaluator.quote_evaluation(framed_task)
+            )
+        except Exception:
+            _error(
+                errors,
+                stage="evaluation",
+                provider=providers.evaluator.name,
+                category="quote_error",
+                message="provider quote failed validation",
+                cost_incurred=False,
+            )
+            return None, "provider_error"
+
+        try:
             reservation = budget.reserve(
                 transform_quote.max_cost_usd + evaluation_quote.max_cost_usd,
                 required_calls=transform_quote.calls + evaluation_quote.calls,
                 preserve_finalization=True,
             )
         except BudgetExceeded:
+            _error(
+                errors,
+                stage="transformation",
+                provider=providers.transformer.name,
+                category="budget_error",
+                message="insufficient budget for transformation",
+                cost_incurred=False,
+            )
             return None, "budget_exhausted"
-        except Exception:
-            return None, "provider_error"
 
         with reservation:
             try:
-                transformed = self._transformer.transform(request, parents)
+                transformed = validate_metered_envelope(
+                    self._transformer.transform(request, parents)
+                )
+            except ValidationError:
+                _error(
+                    errors,
+                    stage="transformation",
+                    provider=providers.transformer.name,
+                    category="validation_error",
+                    message="provider returned invalid metered response",
+                    cost_incurred=False,
+                )
+                return None, "provider_error"
             except Exception:
-                return None, "provider_error"
-            if _exceeds_quote(transformed, transform_quote):
-                budget._record_audited_overage(
-                    reservation,
-                    "transformation",
-                    transformed.provider,
-                    transformed.cost_usd,
-                    transformed.latency_ms,
-                    quoted_cost_usd=transform_quote.max_cost_usd,
+                _error(
+                    errors,
+                    stage="transformation",
+                    provider=providers.transformer.name,
+                    category="provider_error",
+                    message="provider operation failed",
+                    cost_incurred=False,
                 )
-                return None, "provider_error"
-            try:
-                reservation.charge(
-                    "transformation",
-                    transformed.provider,
-                    transformed.cost_usd,
-                    transformed.latency_ms,
-                )
-            except BudgetExceeded:
-                return None, "provider_error"
-            if transformed.value.id in candidate_ids:
                 return None, "provider_error"
 
+            if not self._charge_response(
+                transformed,
+                transform_quote,
+                reservation,
+                budget,
+                stage="transformation",
+                expected_provider=providers.transformer.name,
+                errors=errors,
+            ):
+                return None, "provider_error"
+
+            try:
+                candidate = validate_transform_payload(
+                    transformed,
+                    request=request,
+                    parents=parents,
+                    candidate_ids=candidate_ids,
+                )
+            except (ValidationError, ValueError):
+                _error(
+                    errors,
+                    stage="transformation",
+                    provider=providers.transformer.name,
+                    category="validation_error",
+                    message="provider returned invalid transform candidate",
+                    cost_incurred=True,
+                )
+                return None, "provider_error"
+
+            parent_cost = sum(
+                (Decimal(str(parent.branch_cost_usd)) for parent in parents),
+                start=Decimal("0"),
+            )
+            parent_latency = sum(
+                (Decimal(str(parent.branch_latency_ms)) for parent in parents),
+                start=Decimal("0"),
+            )
+            attributed = _validated_candidate(
+                candidate,
+                branch_cost=parent_cost + Decimal(str(transformed.cost_usd)),
+                branch_latency=parent_latency + Decimal(str(transformed.latency_ms)),
+            )
             evaluated = self._evaluate(
-                transformed.value,
+                attributed,
                 framed_task,
                 evaluation_quote,
                 reservation,
                 budget,
+                errors,
+                providers,
             )
             if evaluated is None:
                 return None, "provider_error"
@@ -269,31 +505,141 @@ class CreativeEngine:
         quote: OperationQuote,
         reservation: BudgetReservation,
         budget: BudgetController,
+        errors: list[RunError],
+        providers: RunProviders,
     ) -> IdeaGenome | None:
         try:
-            response = self._evaluator.evaluate(candidate, framed_task)
-        except Exception:
-            return None
-        if _exceeds_quote(response, quote):
-            budget._record_audited_overage(
-                reservation,
-                "evaluation",
-                response.provider,
-                response.cost_usd,
-                response.latency_ms,
-                quoted_cost_usd=quote.max_cost_usd,
+            response = validate_metered_envelope(
+                self._evaluator.evaluate(candidate, framed_task)
             )
+        except ValidationError:
+            _error(
+                errors,
+                stage="evaluation",
+                provider=providers.evaluator.name,
+                category="validation_error",
+                message="provider returned invalid metered response",
+                cost_incurred=False,
+            )
+            return None
+        except Exception:
+            _error(
+                errors,
+                stage="evaluation",
+                provider=providers.evaluator.name,
+                category="provider_error",
+                message="provider operation failed",
+                cost_incurred=False,
+            )
+            return None
+
+        if not self._charge_response(
+            response,
+            quote,
+            reservation,
+            budget,
+            stage="evaluation",
+            expected_provider=providers.evaluator.name,
+            errors=errors,
+        ):
             return None
         try:
-            reservation.charge(
-                "evaluation",
-                response.provider,
-                response.cost_usd,
-                response.latency_ms,
+            scores = validate_evaluation_payload(response)
+        except ValidationError:
+            _error(
+                errors,
+                stage="evaluation",
+                provider=providers.evaluator.name,
+                category="validation_error",
+                message="provider returned invalid evaluation scores",
+                cost_incurred=True,
             )
-        except BudgetExceeded:
             return None
-        return candidate.model_copy(update={"scores": response.value})
+
+        return _validated_candidate(
+            candidate,
+            scores=scores,
+            branch_cost=(
+                Decimal(str(candidate.branch_cost_usd))
+                + Decimal(str(response.cost_usd))
+            ),
+            branch_latency=(
+                Decimal(str(candidate.branch_latency_ms))
+                + Decimal(str(response.latency_ms))
+            ),
+        )
+
+    @staticmethod
+    def _charge_response(
+        response: MeteredResponse[object],
+        quote: OperationQuote,
+        reservation: BudgetReservation,
+        budget: BudgetController,
+        *,
+        stage: str,
+        expected_provider: str,
+        errors: list[RunError],
+    ) -> bool:
+        exceeds_quote = _exceeds_quote(response, quote)
+        if exceeds_quote:
+            try:
+                budget.record_audited_overage(
+                    reservation,
+                    stage,
+                    expected_provider,
+                    response.cost_usd,
+                    response.latency_ms,
+                    quoted_cost_usd=quote.max_cost_usd,
+                )
+            except Exception:
+                _error(
+                    errors,
+                    stage=stage,
+                    provider=expected_provider,
+                    category="accounting_error",
+                    message="failed to record provider overage",
+                    cost_incurred=True,
+                )
+                return False
+        else:
+            try:
+                reservation.charge(
+                    stage,
+                    expected_provider,
+                    response.cost_usd,
+                    response.latency_ms,
+                )
+            except BudgetExceeded:
+                _error(
+                    errors,
+                    stage=stage,
+                    provider=expected_provider,
+                    category="accounting_error",
+                    message="provider cost could not be charged",
+                    cost_incurred=True,
+                )
+                return False
+        if response.provider != expected_provider:
+            _error(
+                errors,
+                stage=stage,
+                provider=expected_provider,
+                category="provider_error",
+                message="provider identity mismatch",
+                cost_incurred=True,
+            )
+            return False
+        if exceeds_quote:
+            _error(
+                errors,
+                stage=stage,
+                provider=expected_provider,
+                category="overage_error",
+                message="provider cost exceeded quote",
+                cost_incurred=True,
+            )
+            return False
+        return True
 
     def _result(
         self,
@@ -301,6 +647,8 @@ class CreativeEngine:
         candidates: tuple[IdeaGenome, ...],
         budget: BudgetController,
         config: RunConfig,
+        providers: RunProviders,
+        errors: list[RunError],
         stopped_reason: str,
     ) -> RunResult:
         finalists = (
@@ -312,9 +660,13 @@ class CreativeEngine:
             else ()
         )
         return RunResult(
+            config=config,
+            providers=providers,
+            operator_schedule=tuple(operator.value for operator in OPERATOR_SCHEDULE),
             framed_task=framed_task,
             finalists=finalists,
             all_candidates=candidates,
             spend_records=budget.records,
+            errors=tuple(errors),
             stopped_reason=stopped_reason,
         )
