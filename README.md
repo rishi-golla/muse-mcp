@@ -32,4 +32,7 @@ after budget exhaustion. Provider failures, empty frontiers, and trace-write fai
 return status `1`; invalid command input returns status `2`.
 
 This milestone uses deterministic local providers; it makes no external model or
-search calls.
+search calls. Its CLI sets both framing and finalization reserves to zero because
+framing is unmetered and finalization is not implemented in this milestone.
+`RunConfig` retains nonzero library defaults as future-provider policy; those
+reserves intentionally reduce exploration capacity when enabled.

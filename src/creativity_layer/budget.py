@@ -200,7 +200,7 @@ class BudgetController:
         reservation._remaining_calls -= 1
         return record
 
-    def _record_audited_overage(
+    def record_audited_overage(
         self,
         reservation: BudgetReservation,
         stage: str,

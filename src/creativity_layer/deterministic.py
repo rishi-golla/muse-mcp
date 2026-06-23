@@ -99,6 +99,7 @@ def _structural_mechanism(
 
 class DeterministicCreativeProvider:
     name = "deterministic-local"
+    version = "1"
 
     def quote_seed(
         self,

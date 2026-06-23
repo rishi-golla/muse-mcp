@@ -6,7 +6,10 @@ from creativity_layer.models import (
     FramedTask,
     IdeaGenome,
     InspirationKind,
+    ProviderIdentity,
     RunConfig,
+    RunError,
+    RunProviders,
     RunResult,
     TaskContext,
 )
@@ -19,7 +22,10 @@ __all__ = [
     "FramedTask",
     "IdeaGenome",
     "InspirationKind",
+    "ProviderIdentity",
     "RunConfig",
+    "RunError",
+    "RunProviders",
     "RunResult",
     "TaskContext",
 ]

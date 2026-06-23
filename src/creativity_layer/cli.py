@@ -41,7 +41,7 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
             seed_count=args.seed_count,
             finalist_count=args.finalist_count,
             framing_reserve_usd=0,
-            finalization_reserve_usd=0.05,
+            finalization_reserve_usd=0,
         )
     except ValidationError as error:
         message = error.errors()[0]["msg"]

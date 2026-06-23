@@ -9,6 +9,9 @@ from creativity_layer.models import (
     EvaluationScores,
     FramedTask,
     IdeaGenome,
+    ProviderIdentity,
+    RunConfig,
+    RunProviders,
     RunResult,
     TaskContext,
 )
@@ -42,6 +45,14 @@ def make_result(
     finalists: tuple[IdeaGenome, ...],
 ) -> RunResult:
     return RunResult(
+        config=RunConfig(seed_count=2, finalist_count=1),
+        providers=RunProviders(
+            framer=ProviderIdentity(name="local", version="1"),
+            seeder=ProviderIdentity(name="local", version="1"),
+            transformer=ProviderIdentity(name="local", version="1"),
+            evaluator=ProviderIdentity(name="local", version="1"),
+        ),
+        operator_schedule=("invert",),
         framed_task=FramedTask(
             context=TaskContext(goal="Test goal"),
             assumptions=(),

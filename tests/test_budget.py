@@ -342,7 +342,7 @@ def test_audited_overage_records_actual_cost_beyond_budget() -> None:
         required_calls=1,
         preserve_finalization=False,
     ) as reservation:
-        budget._record_audited_overage(
+        budget.record_audited_overage(
             reservation,
             "seed",
             "misquoting-provider",
@@ -375,7 +375,7 @@ def test_audited_overage_cannot_authorize_an_in_quote_charge() -> None:
         ) as reservation,
         pytest.raises(ValueError, match="exceed quoted cost"),
     ):
-        budget._record_audited_overage(
+        budget.record_audited_overage(
             reservation,
             "seed",
             "local",

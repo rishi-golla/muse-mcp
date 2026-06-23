@@ -35,10 +35,16 @@ class OperationQuote(FrozenModel):
 
 
 class TaskFramer(Protocol):
+    name: str
+    version: str
+
     def frame(self, task: TaskContext) -> FramedTask: ...
 
 
 class IdeaSeeder(Protocol):
+    name: str
+    version: str
+
     def quote_seed(
         self,
         framed_task: FramedTask,
@@ -53,6 +59,9 @@ class IdeaSeeder(Protocol):
 
 
 class IdeaTransformer(Protocol):
+    name: str
+    version: str
+
     def quote_transform(
         self,
         request: TransformationRequest,
@@ -67,6 +76,9 @@ class IdeaTransformer(Protocol):
 
 
 class IdeaEvaluator(Protocol):
+    name: str
+    version: str
+
     def quote_evaluation(self, framed_task: FramedTask) -> OperationQuote: ...
 
     def evaluate(
