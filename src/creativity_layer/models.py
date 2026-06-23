@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import re
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Annotated
@@ -79,7 +82,7 @@ class IdeaGenome(FrozenModel):
     inspiration_kind: InspirationKind = InspirationKind.INDEPENDENT
     scores: EvaluationScores | None = None
     branch_cost_usd: float = Field(default=0.0, strict=True, ge=0.0)
-    branch_latency_ms: int = Field(default=0, strict=True, ge=0)
+    branch_latency_ms: float = Field(default=0.0, strict=True, ge=0.0)
 
 
 class RunConfig(FrozenModel):
@@ -123,10 +126,78 @@ class SpendRecord(FrozenModel):
     created_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+class ProviderIdentity(FrozenModel):
+    name: RequiredText
+    version: RequiredText
+
+
+class RunProviders(FrozenModel):
+    framer: ProviderIdentity
+    seeder: ProviderIdentity
+    transformer: ProviderIdentity
+    evaluator: ProviderIdentity
+
+
+class RunError(FrozenModel):
+    stage: RequiredText
+    provider: RequiredText
+    category: RequiredText
+    message: RequiredText
+    cost_incurred: bool
+
+
+FINGERPRINT_PATTERN = re.compile(r"[0-9a-fA-F]{64}\Z")
+
+
 class RunResult(FrozenModel):
     run_id: UUID = Field(default_factory=uuid4)
+    config: RunConfig
+    providers: RunProviders
+    operator_schedule: tuple[RequiredText, ...]
     framed_task: FramedTask
     finalists: tuple[IdeaGenome, ...]
     all_candidates: tuple[IdeaGenome, ...]
     spend_records: tuple[SpendRecord, ...]
+    errors: tuple[RunError, ...] = ()
     stopped_reason: str
+    reproducibility_fingerprint: str = ""
+
+    @model_validator(mode="after")
+    def set_reproducibility_fingerprint(self) -> RunResult:
+        expected = compute_reproducibility_fingerprint(self)
+        supplied = self.reproducibility_fingerprint
+        if supplied:
+            if FINGERPRINT_PATTERN.fullmatch(supplied) is None:
+                raise ValueError("reproducibility_fingerprint must be a SHA-256 hex digest")
+            normalized = supplied.lower()
+            if normalized != expected:
+                raise ValueError(
+                    "reproducibility_fingerprint does not match canonical payload"
+                )
+        else:
+            normalized = expected
+        object.__setattr__(
+            self,
+            "reproducibility_fingerprint",
+            normalized,
+        )
+        return self
+
+
+def canonical_run_payload(result: RunResult) -> dict[str, object]:
+    payload = result.model_dump(
+        mode="json",
+        exclude={"run_id", "reproducibility_fingerprint"},
+    )
+    for record in payload["spend_records"]:
+        record.pop("created_at", None)
+    return payload
+
+
+def compute_reproducibility_fingerprint(result: RunResult) -> str:
+    canonical = json.dumps(
+        canonical_run_payload(result),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

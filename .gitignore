@@ -1,1 +1,10 @@
 .worktrees/
+.traces/
+.coverage
+htmlcov/
+.pytest_cache/
+.pytest-tmp/
+.task9-*-tmp/
+.task9-quality-*/
+__pycache__/
+*.py[cod]

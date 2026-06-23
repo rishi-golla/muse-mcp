@@ -45,8 +45,10 @@ class BudgetController:
         self._reserved_calls = 0
         self._reservations: dict[object, _ReservationState] = {}
         self._max_cost = _money(config.max_cost_usd)
-        # Framing is unmetered here; only finalization capacity is protected.
-        self._finalization_reserve = _money(config.finalization_reserve_usd)
+        self._exploration_reserve = (
+            _money(config.framing_reserve_usd)
+            + _money(config.finalization_reserve_usd)
+        )
 
     @property
     def records(self) -> tuple[SpendRecord, ...]:
@@ -72,7 +74,7 @@ class BudgetController:
                 self._max_cost
                 - self._spent
                 - self._reserved_cost
-                - self._finalization_reserve,
+                - self._exploration_reserve,
             )
         )
 
@@ -89,7 +91,7 @@ class BudgetController:
             self._max_cost
             - self._spent
             - self._reserved_cost
-            - self._finalization_reserve
+            - self._exploration_reserve
             if preserve_finalization
             else self._max_cost - self._spent - self._reserved_cost
         )
@@ -117,7 +119,7 @@ class BudgetController:
             self._max_cost
             - self._spent
             - self._reserved_cost
-            - self._finalization_reserve
+            - self._exploration_reserve
             if preserve_finalization
             else self._max_cost - self._spent - self._reserved_cost
         )
@@ -152,7 +154,7 @@ class BudgetController:
             raise BudgetExceeded("call limit exceeded")
         available = self._max_cost - self._spent - self._reserved_cost
         if preserve_finalization:
-            available -= self._finalization_reserve
+            available -= self._exploration_reserve
         if cost > available:
             raise BudgetExceeded("cost limit exceeded")
 
@@ -197,6 +199,37 @@ class BudgetController:
         state.remaining_cost -= cost
         state.remaining_calls -= 1
         reservation._remaining_cost -= cost
+        reservation._remaining_calls -= 1
+        return record
+
+    def record_audited_overage(
+        self,
+        reservation: BudgetReservation,
+        stage: str,
+        provider: str,
+        cost_usd: int | float,
+        latency_ms: int,
+        *,
+        quoted_cost_usd: int | float,
+    ) -> SpendRecord:
+        """Record an incurred provider overage without authorizing new work."""
+        cost = _money(cost_usd)
+        quoted_cost = _money(quoted_cost_usd)
+        if cost <= quoted_cost:
+            raise ValueError("audited overage must exceed quoted cost")
+
+        state = self._active_reservation_state(reservation)
+        if state.remaining_calls < 1:
+            raise BudgetExceeded("reservation call limit exceeded")
+        if quoted_cost > state.remaining_cost:
+            raise RuntimeError("quoted cost exceeds reservation capacity")
+
+        record = self._append_record(stage, provider, cost_usd, latency_ms, cost)
+        self._reserved_cost -= quoted_cost
+        self._reserved_calls -= 1
+        state.remaining_cost -= quoted_cost
+        state.remaining_calls -= 1
+        reservation._remaining_cost -= quoted_cost
         reservation._remaining_calls -= 1
         return record
 
