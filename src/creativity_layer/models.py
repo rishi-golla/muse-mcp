@@ -24,11 +24,13 @@ from pydantic import (
 def reject_blank_text(value: str) -> str:
     if not value.strip():
         raise ValueError("text must not be blank")
+    if any(unicodedata.category(character).startswith("C") for character in value):
+        raise ValueError("text must not contain Unicode control or format characters")
     return value
 
 
 Score = Annotated[float, Field(strict=True, ge=0.0, le=1.0)]
-RequiredText = Annotated[str, Field(min_length=1), AfterValidator(reject_blank_text)]
+RequiredText = Annotated[str, AfterValidator(reject_blank_text)]
 
 
 class FrozenModel(BaseModel):

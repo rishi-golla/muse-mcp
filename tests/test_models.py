@@ -158,6 +158,39 @@ def test_idea_genome_rejects_whitespace_only_required_text(field: str) -> None:
         IdeaGenome(**values)
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        "\u200b",
+        "\ufeff",
+        "visible\x00text",
+        "visible\u200btext",
+        "visible\ue000text",
+    ],
+)
+def test_required_text_rejects_unicode_control_or_format_content(value: str) -> None:
+    with pytest.raises(ValidationError):
+        IdeaGenome(
+            generation=0,
+            title=value,
+            core_mechanism="A concrete mechanism.",
+            problem_framing="A clear framing.",
+            task_value="A useful outcome.",
+        )
+
+
+def test_required_text_preserves_normal_unicode_punctuation() -> None:
+    candidate = IdeaGenome(
+        generation=0,
+        title="Calm—coordination: “reversible”",
+        core_mechanism="Use evidence → confidence.",
+        problem_framing="Coordination isn’t final.",
+        task_value="Keeps decisions useful.",
+    )
+
+    assert candidate.title == "Calm—coordination: “reversible”"
+
+
 def test_spend_record_requires_timezone_aware_created_at() -> None:
     with pytest.raises(ValidationError):
         SpendRecord(

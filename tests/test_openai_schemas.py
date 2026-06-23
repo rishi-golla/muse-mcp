@@ -1,9 +1,19 @@
 from uuid import UUID
 
 import pytest
+from openai.lib._pydantic import to_strict_json_schema
 from pydantic import ValidationError
 
-from creativity_layer.models import IdeaGenome, InspirationKind, TaskContext
+from creativity_layer.models import (
+    FramedTask,
+    IdeaGenome,
+    InspirationKind,
+    ProviderIdentity,
+    RunConfig,
+    RunProviders,
+    RunResult,
+    TaskContext,
+)
 from creativity_layer.openai_schemas import (
     OpenAIEvaluation,
     OpenAIFrame,
@@ -50,6 +60,43 @@ def _parent(*, generation: int, transformations: tuple[str, ...] = ()) -> IdeaGe
     )
 
 
+def _run_fingerprint(candidate: IdeaGenome) -> str:
+    identity = ProviderIdentity(name="test", version="1")
+    return RunResult(
+        config=RunConfig(
+            max_generations=0,
+            seed_count=2,
+            finalist_count=1,
+            framing_reserve_usd=0.0,
+            finalization_reserve_usd=0.0,
+        ),
+        providers=RunProviders(
+            framer=identity,
+            seeder=identity,
+            transformer=identity,
+            evaluator=identity,
+        ),
+        operator_schedule=(),
+        framed_task=FramedTask(
+            context=TaskContext(goal="Improve decisions"),
+            assumptions=(),
+            obvious_solution="Use a form",
+        ),
+        finalists=(candidate,),
+        all_candidates=(candidate,),
+        spend_records=(),
+        stopped_reason="generation_limit",
+    ).reproducibility_fingerprint
+
+
+def _schema_keywords(value: object) -> set[str]:
+    if isinstance(value, dict):
+        return set(value).union(*(_schema_keywords(item) for item in value.values()))
+    if isinstance(value, list):
+        return set().union(*(_schema_keywords(item) for item in value))
+    return set()
+
+
 def test_openai_frame_converts_to_internal_frame() -> None:
     schema = OpenAIFrame(
         assumptions=["Meetings are required"],
@@ -63,13 +110,23 @@ def test_openai_frame_converts_to_internal_frame() -> None:
 
 
 def test_openai_idea_converts_without_provider_controlled_identity() -> None:
-    candidate = _idea().to_seed(generation=0)
+    candidate = _idea().to_seed()
 
     assert isinstance(candidate.id, UUID)
     assert candidate.generation == 0
     assert candidate.parent_ids == ()
     assert candidate.transformations == ()
     assert candidate.inspiration_kind is InspirationKind.INDEPENDENT
+
+
+def test_seed_conversion_is_deterministic_for_candidates_and_run_fingerprints() -> None:
+    schema = _idea()
+
+    first = schema.to_seed()
+    second = schema.to_seed()
+
+    assert first == second
+    assert _run_fingerprint(first) == _run_fingerprint(second)
 
 
 def test_openai_evaluation_converts_to_scores() -> None:
@@ -174,6 +231,39 @@ def test_transform_conversion_uses_local_ancestry_and_history() -> None:
     assert candidate.id not in {first.id, second.id}
 
 
+@pytest.mark.parametrize("parents_order", ["missing", "reversed"])
+def test_transform_conversion_rejects_parent_request_mismatch(
+    parents_order: str,
+) -> None:
+    first = _parent(generation=2, transformations=("invert",))
+    second = _parent(generation=4, transformations=("transfer",))
+    request = TransformationRequest.for_operator(
+        operator=OperatorName.COMBINE,
+        parents=(first, second),
+        task_goal="Improve decisions",
+    )
+    parents = (first,) if parents_order == "missing" else (second, first)
+
+    with pytest.raises(ValueError, match="transform parents do not match request"):
+        _idea().to_transform(request=request, parents=parents)
+
+
+def test_transform_conversion_is_deterministic() -> None:
+    parent = _parent(generation=2, transformations=("invert",))
+    request = TransformationRequest.for_operator(
+        operator=OperatorName.REFRAME,
+        parents=(parent,),
+        task_goal="Improve decisions",
+    )
+    schema = _idea()
+
+    first = schema.to_transform(request=request, parents=(parent,))
+    second = schema.to_transform(request=request, parents=(parent,))
+
+    assert first == second
+    assert _run_fingerprint(first) == _run_fingerprint(second)
+
+
 def test_seed_batch_cardinality_mismatch_is_rejected() -> None:
     batch = OpenAISeedBatch(ideas=[_idea()])
 
@@ -181,7 +271,7 @@ def test_seed_batch_cardinality_mismatch_is_rejected() -> None:
         ValueError,
         match="seed cardinality does not match requested seed_count",
     ):
-        batch.to_seeds(generation=0, expected_count=2)
+        batch.to_seeds(expected_count=2)
 
 
 def test_seed_batch_converts_every_idea_without_truncation() -> None:
@@ -192,10 +282,62 @@ def test_seed_batch_converts_every_idea_without_truncation() -> None:
         ]
     )
 
-    candidates = batch.to_seeds(generation=0, expected_count=2)
+    candidates = batch.to_seeds(expected_count=2)
 
     assert tuple(candidate.title for candidate in candidates) == ("First", "Second")
     assert len({candidate.id for candidate in candidates}) == 2
+
+
+@pytest.mark.parametrize(
+    "second",
+    [
+        _idea(),
+        _idea(
+            title="  Confidence   garden ",
+            core_mechanism="Claims gain reversible confidence through   evidence.",
+        ),
+    ],
+)
+def test_seed_batch_rejects_duplicate_normalized_ideas(second: OpenAIIdea) -> None:
+    batch = OpenAISeedBatch(ideas=[_idea(), second])
+
+    with pytest.raises(ValueError, match="duplicate normalized ideas"):
+        batch.to_seeds(expected_count=2)
+
+
+@pytest.mark.parametrize(
+    ("model", "payload"),
+    [
+        (
+            OpenAIFrame,
+            {"assumptions": ["valid"] * 21, "obvious_solution": "Use a form"},
+        ),
+        (
+            OpenAIFrame,
+            {"assumptions": ["x" * 1_001], "obvious_solution": "Use a form"},
+        ),
+        (
+            OpenAIFrame,
+            {"assumptions": ["same", " same "], "obvious_solution": "Use a form"},
+        ),
+        (
+            OpenAIFrame,
+            {"assumptions": [], "obvious_solution": "x" * 4_001},
+        ),
+        (OpenAIIdea, _idea_payload(title="x" * 201)),
+        (OpenAIIdea, _idea_payload(core_mechanism="x" * 4_001)),
+        (OpenAIIdea, _idea_payload(weaknesses=["x"] * 21)),
+        (OpenAIIdea, _idea_payload(weaknesses=["x" * 1_001])),
+        (OpenAIIdea, _idea_payload(weaknesses=["same", " same "])),
+        (OpenAISeedBatch, {"ideas": [_idea_payload()] * 21}),
+    ],
+)
+def test_output_schemas_bound_content_after_parse(
+    model: type[OpenAIFrame] | type[OpenAIIdea] | type[OpenAISeedBatch],
+    payload: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        model.model_validate(payload)
 
 
 @pytest.mark.parametrize(
@@ -213,3 +355,21 @@ def test_output_json_schemas_require_every_declared_field(
     assert schema["additionalProperties"] is False
     assert set(schema["required"]) == set(schema["properties"])
     assert all("default" not in definition for definition in schema["properties"].values())
+
+
+@pytest.mark.parametrize(
+    "model",
+    [OpenAIFrame, OpenAIIdea, OpenAISeedBatch, OpenAIEvaluation],
+)
+def test_output_json_schemas_avoid_unsupported_validation_keywords(
+    model: type[OpenAIFrame]
+    | type[OpenAIIdea]
+    | type[OpenAISeedBatch]
+    | type[OpenAIEvaluation],
+) -> None:
+    schema = model.model_json_schema()
+
+    assert _schema_keywords(schema).isdisjoint(
+        {"minLength", "maxLength", "minimum", "maximum", "pattern"}
+    )
+    assert to_strict_json_schema(model)["additionalProperties"] is False
