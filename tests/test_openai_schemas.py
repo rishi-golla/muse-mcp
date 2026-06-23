@@ -129,6 +129,54 @@ def test_seed_conversion_is_deterministic_for_candidates_and_run_fingerprints() 
     assert _run_fingerprint(first) == _run_fingerprint(second)
 
 
+@pytest.mark.parametrize(
+    "variant",
+    [
+        "A  B",
+        "A\tB",
+        "Ａ B",
+    ],
+)
+def test_canonical_equivalent_text_produces_equal_schemas_candidates_and_ids(
+    variant: str,
+) -> None:
+    canonical = _idea(
+        title="A B",
+        core_mechanism="Use A B.",
+        assumptions_challenged=["A B"],
+    )
+    equivalent = _idea(
+        title=variant,
+        core_mechanism=f"Use {variant}.",
+        assumptions_challenged=[variant],
+    )
+
+    canonical_candidate = canonical.to_seed()
+    equivalent_candidate = equivalent.to_seed()
+
+    assert equivalent == canonical
+    assert equivalent.title == "A B"
+    assert equivalent.core_mechanism == "Use A B."
+    assert equivalent.assumptions_challenged == ["A B"]
+    assert equivalent_candidate == canonical_candidate
+    assert equivalent_candidate.id == canonical_candidate.id
+    assert equivalent_candidate.title == "A B"
+    assert equivalent_candidate.assumptions_challenged == ("A B",)
+
+
+def test_genuinely_different_text_produces_distinct_schema_candidate_and_id() -> None:
+    first = _idea(title="A B")
+    second = _idea(title="A C")
+
+    first_candidate = first.to_seed()
+    second_candidate = second.to_seed()
+
+    assert first != second
+    assert first_candidate != second_candidate
+    assert first_candidate.id != second_candidate.id
+    assert second_candidate.title == "A C"
+
+
 def test_openai_evaluation_converts_to_scores() -> None:
     scores = OpenAIEvaluation(
         originality=0.8,
@@ -289,16 +337,23 @@ def test_seed_batch_converts_every_idea_without_truncation() -> None:
 
 
 @pytest.mark.parametrize(
-    "second",
+    "overrides",
     [
-        _idea(),
-        _idea(
-            title="  Confidence   garden ",
-            core_mechanism="Claims gain reversible confidence through   evidence.",
-        ),
+        {},
+        {
+            "title": "  Confidence   garden ",
+            "core_mechanism": "Claims gain reversible confidence through   evidence.",
+        },
+        {
+            "title": "Ｃonfidence	garden",
+            "core_mechanism": "Claims gain reversible confidence through  evidence.",
+        },
     ],
 )
-def test_seed_batch_rejects_duplicate_normalized_ideas(second: OpenAIIdea) -> None:
+def test_seed_batch_rejects_duplicate_normalized_ideas(
+    overrides: dict[str, object],
+) -> None:
+    second = _idea(**overrides)
     batch = OpenAISeedBatch(ideas=[_idea(), second])
 
     with pytest.raises(ValueError, match="duplicate normalized ideas"):

@@ -27,28 +27,26 @@ MAX_LIST_ITEMS = 20
 MAX_LIST_ITEM_LENGTH = 1_000
 
 
-def _validate_text(value: str, *, max_length: int) -> str:
-    reject_blank_text(value)
-    if len(value) > max_length:
+def _canonical_text(value: str, *, max_length: int) -> str:
+    canonical = " ".join(unicodedata.normalize("NFKC", value).split())
+    reject_blank_text(canonical)
+    if len(canonical) > max_length:
         raise ValueError(f"text must not exceed {max_length} characters")
-    return value
-
-
-def _normalize_text(value: str) -> str:
-    return " ".join(unicodedata.normalize("NFKC", value).split())
+    return canonical
 
 
 def _validate_text_list(value: list[str]) -> list[str]:
     if len(value) > MAX_LIST_ITEMS:
         raise ValueError(f"list must not contain more than {MAX_LIST_ITEMS} items")
+    canonical_items = [
+        _canonical_text(item, max_length=MAX_LIST_ITEM_LENGTH) for item in value
+    ]
     normalized: set[str] = set()
-    for item in value:
-        _validate_text(item, max_length=MAX_LIST_ITEM_LENGTH)
-        key = _normalize_text(item)
-        if key in normalized:
+    for item in canonical_items:
+        if item in normalized:
             raise ValueError("list must not contain duplicate normalized entries")
-        normalized.add(key)
-    return value
+        normalized.add(item)
+    return canonical_items
 
 
 def _canonical_json(value: object) -> str:
@@ -75,7 +73,7 @@ class OpenAIFrame(OpenAIOutputModel):
     @field_validator("obvious_solution")
     @classmethod
     def validate_obvious_solution(cls, value: str) -> str:
-        return _validate_text(value, max_length=MAX_TEXT_LENGTH)
+        return _canonical_text(value, max_length=MAX_TEXT_LENGTH)
 
     def to_domain(self, task: TaskContext) -> FramedTask:
         return FramedTask(
@@ -101,7 +99,7 @@ class OpenAIIdea(OpenAIOutputModel):
     @field_validator("title")
     @classmethod
     def validate_title(cls, value: str) -> str:
-        return _validate_text(value, max_length=MAX_TITLE_LENGTH)
+        return _canonical_text(value, max_length=MAX_TITLE_LENGTH)
 
     @field_validator(
         "core_mechanism",
@@ -110,7 +108,7 @@ class OpenAIIdea(OpenAIOutputModel):
     )
     @classmethod
     def validate_required_text(cls, value: str) -> str:
-        return _validate_text(value, max_length=MAX_TEXT_LENGTH)
+        return _canonical_text(value, max_length=MAX_TEXT_LENGTH)
 
     @field_validator(
         "assumptions_challenged",
@@ -126,16 +124,7 @@ class OpenAIIdea(OpenAIOutputModel):
         return _validate_text_list(value)
 
     def canonical_content(self) -> str:
-        payload = self.model_dump()
-        normalized = {
-            key: (
-                [_normalize_text(item) for item in value]
-                if isinstance(value, list)
-                else _normalize_text(value)
-            )
-            for key, value in payload.items()
-        }
-        return _canonical_json(normalized)
+        return _canonical_json(self.model_dump())
 
     def _domain_fields(self) -> dict[str, object]:
         return {
@@ -173,7 +162,10 @@ class OpenAIIdea(OpenAIOutputModel):
         identity_payload = {
             "content": json.loads(self.canonical_content()),
             "operator": request.operator.value,
-            "task_goal": _normalize_text(request.task_goal),
+            "task_goal": _canonical_text(
+                request.task_goal,
+                max_length=MAX_TEXT_LENGTH,
+            ),
             "parent_ids": [str(parent_id) for parent_id in parent_ids],
             "history": list(history),
         }
