@@ -4,6 +4,7 @@
 htmlcov/
 .pytest_cache/
 .pytest-tmp/
+.venv/
 .task9-*-tmp/
 .task9-quality-*/
 __pycache__/

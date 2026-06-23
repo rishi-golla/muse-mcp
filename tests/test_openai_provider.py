@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import httpx
 import pytest
 from openai import APITimeoutError, AuthenticationError, RateLimitError
+from pydantic import ValidationError
 
 from creativity_layer.live_config import LiveModelConfig
 from creativity_layer.models import FramedTask, IdeaGenome, RunConfig, TaskContext
@@ -416,6 +417,35 @@ def test_refusal_triggers_bounded_repair_then_raises_sanitized_error() -> None:
     assert "OpenAI response did not contain parsed structured output" in str(error.value)
 
 
+def test_domain_conversion_failure_triggers_bounded_repair() -> None:
+    client = FakeOpenAIClient(
+        parsed_sequence=[
+            OpenAISeedBatch(ideas=[sample_openai_idea(title="Only one")]),
+            OpenAISeedBatch(
+                ideas=[
+                    sample_openai_idea(title="First repaired"),
+                    sample_openai_idea(title="Second repaired"),
+                ]
+            ),
+        ]
+    )
+    provider = build_provider(client, repair_attempts=1)
+    frame = FramedTask(
+        context=TaskContext(goal="Improve decisions"),
+        assumptions=("Meetings are required",),
+        obvious_solution="Use a form",
+    )
+
+    response = provider.seed(frame, RunConfig(seed_count=2, finalist_count=1))
+
+    assert [candidate.title for candidate in response.value] == [
+        "First repaired",
+        "Second repaired",
+    ]
+    assert client.call_count == 2
+    assert "Repair" in str(client.last_request["input"])
+
+
 def _http_response(status_code: int) -> httpx.Response:
     return httpx.Response(
         status_code,
@@ -434,7 +464,11 @@ def test_authentication_errors_are_not_retried_and_are_sanitized() -> None:
             )
         ]
     )
-    provider = build_provider(client, retry_policy=RetryPolicy(max_retries=2))
+    provider = build_provider(
+        client,
+        repair_attempts=1,
+        retry_policy=RetryPolicy(max_retries=2),
+    )
 
     with pytest.raises(RuntimeError) as error:
         provider.frame(TaskContext(goal="Prompt text that should not leak"))
@@ -443,6 +477,49 @@ def test_authentication_errors_are_not_retried_and_are_sanitized() -> None:
     assert "sk-secret" not in str(error.value)
     assert "Prompt text that should not leak" not in str(error.value)
     assert "AuthenticationError" in str(error.value)
+
+
+def test_exhausted_rate_limit_is_not_retried_by_repair_loop() -> None:
+    client = FakeOpenAIClient(
+        parsed_sequence=[
+            RateLimitError("slow down", response=_http_response(429), body=None),
+            OpenAIFrame(
+                assumptions=["Meetings are necessary"],
+                obvious_solution="Use asynchronous voting",
+            ),
+        ],
+    )
+    provider = build_provider(
+        client,
+        repair_attempts=1,
+        retry_policy=RetryPolicy(max_retries=0),
+    )
+
+    with pytest.raises(RuntimeError) as error:
+        provider.frame(TaskContext(goal="Improve team decisions"))
+
+    assert client.call_count == 1
+    assert "RateLimitError" in str(error.value)
+
+
+def test_provider_value_errors_are_not_retried_by_repair_loop() -> None:
+    client = FakeOpenAIClient(
+        parsed_sequence=[
+            ValueError("client request construction failed sk-secret123456"),
+            OpenAIFrame(
+                assumptions=["Meetings are necessary"],
+                obvious_solution="Use asynchronous voting",
+            ),
+        ],
+    )
+    provider = build_provider(client, repair_attempts=1)
+
+    with pytest.raises(RuntimeError) as error:
+        provider.frame(TaskContext(goal="Prompt text that should not leak"))
+
+    assert client.call_count == 1
+    assert "client request construction failed [REDACTED]" in str(error.value)
+    assert "Prompt text that should not leak" not in str(error.value)
 
 
 def test_rate_limits_and_timeouts_use_retry_policy() -> None:
@@ -462,3 +539,50 @@ def test_rate_limits_and_timeouts_use_retry_policy() -> None:
 
     assert response.value.obvious_solution == "Use asynchronous voting"
     assert client.call_count == 3
+
+
+def test_model_output_cannot_set_local_identity_ancestry_or_cost_fields() -> None:
+    forbidden = {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "generation": 99,
+        "parent_ids": ["00000000-0000-0000-0000-000000000002"],
+        "transformations": ["model supplied lineage"],
+        "branch_cost_usd": 999.0,
+        "provider": "spoofed-provider",
+    }
+
+    with pytest.raises(ValidationError):
+        OpenAIIdea.model_validate(
+            {
+                **sample_openai_idea().model_dump(mode="json"),
+                **forbidden,
+            }
+        )
+
+    client = FakeOpenAIClient(
+        parsed=OpenAISeedBatch(
+            ideas=[
+                sample_openai_idea(title="First guarded output"),
+                sample_openai_idea(title="Second guarded output"),
+            ]
+        )
+    )
+    provider = build_provider(client)
+
+    response = provider.seed(
+        FramedTask(
+            context=TaskContext(goal="Improve decisions"),
+            assumptions=("Meetings are required",),
+            obvious_solution="Use a form",
+        ),
+        RunConfig(seed_count=2, finalist_count=1),
+    )
+
+    candidate = response.value[0]
+    assert str(candidate.id) != forbidden["id"]
+    assert candidate.generation == 0
+    assert candidate.parent_ids == ()
+    assert candidate.transformations == ()
+    assert candidate.branch_cost_usd == 0.0
+    assert response.provider == "openai"
+    assert response.cost_usd == 0.00026

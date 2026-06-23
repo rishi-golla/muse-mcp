@@ -204,6 +204,7 @@ class OpenAICreativeProvider:
         start = self._monotonic()
         response: object | None = None
         parsed: T | None = None
+        value: DomainT | None = None
         last_error: Exception | None = None
 
         for attempt in range(self._config.repair_attempts + 1):
@@ -213,9 +214,16 @@ class OpenAICreativeProvider:
                     request_input=request_input,
                     schema=schema,
                 )
-                parsed = _parsed_output(response, schema)
-                break
             except Exception as error:
+                raise RuntimeError(
+                    _safe_error_message(operation=operation, error=error)
+                ) from error
+
+            try:
+                parsed = _parsed_output(response, schema)
+                value = convert(parsed)
+                break
+            except ValueError as error:
                 last_error = error
                 if attempt >= self._config.repair_attempts:
                     raise RuntimeError(
@@ -225,8 +233,12 @@ class OpenAICreativeProvider:
                     operation=operation,
                     domain_payload=domain_payload,
                 )
+            except Exception as error:
+                raise RuntimeError(
+                    _safe_error_message(operation=operation, error=error)
+                ) from error
 
-        if response is None or parsed is None:
+        if response is None or parsed is None or value is None:
             error = last_error or ValueError(
                 "OpenAI response did not contain parsed structured output"
             )
@@ -257,7 +269,7 @@ class OpenAICreativeProvider:
             },
         )
         return MeteredResponse(
-            value=convert(parsed),
+            value=value,
             provider=self.name,
             model=model,
             cost_usd=estimate.estimated_cost_usd,
