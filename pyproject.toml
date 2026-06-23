@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "creativity-layer"
+version = "0.1.0"
+description = "Research prototype for evolutionary creative search in AI agents"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<10",
+  "pytest-cov>=5,<8",
+  "ruff>=0.8,<1",
+]
+
+[project.scripts]
+creativity-layer = "creativity_layer.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/creativity_layer"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

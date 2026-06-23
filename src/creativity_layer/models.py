@@ -1,0 +1,132 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Annotated
+from uuid import UUID, uuid4
+
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    model_validator,
+)
+
+
+def reject_blank_text(value: str) -> str:
+    if not value.strip():
+        raise ValueError("text must not be blank")
+    return value
+
+
+Score = Annotated[float, Field(strict=True, ge=0.0, le=1.0)]
+RequiredText = Annotated[str, Field(min_length=1), AfterValidator(reject_blank_text)]
+
+
+class FrozenModel(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+
+class InspirationKind(StrEnum):
+    INDEPENDENT = "independent"
+    INSPIRED = "inspired"
+    SYNTHESIZED = "synthesized"
+    ADAPTED = "adapted"
+
+
+class TaskContext(FrozenModel):
+    goal: str = Field(min_length=1)
+    audience: str | None = None
+    constraints: tuple[str, ...] = ()
+    preferences: tuple[str, ...] = ()
+    risk_tolerance: Score = 0.5
+
+    @model_validator(mode="after")
+    def reject_blank_goal(self) -> TaskContext:
+        if not self.goal.strip():
+            raise ValueError("goal must not be blank")
+        return self
+
+
+class EvaluationScores(FrozenModel):
+    originality: Score
+    usefulness: Score
+    coherence: Score
+    feasibility: Score
+    user_fit: Score
+
+
+class IdeaGenome(FrozenModel):
+    id: UUID = Field(default_factory=uuid4)
+    generation: int = Field(strict=True, ge=0)
+    title: RequiredText
+    core_mechanism: RequiredText
+    problem_framing: RequiredText
+    assumptions_challenged: tuple[str, ...] = ()
+    task_value: RequiredText
+    distinguishing_features: tuple[str, ...] = ()
+    inspiration_principles: tuple[str, ...] = ()
+    source_urls: tuple[str, ...] = ()
+    first_order_effects: tuple[str, ...] = ()
+    second_order_effects: tuple[str, ...] = ()
+    feasibility_assumptions: tuple[str, ...] = ()
+    uncertainties: tuple[str, ...] = ()
+    weaknesses: tuple[str, ...] = ()
+    parent_ids: tuple[UUID, ...] = ()
+    transformations: tuple[str, ...] = ()
+    inspiration_kind: InspirationKind = InspirationKind.INDEPENDENT
+    scores: EvaluationScores | None = None
+    branch_cost_usd: float = Field(default=0.0, strict=True, ge=0.0)
+    branch_latency_ms: int = Field(default=0, strict=True, ge=0)
+
+
+class RunConfig(FrozenModel):
+    max_cost_usd: float = Field(default=1.0, strict=True, gt=0)
+    max_calls: int = Field(default=20, strict=True, gt=0)
+    max_generations: int = Field(default=2, strict=True, ge=0)
+    seed_count: int = Field(default=4, strict=True, ge=2)
+    finalist_count: int = Field(default=3, strict=True, ge=1)
+    framing_reserve_usd: float = Field(default=0.05, strict=True, ge=0)
+    finalization_reserve_usd: float = Field(default=0.10, strict=True, ge=0)
+    random_seed: int = Field(default=0, strict=True)
+
+    @model_validator(mode="after")
+    def reservations_fit_budget(self) -> RunConfig:
+        reserved = self.framing_reserve_usd + self.finalization_reserve_usd
+        if reserved > self.max_cost_usd:
+            raise ValueError("reserved cost exceeds maximum cost")
+        if self.finalist_count > self.seed_count:
+            raise ValueError("finalist_count cannot exceed seed_count")
+        return self
+
+
+class FramedTask(FrozenModel):
+    context: TaskContext
+    assumptions: tuple[str, ...]
+    obvious_solution: str
+    evaluation_dimensions: tuple[str, ...] = (
+        "originality",
+        "usefulness",
+        "coherence",
+        "feasibility",
+        "user_fit",
+    )
+
+
+class SpendRecord(FrozenModel):
+    stage: RequiredText
+    provider: RequiredText
+    cost_usd: float = Field(strict=True, ge=0)
+    latency_ms: int = Field(strict=True, ge=0)
+    created_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class RunResult(FrozenModel):
+    run_id: UUID = Field(default_factory=uuid4)
+    framed_task: FramedTask
+    finalists: tuple[IdeaGenome, ...]
+    all_candidates: tuple[IdeaGenome, ...]
+    spend_records: tuple[SpendRecord, ...]
+    stopped_reason: str
