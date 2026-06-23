@@ -11,10 +11,10 @@ from creativity_layer.models import FrozenModel
 
 
 def reject_invalid_model_identifier(value: str) -> str:
-    if value != value.strip():
-        raise ValueError("model identifier must not have leading or trailing whitespace")
-    if any(unicodedata.category(character) == "Cc" for character in value):
-        raise ValueError("model identifier must not contain control characters")
+    if any(character.isspace() for character in value):
+        raise ValueError("model identifier must not contain whitespace")
+    if any(unicodedata.category(character).startswith("C") for character in value):
+        raise ValueError("model identifier must not contain unsafe Unicode characters")
     return value
 
 

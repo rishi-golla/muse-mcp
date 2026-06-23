@@ -62,16 +62,29 @@ def test_credentials_mask_secret_in_all_standard_representations() -> None:
     assert credentials.api_key.get_secret_value() == raw_secret
 
 
-def test_live_model_config_accepts_model_identifier_punctuation() -> None:
+@pytest.mark.parametrize(
+    "model_identifier",
+    (
+        "provider/model",
+        "model.1",
+        "model-1",
+        "model:preview",
+        "model_name",
+        "Provider_2/model-1.2:preview",
+    ),
+)
+def test_live_model_config_accepts_model_identifier_punctuation(
+    model_identifier: str,
+) -> None:
     config = LiveModelConfig(
-        economy_model="provider/economy-1.2:preview",
-        strong_model="provider/strong-2.0:stable",
-        embedding_model="provider/embed-3.0:small",
+        economy_model=model_identifier,
+        strong_model=model_identifier,
+        embedding_model=model_identifier,
     )
 
-    assert config.economy_model == "provider/economy-1.2:preview"
-    assert config.strong_model == "provider/strong-2.0:stable"
-    assert config.embedding_model == "provider/embed-3.0:small"
+    assert config.economy_model == model_identifier
+    assert config.strong_model == model_identifier
+    assert config.embedding_model == model_identifier
 
 
 @pytest.mark.parametrize("field", ("economy_model", "strong_model", "embedding_model"))
@@ -82,6 +95,10 @@ def test_live_model_config_accepts_model_identifier_punctuation() -> None:
         " ",
         "\tmodel",
         "model ",
+        "model name",
+        "model\u00a0name",
+        "model\u200bname",
+        "model\u202ename",
         "model\nname",
         "model\x00name",
         "model\x7fname",
@@ -229,6 +246,22 @@ def test_live_configuration_is_frozen_and_forbids_extra_fields() -> None:
 def test_live_model_config_rejects_invalid_numeric_settings(
     field: str,
     invalid_value: object,
+) -> None:
+    values = {
+        "economy_model": "economy-model",
+        "strong_model": "strong-model",
+        field: invalid_value,
+    }
+
+    with pytest.raises(ValidationError):
+        LiveModelConfig(**values)
+
+
+@pytest.mark.parametrize("field", ("default_budget_usd", "timeout_seconds"))
+@pytest.mark.parametrize("invalid_value", (float("nan"), float("inf"), float("-inf")))
+def test_live_model_config_rejects_non_finite_numeric_settings(
+    field: str,
+    invalid_value: float,
 ) -> None:
     values = {
         "economy_model": "economy-model",
