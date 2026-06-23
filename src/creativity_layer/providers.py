@@ -46,7 +46,9 @@ class TaskFramer(Protocol):
     name: str
     version: str
 
-    def frame(self, task: TaskContext) -> FramedTask: ...
+    def quote_frame(self, task: TaskContext) -> OperationQuote: ...
+
+    def frame(self, task: TaskContext) -> MeteredResponse[FramedTask]: ...
 
 
 class IdeaSeeder(Protocol):

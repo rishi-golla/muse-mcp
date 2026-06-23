@@ -105,6 +105,9 @@ class DeterministicCreativeProvider:
     name = "deterministic-local"
     version = "1"
 
+    def quote_frame(self, task: TaskContext) -> OperationQuote:
+        return OperationQuote(max_cost_usd=0.0)
+
     def quote_seed(
         self,
         framed_task: FramedTask,
@@ -122,14 +125,19 @@ class DeterministicCreativeProvider:
     def quote_evaluation(self, framed_task: FramedTask) -> OperationQuote:
         return OperationQuote(max_cost_usd=0.005, calls=1)
 
-    def frame(self, task: TaskContext) -> FramedTask:
-        return FramedTask(
-            context=task,
-            assumptions=(
-                "A decision requires a synchronous discussion.",
-                "Every participant must respond to every proposal.",
+    def frame(self, task: TaskContext) -> MeteredResponse[FramedTask]:
+        return MeteredResponse(
+            value=FramedTask(
+                context=task,
+                assumptions=(
+                    "A decision requires a synchronous discussion.",
+                    "Every participant must respond to every proposal.",
+                ),
+                obvious_solution="Use an asynchronous voting tool.",
             ),
-            obvious_solution="Use an asynchronous voting tool.",
+            provider=self.name,
+            cost_usd=0.0,
+            latency_ms=0,
         )
 
     def seed(

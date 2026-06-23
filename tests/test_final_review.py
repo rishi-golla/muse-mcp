@@ -179,7 +179,10 @@ def test_invalid_seed_genomes_are_rejected_before_evaluation(field: str) -> None
 
     assert result.all_candidates == ()
     assert result.stopped_reason == "provider_error"
-    assert [record.stage for record in result.spend_records] == ["seeding"]
+    assert [record.stage for record in result.spend_records] == [
+        "framing",
+        "seeding",
+    ]
     assert result.errors[-1].stage == "seeding"
     assert result.errors[-1].category == "validation_error"
     assert result.errors[-1].cost_incurred is True
@@ -317,9 +320,9 @@ def test_provider_spoofing_remains_provider_error_when_cost_exceeds_quote() -> N
         config(generations=0),
     )
 
-    assert len(result.spend_records) == 1
-    assert result.spend_records[0].provider == "deterministic-local"
-    assert result.spend_records[0].cost_usd == 0.02
+    assert len(result.spend_records) == 2
+    assert result.spend_records[1].provider == "deterministic-local"
+    assert result.spend_records[1].cost_usd == 0.02
     assert result.errors[-1].provider == "deterministic-local"
     assert result.errors[-1].category == "provider_error"
     assert result.errors[-1].message == "provider identity mismatch"

@@ -16,7 +16,7 @@ def test_operation_quote_rejects_call_counts_other_than_one(calls: int) -> None:
 def test_provider_returns_exact_typed_operation_quotes() -> None:
     provider = DeterministicCreativeProvider()
     task = TaskContext(goal="Invent a calmer decision process.")
-    framed = provider.frame(task)
+    framed = provider.frame(task).value
     config = RunConfig(seed_count=2, finalist_count=1)
     parent = provider.seed(framed, config).value[0]
     request = TransformationRequest.for_operator(
@@ -27,6 +27,10 @@ def test_provider_returns_exact_typed_operation_quotes() -> None:
 
     assert provider.quote_seed(framed, config) == OperationQuote(
         max_cost_usd=0.01,
+        calls=1,
+    )
+    assert provider.quote_frame(task) == OperationQuote(
+        max_cost_usd=0.0,
         calls=1,
     )
     assert provider.quote_transform(request, (parent,)) == OperationQuote(
@@ -46,11 +50,15 @@ def test_provider_frames_and_seeds_reproducibly() -> None:
         constraints=("No meetings",),
     )
 
-    framed = provider.frame(task)
+    framing = provider.frame(task)
+    framed = framing.value
     first = provider.seed(framed, RunConfig(seed_count=3, finalist_count=2))
     second = provider.seed(framed, RunConfig(seed_count=3, finalist_count=2))
 
     assert framed.obvious_solution == "Use an asynchronous voting tool."
+    assert framing.provider == provider.name
+    assert framing.cost_usd == 0.0
+    assert framing.latency_ms == 0
     assert len(first.value) == 3
     assert first == second
     assert [item.id for item in first.value] == [item.id for item in second.value]
@@ -59,7 +67,9 @@ def test_provider_frames_and_seeds_reproducibly() -> None:
 
 def test_provider_generates_the_exact_seed_count_with_unique_stable_ids() -> None:
     provider = DeterministicCreativeProvider()
-    framed = provider.frame(TaskContext(goal="Invent a calmer decision process."))
+    framed = provider.frame(
+        TaskContext(goal="Invent a calmer decision process.")
+    ).value
     config = RunConfig(seed_count=7, finalist_count=2)
 
     first = provider.seed(framed, config)
@@ -90,7 +100,7 @@ def test_provider_seeds_a_framed_task_without_assumptions() -> None:
 def test_provider_transforms_the_mechanism_and_records_ancestry() -> None:
     provider = DeterministicCreativeProvider()
     task = TaskContext(goal="Invent a calmer decision process.")
-    framed = provider.frame(task)
+    framed = provider.frame(task).value
     parent = provider.seed(
         framed,
         RunConfig(seed_count=2, finalist_count=1),
@@ -113,7 +123,7 @@ def test_unary_transform_preserves_the_parent_history_exactly() -> None:
     provider = DeterministicCreativeProvider()
     task = TaskContext(goal="Invent a calmer decision process.")
     seeded = provider.seed(
-        provider.frame(task),
+        provider.frame(task).value,
         RunConfig(seed_count=2, finalist_count=1),
     ).value[0]
     parent = seeded.model_copy(
@@ -134,7 +144,7 @@ def test_combine_transform_merges_histories_in_parent_order() -> None:
     provider = DeterministicCreativeProvider()
     task = TaskContext(goal="Invent a calmer decision process.")
     seeded = provider.seed(
-        provider.frame(task),
+        provider.frame(task).value,
         RunConfig(seed_count=2, finalist_count=1),
     ).value
     parents = (
@@ -171,7 +181,7 @@ def test_unary_transform_is_reproducible_and_sensitive_to_the_parent() -> None:
     provider = DeterministicCreativeProvider()
     task = TaskContext(goal="Invent a calmer decision process.")
     parents = provider.seed(
-        provider.frame(task),
+        provider.frame(task).value,
         RunConfig(seed_count=2, finalist_count=1),
     ).value
     first_request = TransformationRequest.for_operator(
@@ -206,7 +216,7 @@ def test_each_unary_operator_changes_the_parent_causal_structure(
     provider = DeterministicCreativeProvider()
     task = TaskContext(goal="Invent a calmer decision process.")
     parent = provider.seed(
-        provider.frame(task),
+        provider.frame(task).value,
         RunConfig(seed_count=2, finalist_count=1),
     ).value[0]
     request = TransformationRequest.for_operator(
@@ -226,7 +236,7 @@ def test_unary_operators_produce_distinct_mechanisms_for_the_same_parent() -> No
     provider = DeterministicCreativeProvider()
     task = TaskContext(goal="Invent a calmer decision process.")
     parent = provider.seed(
-        provider.frame(task),
+        provider.frame(task).value,
         RunConfig(seed_count=2, finalist_count=1),
     ).value[0]
 
@@ -250,7 +260,7 @@ def test_combine_transform_incorporates_both_parents() -> None:
     provider = DeterministicCreativeProvider()
     task = TaskContext(goal="Invent a calmer decision process.")
     parents = provider.seed(
-        provider.frame(task),
+        provider.frame(task).value,
         RunConfig(seed_count=2, finalist_count=1),
     ).value
     request = TransformationRequest.for_operator(
@@ -295,7 +305,7 @@ def test_transform_rejects_parent_ancestry_mismatches(
     provider = DeterministicCreativeProvider()
     task = TaskContext(goal="Invent a calmer decision process.")
     parents = provider.seed(
-        provider.frame(task),
+        provider.frame(task).value,
         RunConfig(seed_count=2, finalist_count=1),
     ).value
     operator = (
@@ -316,7 +326,9 @@ def test_transform_rejects_parent_ancestry_mismatches(
 
 def test_evaluation_is_reproducible_and_scores_stay_in_bounds() -> None:
     provider = DeterministicCreativeProvider()
-    framed = provider.frame(TaskContext(goal="Invent a calmer decision process."))
+    framed = provider.frame(
+        TaskContext(goal="Invent a calmer decision process.")
+    ).value
     candidate: IdeaGenome = provider.seed(
         framed,
         RunConfig(seed_count=2, finalist_count=1),

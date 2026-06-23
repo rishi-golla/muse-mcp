@@ -88,7 +88,7 @@ class AdversarialProvider(DeterministicCreativeProvider):
         self.transform_calls = 0
         self.evaluation_calls = 0
 
-    def frame(self, task: TaskContext) -> FramedTask:
+    def frame(self, task: TaskContext) -> MeteredResponse[FramedTask]:
         if self.raise_frame:
             raise RuntimeError("framing failed")
         return super().frame(task)
@@ -282,7 +282,7 @@ def test_engine_does_not_start_seed_batch_without_all_required_calls() -> None:
     assert provider.seed_calls == 0
     assert result.all_candidates == ()
     assert result.finalists == ()
-    assert result.spend_records == ()
+    assert [record.stage for record in result.spend_records] == ["framing"]
     assert result.stopped_reason == "budget_exhausted"
 
 
@@ -306,7 +306,7 @@ def test_engine_does_not_start_seed_batch_without_all_required_cost() -> None:
     assert provider.seed_calls == 0
     assert result.all_candidates == ()
     assert result.finalists == ()
-    assert result.spend_records == ()
+    assert [record.stage for record in result.spend_records] == ["framing"]
     assert result.stopped_reason == "budget_exhausted"
 
 
@@ -330,7 +330,7 @@ def test_engine_does_not_transform_without_two_reserved_calls() -> None:
     assert provider.seed_calls == 1
     assert provider.transform_calls == 0
     assert len(result.all_candidates) == 2
-    assert len(result.spend_records) == 3
+    assert len(result.spend_records) == 4
     assert result.stopped_reason == "budget_exhausted"
 
 
@@ -346,7 +346,7 @@ def test_engine_uses_quotes_and_accepts_exact_seed_budget_boundaries() -> None:
         TaskContext(goal="Invent a new decision process."),
         RunConfig(
             max_cost_usd=0.09,
-            max_calls=3,
+            max_calls=4,
             max_generations=0,
             seed_count=2,
             finalist_count=1,
@@ -379,7 +379,10 @@ def test_engine_rejects_wrong_seed_cardinality_before_evaluation() -> None:
     assert provider.evaluation_calls == 0
     assert result.all_candidates == ()
     assert result.finalists == ()
-    assert [record.stage for record in result.spend_records] == ["seeding"]
+    assert [record.stage for record in result.spend_records] == [
+        "framing",
+        "seeding",
+    ]
     assert result.stopped_reason == "provider_error"
 
 
@@ -402,7 +405,10 @@ def test_engine_rejects_empty_seed_batch_before_evaluation() -> None:
     assert provider.evaluation_calls == 0
     assert result.all_candidates == ()
     assert result.finalists == ()
-    assert [record.stage for record in result.spend_records] == ["seeding"]
+    assert [record.stage for record in result.spend_records] == [
+        "framing",
+        "seeding",
+    ]
     assert result.stopped_reason == "provider_error"
 
 
@@ -423,7 +429,7 @@ def test_engine_handles_seed_exception_without_fabricating_spend() -> None:
     )
 
     assert result.all_candidates == ()
-    assert result.spend_records == ()
+    assert [record.stage for record in result.spend_records] == ["framing"]
     assert result.stopped_reason == "provider_error"
 
 
@@ -444,8 +450,11 @@ def test_engine_records_seed_cost_above_quote_even_past_budget() -> None:
     )
 
     assert result.all_candidates == ()
-    assert [record.stage for record in result.spend_records] == ["seeding"]
-    assert result.spend_records[0].cost_usd == 0.021
+    assert [record.stage for record in result.spend_records] == [
+        "framing",
+        "seeding",
+    ]
+    assert result.spend_records[1].cost_usd == 0.021
     assert sum(record.cost_usd for record in result.spend_records) > 0.02
     assert result.stopped_reason == "provider_error"
 
@@ -469,6 +478,7 @@ def test_engine_hides_seed_batch_when_later_evaluation_fails() -> None:
     assert result.all_candidates == ()
     assert result.finalists == ()
     assert [record.stage for record in result.spend_records] == [
+        "framing",
         "seeding",
         "evaluation",
     ]
@@ -493,6 +503,7 @@ def test_engine_records_evaluation_cost_above_quote() -> None:
 
     assert result.all_candidates == ()
     assert [record.stage for record in result.spend_records] == [
+        "framing",
         "seeding",
         "evaluation",
     ]
@@ -519,6 +530,7 @@ def test_engine_preserves_seed_frontier_when_transform_raises() -> None:
     assert len(result.all_candidates) == 2
     assert len(result.finalists) == 1
     assert [record.stage for record in result.spend_records] == [
+        "framing",
         "seeding",
         "evaluation",
         "evaluation",
@@ -544,6 +556,7 @@ def test_engine_records_transform_cost_above_quote() -> None:
 
     assert len(result.all_candidates) == 2
     assert [record.stage for record in result.spend_records] == [
+        "framing",
         "seeding",
         "evaluation",
         "evaluation",
@@ -571,6 +584,7 @@ def test_engine_charges_transform_but_not_failed_descendant_evaluation() -> None
 
     assert len(result.all_candidates) == 2
     assert [record.stage for record in result.spend_records] == [
+        "framing",
         "seeding",
         "evaluation",
         "evaluation",
@@ -609,7 +623,7 @@ def test_engine_accepts_one_transform_at_exact_cost_call_and_reserve_boundary() 
         TaskContext(goal="Invent a new decision process."),
         RunConfig(
             max_cost_usd=0.085,
-            max_calls=5,
+            max_calls=6,
             max_generations=1,
             seed_count=2,
             finalist_count=1,
@@ -620,7 +634,7 @@ def test_engine_accepts_one_transform_at_exact_cost_call_and_reserve_boundary() 
 
     assert len(result.all_candidates) == 3
     assert sum(record.cost_usd for record in result.spend_records) == 0.035
-    assert len(result.spend_records) == 5
+    assert len(result.spend_records) == 6
     assert result.stopped_reason == "budget_exhausted"
 
 
@@ -668,7 +682,10 @@ def test_engine_rejects_oversized_seed_batch_before_evaluation() -> None:
 
     assert provider.evaluation_calls == 0
     assert result.all_candidates == ()
-    assert [record.stage for record in result.spend_records] == ["seeding"]
+    assert [record.stage for record in result.spend_records] == [
+        "framing",
+        "seeding",
+    ]
     assert result.stopped_reason == "provider_error"
 
 
@@ -690,7 +707,10 @@ def test_engine_rejects_duplicate_seed_ids_before_evaluation() -> None:
 
     assert provider.evaluation_calls == 0
     assert result.all_candidates == ()
-    assert [record.stage for record in result.spend_records] == ["seeding"]
+    assert [record.stage for record in result.spend_records] == [
+        "framing",
+        "seeding",
+    ]
     assert result.stopped_reason == "provider_error"
 
 
@@ -711,7 +731,7 @@ def test_engine_handles_seed_quote_exception_without_invoking_provider() -> None
     )
 
     assert provider.seed_calls == 0
-    assert result.spend_records == ()
+    assert [record.stage for record in result.spend_records] == ["framing"]
     assert result.stopped_reason == "provider_error"
 
 

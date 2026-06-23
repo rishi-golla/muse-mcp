@@ -50,9 +50,9 @@ class BudgetController:
         self._reserved_calls = 0
         self._reservations: dict[object, _ReservationState] = {}
         self._max_cost = _money(config.max_cost_usd)
+        self._framing_reserve = _money(config.framing_reserve_usd)
         self._exploration_reserve = (
-            _money(config.framing_reserve_usd)
-            + _money(config.finalization_reserve_usd)
+            self._framing_reserve + _money(config.finalization_reserve_usd)
         )
 
     @property
@@ -82,6 +82,12 @@ class BudgetController:
                 - self._exploration_reserve,
             )
         )
+
+    def release_framing_reserve(self) -> None:
+        if self._framing_reserve == 0:
+            return
+        self._exploration_reserve -= self._framing_reserve
+        self._framing_reserve = Decimal("0")
 
     def can_afford(
         self,
