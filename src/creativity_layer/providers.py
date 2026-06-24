@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, Protocol
+from typing import Protocol
 
 from pydantic import Field
 
@@ -23,6 +23,7 @@ class MeteredResponse[T](FrozenModel):
     provider: RequiredText
     model: RequiredText | None = None
     cost_usd: float = Field(strict=True, ge=0)
+    calls: int = Field(default=1, strict=True, ge=1)
     latency_ms: int = Field(strict=True, ge=0)
     usage: TokenUsage = Field(default_factory=TokenUsage)
     pricing_version: RequiredText | None = None
@@ -32,14 +33,10 @@ class MeteredResponse[T](FrozenModel):
 
 
 class OperationQuote(FrozenModel):
-    """Upper bound for one accountable provider call.
-
-    Hidden internal calls are unsupported in this milestone. Supporting them
-    requires extending the provider and spend-accounting contracts.
-    """
+    """Upper bound for one accountable provider operation."""
 
     max_cost_usd: float = Field(strict=True, ge=0)
-    calls: Literal[1] = 1
+    calls: int = Field(default=1, strict=True, ge=1)
 
 
 class TaskFramer(Protocol):

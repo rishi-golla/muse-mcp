@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any, TypeVar
 
 from creativity_layer.live_config import LiveModelConfig
@@ -181,11 +181,15 @@ class OpenAICreativeProvider:
         input_tokens: int,
         output_tokens: int,
     ) -> OperationQuote:
+        max_calls = self._config.repair_attempts + 1
         estimate = self._pricing.estimate(
             model,
             TokenUsage(input_tokens=input_tokens, output_tokens=output_tokens),
         )
-        return OperationQuote(max_cost_usd=estimate.estimated_cost_usd)
+        return OperationQuote(
+            max_cost_usd=estimate.estimated_cost_usd * max_calls,
+            calls=max_calls,
+        )
 
     def _call_structured(
         self,
@@ -203,6 +207,7 @@ class OpenAICreativeProvider:
         )
         start = self._monotonic()
         response: object | None = None
+        responses: list[object] = []
         parsed: T | None = None
         value: DomainT | None = None
         last_error: Exception | None = None
@@ -218,6 +223,7 @@ class OpenAICreativeProvider:
                 raise RuntimeError(
                     _safe_error_message(operation=operation, error=error)
                 ) from error
+            responses.append(response)
 
             try:
                 parsed = _parsed_output(response, schema)
@@ -245,7 +251,7 @@ class OpenAICreativeProvider:
             raise RuntimeError(_safe_error_message(operation=operation, error=error))
 
         end = self._monotonic()
-        usage = _usage(response)
+        usage = _sum_usage(_usage(item) for item in responses)
         estimate = self._pricing.estimate(model, usage)
         trace = OperationTrace.from_payload(
             request={
@@ -257,6 +263,10 @@ class OpenAICreativeProvider:
                 "domain": _redact_secrets(domain_payload),
             },
             response={
+                "attempts": [
+                    _attempt_trace(attempt=index + 1, response=item)
+                    for index, item in enumerate(responses)
+                ],
                 "request_id": _request_id(response),
                 "parsed": _redact_secrets(_model_dump(parsed)),
                 "refusal": _redact_secrets(_refusal(response)),
@@ -273,6 +283,7 @@ class OpenAICreativeProvider:
             provider=self.name,
             model=model,
             cost_usd=estimate.estimated_cost_usd,
+            calls=len(responses),
             latency_ms=max(0, round((end - start) * 1_000)),
             usage=usage,
             pricing_version=estimate.pricing_version,
@@ -370,6 +381,38 @@ def _usage(response: object) -> TokenUsage:
         output_tokens=getattr(raw_usage, "output_tokens", 0) or 0,
         reasoning_tokens=getattr(output_details, "reasoning_tokens", 0) or 0,
     )
+
+
+def _sum_usage(usages: Iterable[TokenUsage]) -> TokenUsage:
+    input_tokens = 0
+    cached_input_tokens = 0
+    output_tokens = 0
+    reasoning_tokens = 0
+    for usage in usages:
+        input_tokens += usage.input_tokens
+        cached_input_tokens += usage.cached_input_tokens
+        output_tokens += usage.output_tokens
+        reasoning_tokens += usage.reasoning_tokens
+    return TokenUsage(
+        input_tokens=input_tokens,
+        cached_input_tokens=cached_input_tokens,
+        output_tokens=output_tokens,
+        reasoning_tokens=reasoning_tokens,
+    )
+
+
+def _attempt_trace(*, attempt: int, response: object) -> dict[str, object]:
+    usage = _usage(response)
+    return {
+        "attempt": attempt,
+        "request_id": _request_id(response),
+        "usage": {
+            "input": usage.input_tokens,
+            "cached_input": usage.cached_input_tokens,
+            "output": usage.output_tokens,
+            "reasoning": usage.reasoning_tokens,
+        },
+    }
 
 
 def _request_id(response: object) -> str | None:

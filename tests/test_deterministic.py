@@ -7,10 +7,14 @@ from creativity_layer.providers import OperationQuote
 from creativity_layer.transforms import OperatorName, TransformationRequest
 
 
-@pytest.mark.parametrize("calls", [0, 2, 3])
-def test_operation_quote_rejects_call_counts_other_than_one(calls: int) -> None:
+@pytest.mark.parametrize("calls", [0, -1, True])
+def test_operation_quote_rejects_invalid_call_counts(calls: object) -> None:
     with pytest.raises(ValidationError):
         OperationQuote(max_cost_usd=0.01, calls=calls)
+
+
+def test_operation_quote_accepts_multiple_accounted_calls() -> None:
+    assert OperationQuote(max_cost_usd=0.03, calls=3).calls == 3
 
 
 def test_provider_returns_exact_typed_operation_quotes() -> None:

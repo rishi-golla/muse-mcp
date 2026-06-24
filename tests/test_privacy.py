@@ -19,6 +19,22 @@ def test_research_trace_keeps_prompts_but_never_secrets() -> None:
     assert payload["authorization"] == "[REDACTED]"
 
 
+def test_research_trace_redacts_secret_shaped_text_without_exact_secret_value() -> None:
+    view = TraceView(mode=PrivacyMode.RESEARCH, secret_values=())
+
+    payload = view.sanitize(
+        {
+            "goal": "Use sk-abcdefghijklmnopqrstuvwxyz123456 in a mock task",
+            "error": "Provider returned Bearer sk-othersecret123456",
+            "lowercase": "provider returned bearer sk-lowersecret123456",
+        }
+    )
+
+    assert payload["goal"] == "Use [REDACTED] in a mock task"
+    assert payload["error"] == "Provider returned [REDACTED]"
+    assert payload["lowercase"] == "provider returned [REDACTED]"
+
+
 def test_private_trace_hashes_prompt_content() -> None:
     view = TraceView(mode=PrivacyMode.PRIVATE, secret_values=())
 

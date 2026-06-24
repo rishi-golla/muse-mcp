@@ -316,6 +316,7 @@ class CreativeEngine:
             quote.max_cost_usd,
             0,
             cost_is_estimated=True,
+            calls=quote.calls,
         )
 
     @staticmethod
@@ -693,6 +694,7 @@ class CreativeEngine:
                     cost_is_estimated=response.cost_is_estimated,
                     request_id=response.request_id,
                     operation_trace=response.operation_trace,
+                    calls=response.calls,
                 )
             except Exception:
                 _error(
@@ -717,6 +719,7 @@ class CreativeEngine:
                     cost_is_estimated=response.cost_is_estimated,
                     request_id=response.request_id,
                     operation_trace=response.operation_trace,
+                    calls=response.calls,
                 )
             except BudgetExceeded:
                 _error(

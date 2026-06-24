@@ -8,6 +8,10 @@ from dataclasses import dataclass
 from creativity_layer.live_config import PrivacyMode
 
 REDACTED = "[REDACTED]"
+SECRET_VALUE_PATTERN = re.compile(
+    r"(?:\bBearer\s+[A-Za-z0-9._~+/=-]+|\bsk-[A-Za-z0-9_-]{10,})",
+    re.IGNORECASE,
+)
 SECRET_KEY_TERMS = frozenset(
     {
         "apikey",
@@ -112,7 +116,7 @@ class TraceView:
         return value
 
     def _redact_secret_values(self, value: str) -> str:
-        sanitized = value
+        sanitized = SECRET_VALUE_PATTERN.sub(REDACTED, value)
         for secret in sorted(
             (secret for secret in self.secret_values if secret),
             key=len,

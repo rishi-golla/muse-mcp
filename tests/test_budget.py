@@ -473,6 +473,43 @@ def test_reserved_charge_preserves_live_metadata() -> None:
     assert record.cost_is_estimated is True
 
 
+def test_reserved_charge_can_account_for_multiple_provider_calls_in_one_record() -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=2,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+
+    with budget.reserve(0.5, required_calls=2, preserve_finalization=False) as reservation:
+        record = reservation.charge("frame", "openai", 0.5, 10, calls=2)
+
+    assert record.calls == 2
+    assert budget.calls_used == 2
+    assert budget.records == (record,)
+
+
+def test_reserved_charge_rejects_more_calls_than_reserved() -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=2,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+
+    with (
+        budget.reserve(0.5, required_calls=1, preserve_finalization=False) as reservation,
+        pytest.raises(BudgetExceeded, match="reservation call limit"),
+    ):
+        reservation.charge("frame", "openai", 0.5, 10, calls=2)
+
+    assert budget.records == ()
+
+
 def test_audited_overage_preserves_live_metadata() -> None:
     budget = BudgetController(
         RunConfig(

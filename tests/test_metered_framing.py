@@ -43,6 +43,7 @@ class MeteredFramer(DeterministicCreativeProvider):
         self,
         *,
         quote_cost: float = 0.02,
+        quote_calls: int = 1,
         actual_cost: float = 0.015,
         response_provider: str | None = None,
         invalid_payload: bool = False,
@@ -51,6 +52,7 @@ class MeteredFramer(DeterministicCreativeProvider):
         raise_quote: bool = False,
     ) -> None:
         self.quote_cost = quote_cost
+        self.quote_calls = quote_calls
         self.actual_cost = actual_cost
         self.response_provider = response_provider
         self.invalid_payload = invalid_payload
@@ -62,7 +64,7 @@ class MeteredFramer(DeterministicCreativeProvider):
     def quote_frame(self, task: TaskContext) -> OperationQuote:
         if self.raise_quote:
             raise RuntimeError("secret quote details")
-        return OperationQuote(max_cost_usd=self.quote_cost)
+        return OperationQuote(max_cost_usd=self.quote_cost, calls=self.quote_calls)
 
     def frame(self, task: TaskContext) -> MeteredResponse[FramedTask]:
         self.frame_called = True
@@ -280,15 +282,20 @@ def test_framing_exception_consumes_quoted_cost_and_one_call() -> None:
 
 
 def test_invalid_metered_response_consumes_quote_conservatively() -> None:
-    provider = MeteredFramer(quote_cost=0.2, invalid_envelope=True)
+    provider = MeteredFramer(
+        quote_cost=0.2,
+        quote_calls=2,
+        invalid_envelope=True,
+    )
 
     result = _engine(provider).run(
         TaskContext(goal="Test"),
-        _config(max_calls=1, framing_reserve_usd=0.2),
+        _config(max_calls=2, framing_reserve_usd=0.2),
     )
 
     assert len(result.spend_records) == 1
     assert result.spend_records[0].cost_usd == 0.2
+    assert result.spend_records[0].calls == 2
     assert result.spend_records[0].cost_is_estimated is True
     assert result.errors[-1].category == "validation_error_after_response"
     assert result.errors[-1].message == "provider returned invalid metered response"

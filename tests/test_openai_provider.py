@@ -399,7 +399,44 @@ def test_openai_provider_retries_one_unparseable_response() -> None:
 
     assert response.value.obvious_solution == "Use asynchronous voting"
     assert client.call_count == 2
+    assert response.calls == 2
+    assert response.usage.input_tokens == 200
+    assert response.usage.output_tokens == 80
+    assert response.cost_usd == pytest.approx(0.00052)
+    assert response.operation_trace is not None
+    response_payload = json.loads(response.operation_trace.response_json)
+    assert response_payload["attempts"] == [
+        {
+            "attempt": 1,
+            "request_id": "req_1",
+            "usage": {
+                "input": 100,
+                "cached_input": 0,
+                "output": 40,
+                "reasoning": 0,
+            },
+        },
+        {
+            "attempt": 2,
+            "request_id": "req_2",
+            "usage": {
+                "input": 100,
+                "cached_input": 0,
+                "output": 40,
+                "reasoning": 0,
+            },
+        },
+    ]
     assert "Repair" in str(client.last_request["input"])
+
+
+def test_openai_quotes_include_possible_repair_attempts() -> None:
+    provider = build_provider(FakeOpenAIClient(), repair_attempts=1)
+
+    quote = provider.quote_frame(TaskContext(goal="Improve team decisions"))
+
+    assert quote.calls == 2
+    assert quote.max_cost_usd == pytest.approx(0.0104)
 
 
 def test_refusal_triggers_bounded_repair_then_raises_sanitized_error() -> None:

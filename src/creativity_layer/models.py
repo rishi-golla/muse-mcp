@@ -271,6 +271,7 @@ class SpendRecord(FrozenModel):
     provider: RequiredText
     model: RequiredText | None = None
     cost_usd: float = Field(strict=True, ge=0)
+    calls: int = Field(default=1, strict=True, ge=1)
     latency_ms: int = Field(strict=True, ge=0)
     usage: TokenUsage = Field(default_factory=TokenUsage)
     pricing_version: RequiredText | None = None
@@ -347,6 +348,8 @@ def canonical_run_payload(result: RunResult) -> dict[str, object]:
         record.pop("created_at", None)
         if record["model"] is None:
             record.pop("model")
+        if record["calls"] == 1:
+            record.pop("calls")
         if record["usage"] == {
             "input_tokens": 0,
             "cached_input_tokens": 0,
