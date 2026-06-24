@@ -30,6 +30,9 @@ packages = ["src/creativity_layer"]
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
+markers = [
+  "live_openai: incurs a bounded real OpenAI API request",
+]
 
 [tool.ruff]
 line-length = 100
