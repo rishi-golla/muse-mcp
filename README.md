@@ -39,6 +39,22 @@ reserves intentionally reduce exploration capacity when enabled. A nonzero
 library framing reserve remains unspent in this milestone because framing is
 unmetered, deliberately stranding that capacity for future metered framing.
 
+## Compare mode
+
+```powershell
+creativity-layer compare "Invent a calmer way for distributed teams to make decisions" `
+  --seed-count 4 `
+  --finalist-count 2 `
+  --generations 0 `
+  --budget-usd 0.10 `
+  --trace-dir .traces
+```
+
+Compare mode runs a deterministic baseline beside a search-aware deterministic
+run and writes one trace for each. Its search path uses mocked deterministic
+fixtures only; it does not call Exa, Brave, OpenAI web search, or paid OpenAI
+models.
+
 ## Live OpenAI mode
 
 Set:
