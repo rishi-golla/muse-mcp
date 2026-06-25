@@ -84,6 +84,60 @@ def test_distinct_source_mechanism_in_non_isolated_branch_is_inspired() -> None:
     assert score.branch_isolation_confidence < 1.0
 
 
+def test_multiple_distinct_sources_in_non_isolated_branch_are_inspired() -> None:
+    candidate = idea(
+        core_mechanism="A rotating facilitator converts stale decisions into timed experiments.",
+        distinguishing_features=("Experiment owners report measured reversibility.",),
+    )
+
+    score = score_novelty(
+        candidate,
+        peers=(),
+        obvious_solution="Hold another status meeting.",
+        sources=(
+            source(
+                mechanism="A marketplace ranks repairs by part scarcity.",
+                principle="Prioritize constrained repairs before easy work.",
+            ),
+            source(
+                mechanism="A camera rig estimates soil moisture from leaf curl.",
+                principle="Infer hidden resource stress from visible posture changes.",
+            ),
+        ),
+        branch_is_search_isolated=False,
+        prior_art_failed=False,
+    )
+
+    assert score.source_similarity_risk < 0.5
+    assert score.classification is CopyingClassification.INSPIRED
+
+
+def test_source_similarity_considers_copied_wording_across_candidate_fields() -> None:
+    candidate = idea(
+        title="Timed experiments",
+        core_mechanism="Refresh stale decisions.",
+        problem_framing="Teams need reversible choices.",
+        task_value="Measured reversibility.",
+        distinguishing_features=("Facilitator records experiment owners.",),
+    )
+
+    score = score_novelty(
+        candidate,
+        peers=(),
+        obvious_solution="Hold another status meeting.",
+        sources=(
+            source(
+                mechanism="A marketplace ranks repairs by part scarcity.",
+                principle="Timed experiments refresh stale decisions with measured reversibility.",
+            ),
+        ),
+        branch_is_search_isolated=False,
+        prior_art_failed=False,
+    )
+
+    assert score.source_similarity_risk >= 0.4
+
+
 def test_search_isolated_branch_without_source_overlap_is_independent() -> None:
     candidate = idea(
         core_mechanism="People precommit reversible choices before seeing group votes.",

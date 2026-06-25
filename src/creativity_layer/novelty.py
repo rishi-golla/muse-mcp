@@ -90,7 +90,7 @@ def _classify(
         return CopyingClassification.INDEPENDENT
     if source_similarity_risk >= 0.65:
         return CopyingClassification.ADAPTED
-    if source_count > 1:
+    if source_count > 1 and source_similarity_risk >= 0.5:
         return CopyingClassification.SYNTHESIZED
     return CopyingClassification.INSPIRED
 
@@ -108,13 +108,14 @@ def _source_similarity_risk(
 
 
 def _candidate_comparison_texts(candidate: IdeaGenome) -> tuple[str, ...]:
-    return (
+    fields = (
         candidate.title,
         candidate.core_mechanism,
         candidate.problem_framing,
         candidate.task_value,
         " ".join(candidate.distinguishing_features),
     )
+    return (*fields, " ".join(fields))
 
 
 def _idea_text(idea: IdeaGenome) -> str:
