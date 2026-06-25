@@ -190,6 +190,40 @@ def test_private_trace_store_file_does_not_contain_original_task_goal(tmp_path) 
     assert payload["framed_task"]["context"]["goal"]["length"] == len("Test creativity")
 
 
+def test_private_trace_store_hashes_search_source_snippets(tmp_path) -> None:
+    result = run_result()
+    search_trace = OperationTrace.from_payload(
+        request={"operation": "search", "provider": "deterministic-search"},
+        response={
+            "search_results": [
+                {
+                    "url": "https://example.com/source",
+                    "snippet": "Trace source snippet",
+                    "bounded_excerpt": "Trace bounded excerpt",
+                }
+            ]
+        },
+    )
+    search_record = result.spend_records[0].model_copy(
+        update={"operation_trace": search_trace}
+    )
+    result = result.model_copy(update={"spend_records": (search_record,)})
+    view = TraceView(mode=PrivacyMode.PRIVATE, secret_values=())
+
+    path = JsonTraceStore(tmp_path, trace_view=view).save(result)
+    raw_trace = path.read_text(encoding="utf-8")
+    payload = json.loads(raw_trace)
+
+    assert "Trace source snippet" not in raw_trace
+    assert "Trace bounded excerpt" not in raw_trace
+    search_result = payload["spend_records"][0]["operation_trace"]["response"][
+        "search_results"
+    ][0]
+    assert search_result["url"] == "https://example.com/source"
+    assert search_result["snippet"]["sha256"]
+    assert search_result["bounded_excerpt"]["sha256"]
+
+
 def test_private_trace_store_does_not_mutate_run_result(tmp_path) -> None:
     result = run_result()
     before = result.model_dump(mode="json")

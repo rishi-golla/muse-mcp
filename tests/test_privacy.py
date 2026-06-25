@@ -45,6 +45,32 @@ def test_private_trace_hashes_prompt_content() -> None:
     assert payload["output"]["sha256"]
 
 
+def test_private_trace_hashes_source_snippets_and_excerpts() -> None:
+    view = TraceView(mode=PrivacyMode.PRIVATE, secret_values=())
+
+    payload = view.sanitize(
+        {
+            "search_results": [
+                {
+                    "url": "https://example.com/source",
+                    "snippet": "Private source snippet",
+                    "bounded_excerpt": "Private bounded excerpt",
+                    "boundedExcerpt": "Private camel excerpt",
+                }
+            ]
+        }
+    )
+
+    result = payload["search_results"][0]
+    assert result["url"] == "https://example.com/source"
+    assert result["snippet"]["sha256"]
+    assert result["snippet"]["length"] == len("Private source snippet")
+    assert result["bounded_excerpt"]["sha256"]
+    assert result["bounded_excerpt"]["length"] == len("Private bounded excerpt")
+    assert result["boundedExcerpt"]["sha256"]
+    assert result["boundedExcerpt"]["length"] == len("Private camel excerpt")
+
+
 def test_sanitize_removes_secrets_from_nested_errors_and_provider_metadata() -> None:
     view = TraceView(mode=PrivacyMode.RESEARCH, secret_values=("sk-secret",))
 
