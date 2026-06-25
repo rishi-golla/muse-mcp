@@ -97,6 +97,7 @@ def run_with_sources(
     *,
     goal: str = "Reversible team decisions",
     reject_likely_copying: bool = False,
+    max_generations: int = 0,
 ) -> tuple[RunResult, RecordingSearchProvider]:
     provider = DeterministicCreativeProvider()
     search_provider = RecordingSearchProvider(sources)
@@ -106,7 +107,7 @@ def run_with_sources(
         reject_likely_copying=reject_likely_copying,
     ).run(
         TaskContext(goal=goal),
-        RunConfig(seed_count=4, finalist_count=4, max_generations=0),
+        RunConfig(seed_count=4, finalist_count=4, max_generations=max_generations),
     )
     return result, search_provider
 
@@ -174,6 +175,54 @@ def test_inspired_candidates_receive_source_provenance_when_abstractions_exist()
         candidate.inspiration_principles[0].startswith("Transfer the mechanism of")
         for candidate in inspired_candidates
     )
+
+
+def test_generated_descendants_inherit_source_provenance_from_inspired_parents():
+    result, _search_provider = run_with_sources((source(),), max_generations=1)
+    candidates_by_id = {candidate.id: candidate for candidate in result.all_candidates}
+
+    inspired_descendants = tuple(
+        candidate
+        for candidate in result.all_candidates
+        if candidate.generation == 1
+        and any(candidates_by_id[parent_id].source_urls for parent_id in candidate.parent_ids)
+    )
+
+    assert inspired_descendants
+    assert any(candidate in result.finalists for candidate in inspired_descendants)
+    assert all(
+        candidate.inspiration_kind is InspirationKind.SYNTHESIZED
+        for candidate in inspired_descendants
+    )
+    assert all(
+        candidate.source_urls == ("https://example.com/source-1",)
+        for candidate in inspired_descendants
+    )
+    assert all(candidate.inspiration_principles for candidate in inspired_descendants)
+    assert all(
+        candidate == candidates_by_id[candidate.id]
+        for candidate in result.finalists
+        if candidate.id in {descendant.id for descendant in inspired_descendants}
+    )
+
+
+def test_generated_descendants_from_independent_parents_do_not_inherit_source_provenance():
+    result, _search_provider = run_with_sources((source(),), max_generations=1)
+    candidates_by_id = {candidate.id: candidate for candidate in result.all_candidates}
+
+    clean_descendants = tuple(
+        candidate
+        for candidate in result.all_candidates
+        if candidate.generation == 1
+        and all(
+            not candidates_by_id[parent_id].source_urls
+            for parent_id in candidate.parent_ids
+        )
+    )
+
+    assert clean_descendants
+    assert all(candidate.source_urls == () for candidate in clean_descendants)
+    assert all(candidate.inspiration_principles == () for candidate in clean_descendants)
 
 
 def test_finalists_reference_updated_candidates_not_stale_pre_search_candidates():

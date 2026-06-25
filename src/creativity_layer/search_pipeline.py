@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from uuid import UUID
 
 from creativity_layer.engine import CreativeEngine
 from creativity_layer.inspiration import SourceAbstraction, abstract_sources
@@ -104,10 +105,10 @@ def _isolate_seed_branches(
 ) -> tuple[IdeaGenome, ...]:
     seed_ids = tuple(candidate.id for candidate in candidates if candidate.generation == 0)
     independent_seed_ids = frozenset(seed_ids[: max(1, (len(seed_ids) + 1) // 2)])
-    updated: list[IdeaGenome] = []
+    seed_updated: list[IdeaGenome] = []
     for index, candidate in enumerate(candidates):
         if candidate.id in independent_seed_ids:
-            updated.append(
+            seed_updated.append(
                 _candidate_with_provenance(
                     candidate,
                     inspiration_kind=InspirationKind.INDEPENDENT,
@@ -117,7 +118,7 @@ def _isolate_seed_branches(
             )
         elif candidate.generation == 0 and abstractions:
             abstraction = abstractions[index % len(abstractions)]
-            updated.append(
+            seed_updated.append(
                 _candidate_with_provenance(
                     candidate,
                     inspiration_kind=InspirationKind.INSPIRED,
@@ -126,7 +127,43 @@ def _isolate_seed_branches(
                 )
             )
         else:
-            updated.append(candidate)
+            seed_updated.append(candidate)
+    return _inherit_parent_provenance(tuple(seed_updated))
+
+
+def _inherit_parent_provenance(
+    candidates: tuple[IdeaGenome, ...],
+) -> tuple[IdeaGenome, ...]:
+    updated_by_id: dict[UUID, IdeaGenome] = {}
+    updated: list[IdeaGenome] = []
+    for candidate in candidates:
+        parent_urls: list[str] = []
+        parent_principles: list[str] = []
+        for parent_id in candidate.parent_ids:
+            parent = updated_by_id[parent_id]
+            parent_urls.extend(parent.source_urls)
+            parent_principles.extend(parent.inspiration_principles)
+
+        source_urls = _unique((*parent_urls, *candidate.source_urls))
+        inspiration_principles = _unique(
+            (*parent_principles, *candidate.inspiration_principles)
+        )
+        if (
+            candidate.generation > 0
+            and (parent_urls or parent_principles)
+            and (
+                source_urls != candidate.source_urls
+                or inspiration_principles != candidate.inspiration_principles
+            )
+        ):
+            candidate = _candidate_with_provenance(
+                candidate,
+                inspiration_kind=candidate.inspiration_kind,
+                source_urls=source_urls,
+                inspiration_principles=inspiration_principles,
+            )
+        updated_by_id[candidate.id] = candidate
+        updated.append(candidate)
     return tuple(updated)
 
 
@@ -142,3 +179,7 @@ def _candidate_with_provenance(
     payload["source_urls"] = source_urls
     payload["inspiration_principles"] = inspiration_principles
     return IdeaGenome.model_validate(payload)
+
+
+def _unique(values: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(values))
