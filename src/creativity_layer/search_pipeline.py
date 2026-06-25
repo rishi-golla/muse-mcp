@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from creativity_layer.engine import CreativeEngine
 from creativity_layer.inspiration import SourceAbstraction, abstract_sources
 from creativity_layer.models import IdeaGenome, InspirationKind, RunConfig, RunResult, TaskContext
+from creativity_layer.novelty import CopyingClassification, score_novelty
 from creativity_layer.search import SearchProvider, SearchPurpose, SearchQuery
 
 
@@ -12,6 +13,7 @@ from creativity_layer.search import SearchProvider, SearchPurpose, SearchQuery
 class SearchAwareEngine:
     creative_provider: object
     search_provider: SearchProvider
+    reject_likely_copying: bool = False
 
     def run(self, task: TaskContext, config: RunConfig) -> RunResult:
         result = CreativeEngine(
@@ -34,8 +36,13 @@ class SearchAwareEngine:
         )
         abstractions = abstract_sources(search_response.results, task_goal=task.goal)
         updated_candidates = _isolate_seed_branches(result.all_candidates, abstractions)
-        updated_by_id = {candidate.id: candidate for candidate in updated_candidates}
-        updated_finalists = tuple(updated_by_id[candidate.id] for candidate in result.finalists)
+        updated_candidates, updated_finalists = _score_finalists_for_copying(
+            finalists=result.finalists,
+            candidates=updated_candidates,
+            abstractions=abstractions,
+            obvious_solution=result.framed_task.obvious_solution,
+            reject_likely_copying=self.reject_likely_copying,
+        )
 
         payload = result.model_dump(mode="json")
         payload["all_candidates"] = [
@@ -46,6 +53,49 @@ class SearchAwareEngine:
         ]
         payload["reproducibility_fingerprint"] = ""
         return RunResult.model_validate(payload)
+
+
+def _score_finalists_for_copying(
+    *,
+    finalists: tuple[IdeaGenome, ...],
+    candidates: tuple[IdeaGenome, ...],
+    abstractions: tuple[SourceAbstraction, ...],
+    obvious_solution: str,
+    reject_likely_copying: bool,
+) -> tuple[tuple[IdeaGenome, ...], tuple[IdeaGenome, ...]]:
+    updated_by_id = {candidate.id: candidate for candidate in candidates}
+    rejected_ids = set()
+
+    for finalist in finalists:
+        candidate = updated_by_id[finalist.id]
+        score = score_novelty(
+            candidate,
+            peers=tuple(peer for peer in candidates if peer.id != candidate.id),
+            obvious_solution=obvious_solution,
+            sources=abstractions,
+            branch_is_search_isolated=(
+                candidate.inspiration_kind is InspirationKind.INDEPENDENT
+            ),
+            prior_art_failed=False,
+        )
+        if score.classification is not CopyingClassification.LIKELY_COPYING:
+            continue
+        updated_by_id[candidate.id] = _candidate_with_provenance(
+            candidate,
+            inspiration_kind=InspirationKind.LIKELY_COPYING,
+            source_urls=candidate.source_urls,
+            inspiration_principles=candidate.inspiration_principles,
+        )
+        if reject_likely_copying:
+            rejected_ids.add(candidate.id)
+
+    updated_candidates = tuple(updated_by_id[candidate.id] for candidate in candidates)
+    updated_finalists = tuple(
+        updated_by_id[finalist.id]
+        for finalist in finalists
+        if finalist.id not in rejected_ids
+    )
+    return updated_candidates, updated_finalists
 
 
 def _isolate_seed_branches(

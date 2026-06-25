@@ -65,16 +65,30 @@ def source(
     source_id: str = "src-1",
     url: str = "https://example.com/source-1",
     rank: int = 1,
+    title: str = "Decision garden",
+    snippet: str = "Teams use reversible claims.",
+    bounded_excerpt: str = "Teams use reversible claims.",
 ) -> SearchResult:
     return SearchResult(
         source_id=source_id,
-        title="Decision garden",
+        title=title,
         url=url,
         provider="recording-search",
         rank=rank,
-        snippet="Teams use reversible claims.",
-        bounded_excerpt="Teams use reversible claims.",
+        snippet=snippet,
+        bounded_excerpt=bounded_excerpt,
         retrieved_at=datetime(2026, 6, 25, tzinfo=UTC),
+    )
+
+
+def likely_copying_source() -> SearchResult:
+    mechanism = "Participants lend decision authority by topic and reclaim it at any time."
+    return source(
+        source_id="copy-src",
+        url="https://example.com/silent-delegation-market",
+        title="Silent delegation market",
+        snippet=mechanism,
+        bounded_excerpt=mechanism,
     )
 
 
@@ -82,12 +96,14 @@ def run_with_sources(
     sources: tuple[SearchResult, ...],
     *,
     goal: str = "Reversible team decisions",
+    reject_likely_copying: bool = False,
 ) -> tuple[RunResult, RecordingSearchProvider]:
     provider = DeterministicCreativeProvider()
     search_provider = RecordingSearchProvider(sources)
     result = SearchAwareEngine(
         creative_provider=provider,
         search_provider=search_provider,
+        reject_likely_copying=reject_likely_copying,
     ).run(
         TaskContext(goal=goal),
         RunConfig(seed_count=4, finalist_count=4, max_generations=0),
@@ -171,6 +187,41 @@ def test_finalists_reference_updated_candidates_not_stale_pre_search_candidates(
         and finalist.source_urls == ("https://example.com/source-1",)
         for finalist in result.finalists
     )
+
+
+def test_likely_copying_finalist_is_rejected_when_configured():
+    result, _search_provider = run_with_sources(
+        (likely_copying_source(),),
+        reject_likely_copying=True,
+    )
+
+    copied_candidates = tuple(
+        candidate
+        for candidate in result.all_candidates
+        if candidate.inspiration_kind is InspirationKind.LIKELY_COPYING
+    )
+    finalist_ids = {candidate.id for candidate in result.finalists}
+
+    assert copied_candidates
+    assert all(candidate.id not in finalist_ids for candidate in copied_candidates)
+
+
+def test_likely_copying_candidate_is_marked_when_rejection_is_disabled():
+    result, _search_provider = run_with_sources((likely_copying_source(),))
+    candidates_by_id = {candidate.id: candidate for candidate in result.all_candidates}
+
+    copied_finalists = tuple(
+        finalist
+        for finalist in result.finalists
+        if finalist.inspiration_kind is InspirationKind.LIKELY_COPYING
+    )
+
+    assert copied_finalists
+    assert all(finalist == candidates_by_id[finalist.id] for finalist in copied_finalists)
+
+
+def test_inspiration_kind_accepts_likely_copying_value():
+    assert InspirationKind("likely_copying") is InspirationKind.LIKELY_COPYING
 
 
 def test_result_fingerprint_is_recomputed_after_candidate_provenance_changes():
