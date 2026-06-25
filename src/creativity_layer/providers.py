@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, Protocol
+from typing import Protocol
 
 from pydantic import Field
 
@@ -9,9 +9,11 @@ from creativity_layer.models import (
     FramedTask,
     FrozenModel,
     IdeaGenome,
+    OperationTrace,
     RequiredText,
     RunConfig,
     TaskContext,
+    TokenUsage,
 )
 from creativity_layer.transforms import TransformationRequest
 
@@ -19,26 +21,31 @@ from creativity_layer.transforms import TransformationRequest
 class MeteredResponse[T](FrozenModel):
     value: T
     provider: RequiredText
+    model: RequiredText | None = None
     cost_usd: float = Field(strict=True, ge=0)
+    calls: int = Field(default=1, strict=True, ge=1)
     latency_ms: int = Field(strict=True, ge=0)
+    usage: TokenUsage = Field(default_factory=TokenUsage)
+    pricing_version: RequiredText | None = None
+    cost_is_estimated: bool = Field(default=False, strict=True)
+    request_id: RequiredText | None = None
+    operation_trace: OperationTrace | None = None
 
 
 class OperationQuote(FrozenModel):
-    """Upper bound for one accountable provider call.
-
-    Hidden internal calls are unsupported in this milestone. Supporting them
-    requires extending the provider and spend-accounting contracts.
-    """
+    """Upper bound for one accountable provider operation."""
 
     max_cost_usd: float = Field(strict=True, ge=0)
-    calls: Literal[1] = 1
+    calls: int = Field(default=1, strict=True, ge=1)
 
 
 class TaskFramer(Protocol):
     name: str
     version: str
 
-    def frame(self, task: TaskContext) -> FramedTask: ...
+    def quote_frame(self, task: TaskContext) -> OperationQuote: ...
+
+    def frame(self, task: TaskContext) -> MeteredResponse[FramedTask]: ...
 
 
 class IdeaSeeder(Protocol):

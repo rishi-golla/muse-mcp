@@ -9,6 +9,8 @@ description = "Research prototype for evolutionary creative search in AI agents"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "httpx>=0.27,<1",
+  "openai>=2.11,<3",
   "pydantic>=2,<3",
 ]
 
@@ -28,6 +30,9 @@ packages = ["src/creativity_layer"]
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
+markers = [
+  "live_openai: incurs a bounded real OpenAI API request",
+]
 
 [tool.ruff]
 line-length = 100

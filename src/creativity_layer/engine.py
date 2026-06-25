@@ -23,7 +23,7 @@ from creativity_layer.models import (
 from creativity_layer.operation import (
     provider_identity,
     validate_evaluation_payload,
-    validate_framed_task,
+    validate_framing_payload,
     validate_metered_envelope,
     validate_quote,
     validate_seed_payload,
@@ -113,33 +113,15 @@ class CreativeEngine:
         budget = BudgetController(config)
         errors: list[RunError] = []
         providers = self._providers
-        try:
-            framed = validate_framed_task(self._framer.frame(task))
-        except ValidationError:
-            _error(
-                errors,
-                stage="framing",
-                provider=providers.framer.name,
-                category="validation_error",
-                message="provider returned invalid framed task",
-                cost_incurred=False,
-            )
-            framed = self._fallback_framed_task(task)
+        framed, stopped_reason = self._frame(
+            task,
+            budget,
+            errors,
+            providers,
+        )
+        if stopped_reason is not None:
             return self._result(
-                framed, (), budget, config, providers, errors, "provider_error"
-            )
-        except Exception:
-            _error(
-                errors,
-                stage="framing",
-                provider=providers.framer.name,
-                category="provider_error",
-                message="provider operation failed",
-                cost_incurred=False,
-            )
-            framed = self._fallback_framed_task(task)
-            return self._result(
-                framed, (), budget, config, providers, errors, "provider_error"
+                framed, (), budget, config, providers, errors, stopped_reason
             )
 
         candidates, stopped_reason = self._seed_and_evaluate(
@@ -219,6 +201,122 @@ class CreativeEngine:
             providers,
             errors,
             "generation_limit",
+        )
+
+    def _frame(
+        self,
+        task: TaskContext,
+        budget: BudgetController,
+        errors: list[RunError],
+        providers: RunProviders,
+    ) -> tuple[FramedTask, str | None]:
+        try:
+            quote = validate_quote(self._framer.quote_frame(task))
+        except Exception:
+            _error(
+                errors,
+                stage="framing",
+                provider=providers.framer.name,
+                category="quote_error",
+                message="provider quote failed validation",
+                cost_incurred=False,
+            )
+            return self._fallback_framed_task(task), "provider_error"
+
+        try:
+            reservation = budget.reserve_for_framing(
+                quote.max_cost_usd,
+                required_calls=quote.calls,
+            )
+        except BudgetExceeded:
+            _error(
+                errors,
+                stage="framing",
+                provider=providers.framer.name,
+                category="budget_error",
+                message="insufficient budget for framing",
+                cost_incurred=False,
+            )
+            return self._fallback_framed_task(task), "budget_exhausted"
+
+        with reservation:
+            try:
+                response = validate_metered_envelope(self._framer.frame(task))
+            except ValidationError:
+                self._charge_attempt_from_quote(
+                    quote,
+                    reservation,
+                    stage="framing",
+                    provider=providers.framer.name,
+                )
+                _error(
+                    errors,
+                    stage="framing",
+                    provider=providers.framer.name,
+                    category="validation_error_after_response",
+                    message="provider returned invalid metered response",
+                    cost_incurred=True,
+                )
+                return self._fallback_framed_task(task), "provider_error"
+            except Exception:
+                self._charge_attempt_from_quote(
+                    quote,
+                    reservation,
+                    stage="framing",
+                    provider=providers.framer.name,
+                )
+                _error(
+                    errors,
+                    stage="framing",
+                    provider=providers.framer.name,
+                    category="provider_error_after_attempt",
+                    message="provider operation failed after invocation",
+                    cost_incurred=True,
+                )
+                return self._fallback_framed_task(task), "provider_error"
+
+            if not self._charge_response(
+                response,
+                quote,
+                reservation,
+                budget,
+                stage="framing",
+                expected_provider=providers.framer.name,
+                errors=errors,
+            ):
+                return self._fallback_framed_task(task), "provider_error"
+
+            try:
+                framed = validate_framing_payload(response)
+            except ValidationError:
+                _error(
+                    errors,
+                    stage="framing",
+                    provider=providers.framer.name,
+                    category="validation_error_after_response",
+                    message="provider returned invalid framed task",
+                    cost_incurred=True,
+                )
+                return self._fallback_framed_task(task), "provider_error"
+
+        budget.release_framing_reserve()
+        return framed, None
+
+    @staticmethod
+    def _charge_attempt_from_quote(
+        quote: OperationQuote,
+        reservation: BudgetReservation,
+        *,
+        stage: str,
+        provider: str,
+    ) -> None:
+        reservation.charge(
+            stage,
+            provider,
+            quote.max_cost_usd,
+            0,
+            cost_is_estimated=True,
+            calls=quote.calls,
         )
 
     @staticmethod
@@ -590,6 +688,13 @@ class CreativeEngine:
                     response.cost_usd,
                     response.latency_ms,
                     quoted_cost_usd=quote.max_cost_usd,
+                    model=response.model,
+                    usage=response.usage,
+                    pricing_version=response.pricing_version,
+                    cost_is_estimated=response.cost_is_estimated,
+                    request_id=response.request_id,
+                    operation_trace=response.operation_trace,
+                    calls=response.calls,
                 )
             except Exception:
                 _error(
@@ -608,6 +713,13 @@ class CreativeEngine:
                     expected_provider,
                     response.cost_usd,
                     response.latency_ms,
+                    model=response.model,
+                    usage=response.usage,
+                    pricing_version=response.pricing_version,
+                    cost_is_estimated=response.cost_is_estimated,
+                    request_id=response.request_id,
+                    operation_trace=response.operation_trace,
+                    calls=response.calls,
                 )
             except BudgetExceeded:
                 _error(

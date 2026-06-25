@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 
 import pytest
@@ -7,7 +8,9 @@ from creativity_layer.budget import (
     BudgetExceeded,
     BudgetReservation,
 )
-from creativity_layer.models import RunConfig
+from creativity_layer.engine import CreativeEngine
+from creativity_layer.models import OperationTrace, RunConfig, RunError, TokenUsage
+from creativity_layer.providers import MeteredResponse, OperationQuote
 
 
 def test_budget_reserves_finalization_capacity() -> None:
@@ -409,3 +412,182 @@ def test_audited_overage_cannot_authorize_an_in_quote_charge() -> None:
         )
 
     assert budget.records == ()
+
+
+def _live_metadata() -> dict[str, object]:
+    return {
+        "model": "economy-test-model",
+        "usage": TokenUsage(input_tokens=10, output_tokens=4),
+        "pricing_version": "test",
+        "cost_is_estimated": True,
+        "request_id": "req_test",
+        "operation_trace": OperationTrace.from_payload(
+            request={"operation": "seed"},
+            response={"status": "complete"},
+        ),
+    }
+
+
+def test_direct_charge_preserves_live_metadata() -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+
+    record = budget.charge("seed", "openai", 0.01, 2, **_live_metadata())
+
+    assert record.model == "economy-test-model"
+    assert record.usage == TokenUsage(input_tokens=10, output_tokens=4)
+    assert json.loads(record.operation_trace.response_json)["status"] == "complete"
+
+
+def test_reserved_charge_preserves_live_metadata() -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+
+    with budget.reserve(
+        0.01,
+        required_calls=1,
+        preserve_finalization=False,
+    ) as reservation:
+        record = reservation.charge(
+            "seed",
+            "openai",
+            0.01,
+            2,
+            **_live_metadata(),
+        )
+
+    assert record.request_id == "req_test"
+    assert record.pricing_version == "test"
+    assert record.cost_is_estimated is True
+
+
+def test_reserved_charge_can_account_for_multiple_provider_calls_in_one_record() -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=2,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+
+    with budget.reserve(0.5, required_calls=2, preserve_finalization=False) as reservation:
+        record = reservation.charge("frame", "openai", 0.5, 10, calls=2)
+
+    assert record.calls == 2
+    assert budget.calls_used == 2
+    assert budget.records == (record,)
+
+
+def test_reserved_charge_rejects_more_calls_than_reserved() -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=2,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+
+    with (
+        budget.reserve(0.5, required_calls=1, preserve_finalization=False) as reservation,
+        pytest.raises(BudgetExceeded, match="reservation call limit"),
+    ):
+        reservation.charge("frame", "openai", 0.5, 10, calls=2)
+
+    assert budget.records == ()
+
+
+def test_audited_overage_preserves_live_metadata() -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+
+    with budget.reserve(
+        0.01,
+        required_calls=1,
+        preserve_finalization=False,
+    ) as reservation:
+        record = budget.record_audited_overage(
+            reservation,
+            "seed",
+            "openai",
+            0.02,
+            2,
+            quoted_cost_usd=0.01,
+            **_live_metadata(),
+        )
+
+    assert record.model == "economy-test-model"
+    assert record.request_id == "req_test"
+
+
+@pytest.mark.parametrize(
+    ("response_cost", "quote_cost", "expected_charged"),
+    [(0.01, 0.01, True), (0.02, 0.01, False)],
+)
+def test_engine_charge_response_propagates_all_live_metadata(
+    response_cost: float,
+    quote_cost: float,
+    expected_charged: bool,
+) -> None:
+    budget = BudgetController(
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    )
+    response = MeteredResponse(
+        value="result",
+        provider="openai",
+        cost_usd=response_cost,
+        latency_ms=2,
+        **_live_metadata(),
+    )
+    errors: list[RunError] = []
+
+    with budget.reserve(
+        quote_cost,
+        required_calls=1,
+        preserve_finalization=False,
+    ) as reservation:
+        charged = CreativeEngine._charge_response(
+            response,
+            OperationQuote(max_cost_usd=quote_cost),
+            reservation,
+            budget,
+            stage="seed",
+            expected_provider="openai",
+            errors=errors,
+        )
+
+    assert charged is expected_charged
+    if expected_charged:
+        assert errors == []
+    else:
+        assert errors[-1].category == "overage_error"
+    assert budget.records[0].model == response.model
+    assert budget.records[0].usage == response.usage
+    assert budget.records[0].pricing_version == response.pricing_version
+    assert budget.records[0].cost_is_estimated == response.cost_is_estimated
+    assert budget.records[0].request_id == response.request_id
+    assert budget.records[0].operation_trace == response.operation_trace

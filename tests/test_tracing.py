@@ -4,16 +4,20 @@ from uuid import uuid4
 
 import pytest
 
+from creativity_layer.live_config import PrivacyMode
 from creativity_layer.models import (
     FramedTask,
     IdeaGenome,
+    OperationTrace,
     ProviderIdentity,
     RunConfig,
     RunProviders,
     RunResult,
     SpendRecord,
     TaskContext,
+    compute_reproducibility_fingerprint,
 )
+from creativity_layer.privacy import TraceView
 from creativity_layer.tracing import JsonTraceStore
 
 
@@ -36,14 +40,42 @@ def run_result() -> RunResult:
         ),
         operator_schedule=("invert",),
         framed_task=FramedTask(
-            context=TaskContext(goal="Test creativity"),
+            context=TaskContext(
+                goal="Test creativity",
+                audience="Sensitive audience",
+                constraints=("Sensitive constraint",),
+                preferences=("Sensitive preference",),
+            ),
             assumptions=("Obvious assumption",),
             obvious_solution="Obvious answer",
         ),
         finalists=(candidate,),
         all_candidates=(candidate,),
         spend_records=(
-            SpendRecord(stage="seed", provider="local", cost_usd=0.01, latency_ms=1),
+            SpendRecord(
+                stage="seed",
+                provider="local",
+                cost_usd=0.01,
+                latency_ms=1,
+                operation_trace=OperationTrace.from_payload(
+                    request={
+                        "model": "economy-model",
+                        "input": [
+                            {
+                                "role": "user",
+                                "content": "Trace prompt for Test creativity",
+                            }
+                        ],
+                    },
+                    response={
+                        "parsed": {
+                            "obvious_solution": "Trace output for Test creativity",
+                        },
+                        "refusal": "Refused because Test creativity is private",
+                        "usage": {"input_tokens": 10},
+                    },
+                ),
+            ),
         ),
         stopped_reason="generation_limit",
     )
@@ -118,3 +150,67 @@ def test_replace_failure_preserves_destination_and_cleans_up_temp_file(
 
     assert path.read_bytes() == original_bytes
     assert list(tmp_path.iterdir()) == [path]
+
+
+def test_private_trace_store_file_does_not_contain_original_task_goal(tmp_path) -> None:
+    result = run_result()
+    view = TraceView(mode=PrivacyMode.PRIVATE, secret_values=())
+
+    path = JsonTraceStore(tmp_path, trace_view=view).save(result)
+    raw_trace = path.read_text(encoding="utf-8")
+    payload = json.loads(raw_trace)
+
+    assert "Test creativity" not in raw_trace
+    assert "Trace prompt for Test creativity" not in raw_trace
+    assert "Trace output for Test creativity" not in raw_trace
+    assert "Refused because Test creativity is private" not in raw_trace
+    assert "Idea" not in raw_trace
+    assert "Mechanism" not in raw_trace
+    assert "Framing" not in raw_trace
+    assert "Value" not in raw_trace
+    assert "Sensitive audience" not in raw_trace
+    assert "Sensitive constraint" not in raw_trace
+    assert "Sensitive preference" not in raw_trace
+    assert "Obvious assumption" not in raw_trace
+    assert "Obvious answer" not in raw_trace
+    assert payload["framed_task"]["context"]["goal"]["sha256"]
+    assert payload["framed_task"]["context"]["audience"]["sha256"]
+    assert payload["framed_task"]["context"]["constraints"][0]["sha256"]
+    assert payload["framed_task"]["context"]["preferences"][0]["sha256"]
+    assert payload["framed_task"]["assumptions"][0]["sha256"]
+    assert payload["framed_task"]["obvious_solution"]["sha256"]
+    assert payload["finalists"][0]["title"]["sha256"]
+    assert payload["finalists"][0]["core_mechanism"]["sha256"]
+    assert payload["finalists"][0]["problem_framing"]["sha256"]
+    assert payload["finalists"][0]["task_value"]["sha256"]
+    trace = payload["spend_records"][0]["operation_trace"]
+    assert trace["request"]["input"][0]["content"]["sha256"]
+    assert trace["response"]["parsed"]["obvious_solution"]["sha256"]
+    assert trace["response"]["refusal"]["sha256"]
+    assert payload["framed_task"]["context"]["goal"]["length"] == len("Test creativity")
+
+
+def test_private_trace_store_does_not_mutate_run_result(tmp_path) -> None:
+    result = run_result()
+    before = result.model_dump(mode="json")
+    view = TraceView(mode=PrivacyMode.PRIVATE, secret_values=())
+
+    JsonTraceStore(tmp_path, trace_view=view).save(result)
+
+    assert result.model_dump(mode="json") == before
+    assert result.framed_task.context.goal == "Test creativity"
+
+
+def test_run_fingerprint_uses_internal_canonical_run_not_private_trace_view(
+    tmp_path,
+) -> None:
+    result = run_result()
+    view = TraceView(mode=PrivacyMode.PRIVATE, secret_values=())
+
+    path = JsonTraceStore(tmp_path, trace_view=view).save(result)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+
+    assert payload["reproducibility_fingerprint"] == result.reproducibility_fingerprint
+    assert result.reproducibility_fingerprint == compute_reproducibility_fingerprint(
+        result
+    )

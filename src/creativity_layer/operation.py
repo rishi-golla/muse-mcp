@@ -37,16 +37,21 @@ def provider_identity(provider: object) -> ProviderIdentity:
         raise ValueError("invalid provider metadata") from error
 
 
-def validate_framed_task(value: object) -> FramedTask:
-    return FramedTask.model_validate(_validation_data(value))
-
-
 def validate_quote(value: object) -> OperationQuote:
     return OperationQuote.model_validate(_validation_data(value))
 
 
 def validate_metered_envelope(value: object) -> MeteredResponse[Any]:
     return MeteredResponse[Any].model_validate(_validation_data(value))
+
+
+def validate_framing_payload(
+    response: MeteredResponse[Any],
+) -> FramedTask:
+    typed = MeteredResponse[FramedTask].model_validate(
+        response.model_dump(mode="python")
+    )
+    return typed.value
 
 
 def validate_seed_payload(

@@ -31,10 +31,32 @@ means at least one scored finalist is usable, including a valid frontier returne
 after budget exhaustion. Provider failures, empty frontiers, and trace-write failures
 return status `1`; invalid command input returns status `2`.
 
-This milestone uses deterministic local providers; it makes no external model or
-search calls. Its CLI sets both framing and finalization reserves to zero because
+Deterministic mode uses local providers; it makes no external model or search
+calls. Its CLI sets both framing and finalization reserves to zero because
 framing is unmetered and finalization is not implemented in this milestone.
 `RunConfig` retains nonzero library defaults as future-provider policy; those
 reserves intentionally reduce exploration capacity when enabled. A nonzero
 library framing reserve remains unspent in this milestone because framing is
 unmetered, deliberately stranding that capacity for future metered framing.
+
+## Live OpenAI mode
+
+Set:
+
+```powershell
+$env:OPENAI_API_KEY = "<your-api-key>"
+$env:OPENAI_ECONOMY_MODEL = "<explicit model id>"
+$env:OPENAI_STRONG_MODEL = "<explicit model id>"
+$env:OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
+$env:OPENAI_PRICING_FILE = "path\to\pricing.json"
+```
+
+Run:
+
+```powershell
+creativity-layer live "Invent a low-cost coordination mechanism" `
+  --budget-usd 0.10 `
+  --privacy private
+```
+
+Live mode performs no web search in Slice 2A.

@@ -4,7 +4,12 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from types import TracebackType
 
-from creativity_layer.models import RunConfig, SpendRecord
+from creativity_layer.models import (
+    OperationTrace,
+    RunConfig,
+    SpendRecord,
+    TokenUsage,
+)
 
 
 class BudgetExceeded(RuntimeError):
@@ -45,9 +50,10 @@ class BudgetController:
         self._reserved_calls = 0
         self._reservations: dict[object, _ReservationState] = {}
         self._max_cost = _money(config.max_cost_usd)
+        self._framing_reserve = _money(config.framing_reserve_usd)
+        self._finalization_reserve = _money(config.finalization_reserve_usd)
         self._exploration_reserve = (
-            _money(config.framing_reserve_usd)
-            + _money(config.finalization_reserve_usd)
+            self._framing_reserve + self._finalization_reserve
         )
 
     @property
@@ -60,7 +66,7 @@ class BudgetController:
 
     @property
     def calls_used(self) -> int:
-        return len(self._records)
+        return sum(record.calls for record in self._records)
 
     @property
     def remaining_usd(self) -> float:
@@ -77,6 +83,12 @@ class BudgetController:
                 - self._exploration_reserve,
             )
         )
+
+    def release_framing_reserve(self) -> None:
+        if self._framing_reserve == 0:
+            return
+        self._exploration_reserve -= self._framing_reserve
+        self._framing_reserve = Decimal("0")
 
     def can_afford(
         self,
@@ -137,6 +149,40 @@ class BudgetController:
         )
         return reservation
 
+    def reserve_for_framing(
+        self,
+        cost_usd: int | float,
+        *,
+        required_calls: int,
+    ) -> BudgetReservation:
+        cost = _money(cost_usd)
+        calls = _call_count(required_calls)
+        calls_available = (
+            self._config.max_calls - self.calls_used - self._reserved_calls
+        )
+        if calls > calls_available:
+            raise BudgetExceeded("call limit exceeded")
+
+        available = (
+            self._max_cost
+            - self._spent
+            - self._reserved_cost
+            - self._finalization_reserve
+        )
+        if cost > available:
+            raise BudgetExceeded("cost limit exceeded")
+
+        self._reserved_cost += cost
+        self._reserved_calls += calls
+        token = object()
+        reservation = BudgetReservation(self, cost, calls, _token=token)
+        self._reservations[token] = _ReservationState(
+            reservation=reservation,
+            remaining_cost=cost,
+            remaining_calls=calls,
+        )
+        return reservation
+
     def charge(
         self,
         stage: str,
@@ -145,12 +191,20 @@ class BudgetController:
         latency_ms: int,
         *,
         preserve_finalization: bool = False,
+        model: str | None = None,
+        usage: TokenUsage | None = None,
+        pricing_version: str | None = None,
+        cost_is_estimated: bool = False,
+        request_id: str | None = None,
+        operation_trace: OperationTrace | None = None,
+        calls: int = 1,
     ) -> SpendRecord:
         cost = _money(cost_usd)
+        call_count = _call_count(calls)
         calls_available = (
             self._config.max_calls - self.calls_used - self._reserved_calls
         )
-        if calls_available < 1:
+        if calls_available < call_count:
             raise BudgetExceeded("call limit exceeded")
         available = self._max_cost - self._spent - self._reserved_cost
         if preserve_finalization:
@@ -158,7 +212,20 @@ class BudgetController:
         if cost > available:
             raise BudgetExceeded("cost limit exceeded")
 
-        return self._append_record(stage, provider, cost_usd, latency_ms, cost)
+        return self._append_record(
+            stage,
+            provider,
+            cost_usd,
+            latency_ms,
+            cost,
+            model=model,
+            calls=call_count,
+            usage=usage,
+            pricing_version=pricing_version,
+            cost_is_estimated=cost_is_estimated,
+            request_id=request_id,
+            operation_trace=operation_trace,
+        )
 
     def _append_record(
         self,
@@ -167,12 +234,27 @@ class BudgetController:
         cost_usd: int | float,
         latency_ms: int,
         cost: Decimal,
+        *,
+        model: str | None = None,
+        usage: TokenUsage | None = None,
+        pricing_version: str | None = None,
+        cost_is_estimated: bool = False,
+        request_id: str | None = None,
+        operation_trace: OperationTrace | None = None,
+        calls: int = 1,
     ) -> SpendRecord:
         record = SpendRecord(
             stage=stage,
             provider=provider,
             cost_usd=cost_usd,
+            calls=calls,
             latency_ms=latency_ms,
+            model=model,
+            usage=usage if usage is not None else TokenUsage(),
+            pricing_version=pricing_version,
+            cost_is_estimated=cost_is_estimated,
+            request_id=request_id,
+            operation_trace=operation_trace,
         )
         self._records.append(record)
         self._spent += cost
@@ -186,20 +268,42 @@ class BudgetController:
         cost_usd: int | float,
         latency_ms: int,
         cost: Decimal,
+        *,
+        model: str | None = None,
+        usage: TokenUsage | None = None,
+        pricing_version: str | None = None,
+        cost_is_estimated: bool = False,
+        request_id: str | None = None,
+        operation_trace: OperationTrace | None = None,
+        calls: int = 1,
     ) -> SpendRecord:
         state = self._active_reservation_state(reservation)
-        if state.remaining_calls < 1:
+        call_count = _call_count(calls)
+        if state.remaining_calls < call_count:
             raise BudgetExceeded("reservation call limit exceeded")
         if cost > state.remaining_cost:
             raise BudgetExceeded("reservation cost limit exceeded")
 
-        record = self._append_record(stage, provider, cost_usd, latency_ms, cost)
+        record = self._append_record(
+            stage,
+            provider,
+            cost_usd,
+            latency_ms,
+            cost,
+            model=model,
+            calls=call_count,
+            usage=usage,
+            pricing_version=pricing_version,
+            cost_is_estimated=cost_is_estimated,
+            request_id=request_id,
+            operation_trace=operation_trace,
+        )
         self._reserved_cost -= cost
-        self._reserved_calls -= 1
+        self._reserved_calls -= call_count
         state.remaining_cost -= cost
-        state.remaining_calls -= 1
+        state.remaining_calls -= call_count
         reservation._remaining_cost -= cost
-        reservation._remaining_calls -= 1
+        reservation._remaining_calls -= call_count
         return record
 
     def record_audited_overage(
@@ -211,6 +315,13 @@ class BudgetController:
         latency_ms: int,
         *,
         quoted_cost_usd: int | float,
+        model: str | None = None,
+        usage: TokenUsage | None = None,
+        pricing_version: str | None = None,
+        cost_is_estimated: bool = False,
+        request_id: str | None = None,
+        operation_trace: OperationTrace | None = None,
+        calls: int = 1,
     ) -> SpendRecord:
         """Record an incurred provider overage without authorizing new work."""
         cost = _money(cost_usd)
@@ -219,18 +330,32 @@ class BudgetController:
             raise ValueError("audited overage must exceed quoted cost")
 
         state = self._active_reservation_state(reservation)
-        if state.remaining_calls < 1:
+        call_count = _call_count(calls)
+        if state.remaining_calls < call_count:
             raise BudgetExceeded("reservation call limit exceeded")
         if quoted_cost > state.remaining_cost:
             raise RuntimeError("quoted cost exceeds reservation capacity")
 
-        record = self._append_record(stage, provider, cost_usd, latency_ms, cost)
+        record = self._append_record(
+            stage,
+            provider,
+            cost_usd,
+            latency_ms,
+            cost,
+            model=model,
+            calls=call_count,
+            usage=usage,
+            pricing_version=pricing_version,
+            cost_is_estimated=cost_is_estimated,
+            request_id=request_id,
+            operation_trace=operation_trace,
+        )
         self._reserved_cost -= quoted_cost
-        self._reserved_calls -= 1
+        self._reserved_calls -= call_count
         state.remaining_cost -= quoted_cost
-        state.remaining_calls -= 1
+        state.remaining_calls -= call_count
         reservation._remaining_cost -= quoted_cost
-        reservation._remaining_calls -= 1
+        reservation._remaining_calls -= call_count
         return record
 
     def _release_reservation(self, reservation: BudgetReservation) -> None:
@@ -300,6 +425,14 @@ class BudgetReservation:
         provider: str,
         cost_usd: int | float,
         latency_ms: int,
+        *,
+        model: str | None = None,
+        usage: TokenUsage | None = None,
+        pricing_version: str | None = None,
+        cost_is_estimated: bool = False,
+        request_id: str | None = None,
+        operation_trace: OperationTrace | None = None,
+        calls: int = 1,
     ) -> SpendRecord:
         cost = _money(cost_usd)
         if self._closed:
@@ -311,6 +444,13 @@ class BudgetReservation:
             cost_usd,
             latency_ms,
             cost,
+            model=model,
+            calls=calls,
+            usage=usage,
+            pricing_version=pricing_version,
+            cost_is_estimated=cost_is_estimated,
+            request_id=request_id,
+            operation_trace=operation_trace,
         )
 
     def release(self) -> None:
