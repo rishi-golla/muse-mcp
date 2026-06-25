@@ -21,6 +21,9 @@ class SearchAwareEngine:
             evaluator=self.creative_provider,
         ).run(task, config)
 
+        if not result.all_candidates:
+            return result
+
         search_response = self.search_provider.search(
             SearchQuery(
                 text=task.goal,

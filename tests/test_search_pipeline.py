@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from creativity_layer.deterministic import DeterministicCreativeProvider
 from creativity_layer.engine import CreativeEngine
 from creativity_layer.models import InspirationKind, RunConfig, RunResult, TaskContext
+from creativity_layer.providers import OperationQuote
 from creativity_layer.search import (
     MeteredSearchUsage,
     SearchProviderResponse,
@@ -37,6 +38,26 @@ class RecordingSearchProvider:
                 cost_usd=0.0,
             ),
         )
+
+
+class FailingSeedQuoteCreativeProvider(DeterministicCreativeProvider):
+    name = "failing-seed-quote"
+    version = "test-v1"
+
+    def quote_seed(self, framed_task, config) -> OperationQuote:
+        raise RuntimeError("seed quote failed")
+
+
+class RaisingSearchProvider:
+    name = "raising-search"
+    version = "test-v1"
+
+    def __init__(self) -> None:
+        self.called = False
+
+    def search(self, query: SearchQuery) -> SearchProviderResponse:
+        self.called = True
+        raise AssertionError("search provider should not be called")
 
 
 def source(
@@ -172,3 +193,44 @@ def test_result_fingerprint_is_recomputed_after_candidate_provenance_changes():
     stale_payload["reproducibility_fingerprint"] = base_result.reproducibility_fingerprint
     with pytest.raises(ValidationError, match="reproducibility_fingerprint"):
         RunResult.model_validate(stale_payload)
+
+
+def test_search_is_skipped_when_creative_run_returns_no_candidates():
+    creative_provider = FailingSeedQuoteCreativeProvider()
+    search_provider = RaisingSearchProvider()
+
+    result = SearchAwareEngine(
+        creative_provider=creative_provider,
+        search_provider=search_provider,
+    ).run(
+        TaskContext(goal="Reversible team decisions"),
+        RunConfig(seed_count=4, finalist_count=4, max_generations=0),
+    )
+
+    assert result.stopped_reason == "provider_error"
+    assert result.all_candidates == ()
+    assert search_provider.called is False
+
+
+def test_empty_search_results_leave_independent_candidates_without_source_provenance():
+    result, search_provider = run_with_sources(())
+
+    assert search_provider.queries == [
+        SearchQuery(
+            text="Reversible team decisions",
+            purpose=SearchPurpose.NOVELTY,
+            limit=2,
+            freshness_bucket="static",
+        )
+    ]
+    assert result.stopped_reason == "generation_limit"
+    assert result.all_candidates
+    assert all(
+        candidate.inspiration_kind is InspirationKind.INDEPENDENT
+        for candidate in result.all_candidates
+    )
+    assert all(candidate.source_urls == () for candidate in result.all_candidates)
+    assert all(
+        candidate.inspiration_principles == ()
+        for candidate in result.all_candidates
+    )
