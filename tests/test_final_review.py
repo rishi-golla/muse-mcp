@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import inspect
 import json
+import re
 from pathlib import Path
 
 import pytest
 
+import creativity_layer.cli as cli
 from creativity_layer.budget import BudgetController
 from creativity_layer.cli import run_cli
 from creativity_layer.deterministic import DeterministicCreativeProvider
@@ -425,3 +428,10 @@ def test_deterministic_cli_disables_future_provider_reserves(
 
     assert payload["config"]["framing_reserve_usd"] == 0
     assert payload["config"]["finalization_reserve_usd"] == 0
+
+
+def test_compare_mode_does_not_reference_live_search_adapters() -> None:
+    compare_source = inspect.getsource(cli._run_compare)
+
+    assert "DeterministicSearchProvider()" in compare_source
+    assert re.search(r"\b(?:Exa|Brave|OpenAI|LiveSearch)\b", compare_source) is None

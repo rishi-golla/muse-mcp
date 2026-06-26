@@ -22,9 +22,11 @@ from creativity_layer.openai_provider import OpenAICreativeProvider
 from creativity_layer.pricing import PricingTable
 from creativity_layer.privacy import TraceView
 from creativity_layer.reliability import CircuitBreaker, RetryPolicy
+from creativity_layer.search import DeterministicSearchProvider
+from creativity_layer.search_pipeline import SearchAwareEngine
 from creativity_layer.tracing import JsonTraceStore
 
-COMMANDS = frozenset({"deterministic", "live"})
+COMMANDS = frozenset({"deterministic", "live", "compare"})
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -45,6 +47,17 @@ def build_parser() -> argparse.ArgumentParser:
     deterministic.add_argument("--generations", type=int, default=1)
     deterministic.add_argument("--max-cost-usd", type=float, default=1.0)
     deterministic.add_argument("--max-calls", type=int, default=30)
+
+    compare = subparsers.add_parser(
+        "compare",
+        help="Compare deterministic baseline and no-network search-aware runs.",
+    )
+    compare.add_argument("goal")
+    compare.add_argument("--trace-dir", type=Path, default=Path(".traces"))
+    compare.add_argument("--seed-count", type=int, default=4)
+    compare.add_argument("--finalist-count", type=int, default=2)
+    compare.add_argument("--generations", type=int, default=0)
+    compare.add_argument("--budget-usd", type=float, default=0.10)
 
     live = subparsers.add_parser(
         "live",
@@ -167,6 +180,76 @@ def _run_deterministic(args: argparse.Namespace, parser: argparse.ArgumentParser
         config,
     )
     return _save_and_print_summary(result, trace_root=args.trace_dir)
+
+
+def _save_compare_trace(result, *, trace_root: Path) -> Path:
+    return JsonTraceStore(trace_root.resolve()).save(result)
+
+
+def _run_compare(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    try:
+        task = TaskContext(goal=args.goal)
+        config = RunConfig(
+            max_cost_usd=args.budget_usd,
+            max_calls=30,
+            max_generations=args.generations,
+            seed_count=args.seed_count,
+            finalist_count=args.finalist_count,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        )
+    except ValidationError as error:
+        parser.error(_validation_message(error))
+
+    baseline_provider = DeterministicCreativeProvider()
+    baseline_result = CreativeEngine(
+        framer=baseline_provider,
+        seeder=baseline_provider,
+        transformer=baseline_provider,
+        evaluator=baseline_provider,
+    ).run(task, config)
+
+    search_aware_result = SearchAwareEngine(
+        creative_provider=DeterministicCreativeProvider(),
+        search_provider=DeterministicSearchProvider(),
+    ).run(task, config)
+
+    try:
+        baseline_trace_path = _save_compare_trace(
+            baseline_result,
+            trace_root=args.trace_dir,
+        )
+        search_aware_trace_path = _save_compare_trace(
+            search_aware_result,
+            trace_root=args.trace_dir,
+        )
+    except OSError as error:
+        resolved_trace_root = args.trace_dir.resolve()
+        print(
+            f"error: could not write trace to {resolved_trace_root}: {error}",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(
+        json.dumps(
+            {
+                "baseline": {
+                    "trace_path": str(baseline_trace_path),
+                    "finalist_count": len(baseline_result.finalists),
+                    "stopped_reason": baseline_result.stopped_reason,
+                },
+                "search_aware": {
+                    "trace_path": str(search_aware_trace_path),
+                    "finalist_count": len(search_aware_result.finalists),
+                    "stopped_reason": search_aware_result.stopped_reason,
+                    "novelty_mode": "provisional_no_network",
+                },
+            },
+            indent=2,
+        )
+    )
+    return 0
 
 
 def _configuration_error(parser: argparse.ArgumentParser, message: str) -> int:
@@ -293,6 +376,8 @@ def _run_live(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 def run_cli(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(_normalize_argv(argv))
+    if args.command == "compare":
+        return _run_compare(args, parser)
     if args.command == "live":
         return _run_live(args, parser)
     return _run_deterministic(args, parser)

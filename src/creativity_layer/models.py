@@ -42,6 +42,7 @@ class InspirationKind(StrEnum):
     INSPIRED = "inspired"
     SYNTHESIZED = "synthesized"
     ADAPTED = "adapted"
+    LIKELY_COPYING = "likely_copying"
 
 
 class TaskContext(FrozenModel):
