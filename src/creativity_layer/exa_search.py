@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
+from typing import Protocol
 
 from pydantic import ValidationError
 
@@ -21,6 +22,10 @@ from creativity_layer.search import (
 )
 
 
+class ExaSearchClient(Protocol):
+    def search(self, query: str, **kwargs: object) -> object: ...
+
+
 class ExaSearchProvider:
     name = "exa"
     version = "exa-search-v1"
@@ -29,7 +34,7 @@ class ExaSearchProvider:
         self,
         *,
         credentials: ExaSearchCredentials,
-        client: object | None = None,
+        client: ExaSearchClient | None = None,
         runtime: LiveSearchRuntime | None = None,
     ) -> None:
         self.credentials = credentials
@@ -50,12 +55,17 @@ class ExaSearchProvider:
         except SearchProviderError:
             raise
         except Exception as error:
-            raise SearchProviderError(
+            provider_error = SearchProviderError(
                 provider=self.name,
                 category="search_error",
                 message=str(error),
                 secret_values=(self.credentials.api_key.get_secret_value(),),
-            ) from error
+            )
+        else:
+            provider_error = None
+
+        if provider_error is not None:
+            raise provider_error
 
         results, skipped_count = self._build_results(payload)
         source_ids = tuple(result.source_id for result in results)
@@ -91,28 +101,27 @@ class ExaSearchProvider:
         )
 
     @property
-    def client(self) -> object:
+    def client(self) -> ExaSearchClient:
         if self._client is None:
             self._client = self._build_default_client()
         return self._client
 
-    def _build_default_client(self) -> object:
+    def _build_default_client(self) -> ExaSearchClient:
         api_key = self.credentials.api_key.get_secret_value()
         try:
             from exa_py import Exa  # type: ignore[import-not-found]
         except ImportError:
-            try:
-                from exa import Exa  # type: ignore[import-not-found]
-            except ImportError as error:
-                raise SearchProviderError(
-                    provider=self.name,
-                    category="configuration_error",
-                    message=(
-                        "Exa SDK is not installed; install exa_py or exa to use "
-                        "live Exa search."
-                    ),
-                    secret_values=(api_key,),
-                ) from error
+            provider_error = SearchProviderError(
+                provider=self.name,
+                category="configuration_error",
+                message="Exa SDK is not installed; install exa_py to use live Exa search.",
+                secret_values=(api_key,),
+            )
+        else:
+            provider_error = None
+
+        if provider_error is not None:
+            raise provider_error
         return Exa(api_key)
 
     def _build_results(self, payload: object) -> tuple[tuple[SearchResult, ...], int]:

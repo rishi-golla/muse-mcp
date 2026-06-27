@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
+import types
 from dataclasses import dataclass
 
 import pytest
@@ -205,6 +207,10 @@ def test_exa_search_sanitizes_client_exceptions() -> None:
     assert error.category == "search_error"
     assert "exa-secret" not in str(error)
     assert "[REDACTED]" in str(error)
+    assert error.__cause__ is None
+    assert error.__context__ is None
+    assert "exa-secret" not in repr(error)
+    assert all("exa-secret" not in repr(arg) for arg in error.args)
 
 
 def test_exa_search_preserves_lazy_client_provider_errors() -> None:
@@ -228,3 +234,34 @@ def test_exa_search_preserves_lazy_client_provider_errors() -> None:
     error = exc_info.value
     assert error.category == "configuration_error"
     assert "exa-secret" not in str(error)
+
+
+def test_exa_search_requires_official_exa_py_sdk_without_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class UnknownExa:
+        def __init__(self, api_key: str) -> None:
+            raise AssertionError(f"fallback exa module received {api_key}")
+
+    fake_exa_module = types.ModuleType("exa")
+    fake_exa_module.Exa = UnknownExa
+    monkeypatch.setitem(sys.modules, "exa_py", None)
+    monkeypatch.setitem(sys.modules, "exa", fake_exa_module)
+
+    provider = ExaSearchProvider(
+        credentials=ExaSearchCredentials(api_key=SecretStr("exa-secret")),
+        runtime=LiveSearchRuntime(),
+    )
+
+    with pytest.raises(SearchProviderError) as exc_info:
+        provider.search(SearchQuery(text="x", purpose=SearchPurpose.EVIDENCE, limit=1))
+
+    error = exc_info.value
+    assert error.provider == "exa"
+    assert error.category == "configuration_error"
+    assert "exa_py" in str(error)
+    assert "exa-secret" not in str(error)
+    assert "exa-secret" not in repr(error)
+    assert all("exa-secret" not in repr(arg) for arg in error.args)
+    assert error.__cause__ is None
+    assert error.__context__ is None
