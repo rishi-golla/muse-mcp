@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
 
 from pydantic import Field, SecretStr
 
@@ -37,27 +36,33 @@ class OpenAIWebSearchConfig(FrozenModel):
 
 
 class LiveSearchRuntime(FrozenModel):
-    timeout_seconds: float = Field(default=10.0, strict=True, gt=0)
+    timeout_seconds: float = Field(default=10.0, strict=True, gt=0, le=30.0)
     max_results: int = Field(default=10, strict=True, ge=1, le=10)
     snippet_chars: int = Field(default=500, strict=True, ge=80, le=2000)
 
 
-@dataclass(frozen=True)
 class SearchProviderError(RuntimeError):
-    provider: str
-    category: str
-    message: str
-    secret_values: tuple[str, ...] = ()
-
-    def __str__(self) -> str:
-        sanitized = self.message
+    def __init__(
+        self,
+        *,
+        provider: str,
+        category: str,
+        message: str,
+        secret_values: tuple[str, ...] = (),
+    ) -> None:
+        sanitized = message
         for secret in sorted(
-            (item for item in self.secret_values if item),
+            (item for item in secret_values if item),
             key=len,
             reverse=True,
         ):
             sanitized = sanitized.replace(secret, REDACTED)
-        return f"{self.provider} {self.category}: {sanitized}"
+
+        self.provider = provider
+        self.category = category
+        self.message = sanitized
+        self.redacted_secret_count = sum(1 for item in secret_values if item)
+        super().__init__(f"{provider} {category}: {sanitized}")
 
 
 def _secret_from_env(name: str) -> SecretStr:

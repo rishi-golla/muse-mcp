@@ -78,6 +78,8 @@ def test_runtime_rejects_unbounded_values() -> None:
     with pytest.raises(ValidationError):
         LiveSearchRuntime(timeout_seconds=0)
     with pytest.raises(ValidationError):
+        LiveSearchRuntime(timeout_seconds=31.0)
+    with pytest.raises(ValidationError):
         LiveSearchRuntime(max_results=11)
     with pytest.raises(ValidationError):
         LiveSearchRuntime(snippet_chars=79)
@@ -92,7 +94,13 @@ def test_search_provider_error_redacts_secret_values() -> None:
     )
 
     assert "exa-secret" not in str(error)
+    assert "exa-secret" not in repr(error)
+    assert "exa-secret" not in str(error.args)
+    assert "exa-secret" not in error.message
+    assert not hasattr(error, "secret_values")
     assert "[REDACTED]" in str(error)
+    assert error.provider == "exa"
+    assert error.category == "network_error"
 
 
 def test_credentials_accept_secretstr_without_exposing_value() -> None:
