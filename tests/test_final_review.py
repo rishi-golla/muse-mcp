@@ -435,3 +435,10 @@ def test_compare_mode_does_not_reference_live_search_adapters() -> None:
 
     assert "DeterministicSearchProvider()" in compare_source
     assert re.search(r"\b(?:Exa|Brave|OpenAI|LiveSearch)\b", compare_source) is None
+
+
+def test_normal_test_markers_exclude_live_search_by_default() -> None:
+    pyproject_text = Path("pyproject.toml").read_text(encoding="utf-8")
+
+    assert '"live_search: incurs bounded real search provider requests"' in pyproject_text
+    assert 'addopts = "-ra"' in pyproject_text

@@ -76,3 +76,19 @@ creativity-layer live "Invent a low-cost coordination mechanism" `
 ```
 
 Live mode performs no web search in Slice 2A.
+
+## Live search adapter smoke tests
+
+Normal tests do not call Exa, Brave, or OpenAI web search. Live search adapter
+smoke tests are opt-in and require explicit approval plus provider credentials:
+
+```powershell
+$env:CREATIVITY_LAYER_LIVE_SEARCH_APPROVED = "1"
+$env:EXA_API_KEY = "<exa-api-key>"
+$env:BRAVE_SEARCH_API_KEY = "<brave-search-api-key>"
+$env:OPENAI_API_KEY = "<openai-api-key>"
+$env:OPENAI_WEB_SEARCH_MODEL = "<explicit-web-search-capable-model>"
+python -m pytest -m live_search
+```
+
+The default compare path remains no-network and deterministic.
