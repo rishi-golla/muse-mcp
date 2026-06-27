@@ -32,6 +32,7 @@ addopts = "-ra"
 testpaths = ["tests"]
 markers = [
   "live_openai: incurs a bounded real OpenAI API request",
+  "live_search: incurs bounded real search provider requests",
 ]
 
 [tool.ruff]
