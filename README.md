@@ -88,7 +88,7 @@ $env:EXA_API_KEY = "<exa-api-key>"
 $env:BRAVE_SEARCH_API_KEY = "<brave-search-api-key>"
 $env:OPENAI_API_KEY = "<openai-api-key>"
 $env:OPENAI_WEB_SEARCH_MODEL = "<explicit-web-search-capable-model>"
-python -m pytest -m live_search
+python -m pytest -m "live_search"
 ```
 
 The default compare path remains no-network and deterministic.

@@ -440,5 +440,6 @@ def test_compare_mode_does_not_reference_live_search_adapters() -> None:
 def test_normal_test_markers_exclude_live_search_by_default() -> None:
     pyproject_text = Path("pyproject.toml").read_text(encoding="utf-8")
 
+    assert 'addopts = "-ra -m \\"not live_openai and not live_search\\""' in pyproject_text
+    assert '"live_openai: incurs a bounded real OpenAI API request"' in pyproject_text
     assert '"live_search: incurs bounded real search provider requests"' in pyproject_text
-    assert 'addopts = "-ra"' in pyproject_text

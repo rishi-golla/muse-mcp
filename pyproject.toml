@@ -28,7 +28,7 @@ creativity-layer = "creativity_layer.cli:main"
 packages = ["src/creativity_layer"]
 
 [tool.pytest.ini_options]
-addopts = "-ra"
+addopts = "-ra -m \"not live_openai and not live_search\""
 testpaths = ["tests"]
 markers = [
   "live_openai: incurs a bounded real OpenAI API request",
