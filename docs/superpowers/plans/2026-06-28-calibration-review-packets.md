@@ -26,8 +26,8 @@ README.md                                        Review packet command docs
 
 - Do not add rating ingestion, reviewer identity, agreement metrics, calibration fitting, task-set generation, or budget reports.
 - Do not execute live providers.
-- Review packet JSON must not expose candidate UUIDs, parent IDs, source URLs, provider identities, operation traces, branch costs, branch latency, or reproducibility fingerprints inside reviewer-facing candidate objects.
-- Preserve run-level fingerprint only in packet metadata.
+- Review packet JSON must not expose candidate UUIDs, parent IDs, source URLs, provider identities, operation traces, branch costs, branch latency, model-generated scores, or reproducibility fingerprints.
+- Use the run-level fingerprint only internally for deterministic packet IDs and shuffling.
 - Shuffle candidates deterministically from `RunResult.finalists` by default.
 - Assign labels only after shuffling.
 
@@ -101,7 +101,6 @@ class ReviewCandidate(FrozenModel):
 
 class ReviewPacketMetadata(FrozenModel):
     run_id: RequiredText
-    run_fingerprint: RequiredText
     stopped_reason: RequiredText
     candidate_count: int
     shuffle_seed: int

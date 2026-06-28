@@ -159,6 +159,8 @@ def test_review_packet_json_excludes_hidden_candidate_and_trace_data() -> None:
         "source_urls",
         "parent_ids",
         "system_scores",
+        "run_fingerprint",
+        run_result().reproducibility_fingerprint,
         "providers",
         "all_candidates",
         "spend_records",

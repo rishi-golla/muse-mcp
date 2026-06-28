@@ -51,8 +51,8 @@ Each packet contains:
 - `rubric`: stable prompts for originality, usefulness, coherence, feasibility, user fit, and
   overall preference.
 - `candidates`: randomized tuple of blinded candidates.
-- `metadata`: non-secret bookkeeping such as run ID, run fingerprint, stopped reason, and
-  candidate count.
+- `metadata`: non-secret bookkeeping such as run ID, stopped reason, candidate count, and
+  shuffle seed.
 
 Each candidate contains:
 
@@ -70,6 +70,7 @@ Each candidate must not contain:
 - branch cost or latency
 - run ordering position
 - model-generated scores
+- run fingerprints
 
 ## Randomization
 
