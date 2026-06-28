@@ -127,10 +127,10 @@ def test_build_review_packet_blinds_and_scores_finalists() -> None:
     assert packet.task.risk_tolerance == 0.25
     assert packet.metadata.candidate_count == 2
     assert packet.metadata.shuffle_seed == 17
-    assert packet.candidates[0].system_scores is not None
     assert not hasattr(packet.candidates[0], "candidate_id")
     assert not hasattr(packet.candidates[0], "source_urls")
     assert not hasattr(packet.candidates[0], "parent_ids")
+    assert not hasattr(packet.candidates[0], "system_scores")
 
 
 def test_review_packet_json_excludes_hidden_candidate_and_trace_data() -> None:
@@ -158,10 +158,13 @@ def test_review_packet_json_excludes_hidden_candidate_and_trace_data() -> None:
         "operation_trace",
         "source_urls",
         "parent_ids",
+        "system_scores",
         "providers",
         "all_candidates",
         "spend_records",
         '"generation"',
+        "0.91",
+        "0.82",
     ):
         assert forbidden not in packet_json
 

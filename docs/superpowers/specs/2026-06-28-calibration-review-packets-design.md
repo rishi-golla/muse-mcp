@@ -59,8 +59,6 @@ Each candidate contains:
 - `label`: `A`, `B`, `C`, ...
 - `title`, `core_mechanism`, `problem_framing`, `task_value`
 - bounded explanatory fields useful for human judgment
-- `system_scores`: current model-generated scores when present, retained as optional calibration
-  covariates
 
 Each candidate must not contain:
 
@@ -71,6 +69,7 @@ Each candidate must not contain:
 - raw operation traces
 - branch cost or latency
 - run ordering position
+- model-generated scores
 
 ## Randomization
 

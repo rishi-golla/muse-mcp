@@ -28,14 +28,6 @@ class ReviewRubric(FrozenModel):
     overall_prompt: RequiredText
 
 
-class ReviewCandidateScores(FrozenModel):
-    originality: float = Field(strict=True, ge=0.0, le=1.0)
-    usefulness: float = Field(strict=True, ge=0.0, le=1.0)
-    coherence: float = Field(strict=True, ge=0.0, le=1.0)
-    feasibility: float = Field(strict=True, ge=0.0, le=1.0)
-    user_fit: float = Field(strict=True, ge=0.0, le=1.0)
-
-
 class ReviewCandidate(FrozenModel):
     label: RequiredText
     title: RequiredText
@@ -50,7 +42,6 @@ class ReviewCandidate(FrozenModel):
     uncertainties: tuple[RequiredText, ...] = ()
     weaknesses: tuple[RequiredText, ...] = ()
     inspiration_kind: RequiredText
-    system_scores: ReviewCandidateScores | None = None
 
 
 class ReviewPacketMetadata(FrozenModel):
@@ -119,17 +110,6 @@ def _labeled_shuffled_finalists(
 
 
 def _candidate_from_genome(candidate: IdeaGenome, *, label: str) -> ReviewCandidate:
-    scores = (
-        ReviewCandidateScores(
-            originality=candidate.scores.originality,
-            usefulness=candidate.scores.usefulness,
-            coherence=candidate.scores.coherence,
-            feasibility=candidate.scores.feasibility,
-            user_fit=candidate.scores.user_fit,
-        )
-        if candidate.scores is not None
-        else None
-    )
     return ReviewCandidate(
         label=label,
         title=candidate.title,
@@ -144,7 +124,6 @@ def _candidate_from_genome(candidate: IdeaGenome, *, label: str) -> ReviewCandid
         uncertainties=candidate.uncertainties,
         weaknesses=candidate.weaknesses,
         inspiration_kind=str(candidate.inspiration_kind),
-        system_scores=scores,
     )
 
 

@@ -84,13 +84,6 @@ class ReviewRubric(FrozenModel):
     user_fit_prompt: RequiredText
     overall_prompt: RequiredText
 
-class ReviewCandidateScores(FrozenModel):
-    originality: float
-    usefulness: float
-    coherence: float
-    feasibility: float
-    user_fit: float
-
 class ReviewCandidate(FrozenModel):
     label: RequiredText
     title: RequiredText
@@ -105,7 +98,6 @@ class ReviewCandidate(FrozenModel):
     uncertainties: tuple[str, ...] = ()
     weaknesses: tuple[str, ...] = ()
     inspiration_kind: str
-    system_scores: ReviewCandidateScores | None = None
 
 class ReviewPacketMetadata(FrozenModel):
     run_id: RequiredText
