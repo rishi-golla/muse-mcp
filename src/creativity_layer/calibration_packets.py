@@ -4,7 +4,7 @@ import hashlib
 import json
 import random
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from creativity_layer.models import FrozenModel, IdeaGenome, RequiredText, RunResult
 
@@ -57,7 +57,7 @@ class ReviewPacketMetadata(FrozenModel):
     run_id: RequiredText
     run_fingerprint: RequiredText
     stopped_reason: RequiredText
-    candidate_count: int = Field(strict=True, ge=0)
+    candidate_count: int = Field(strict=True, ge=1)
     shuffle_seed: int = Field(strict=True)
 
 
@@ -68,6 +68,14 @@ class ReviewPacket(FrozenModel):
     rubric: ReviewRubric
     candidates: tuple[ReviewCandidate, ...]
     metadata: ReviewPacketMetadata
+
+    @model_validator(mode="after")
+    def reject_empty_or_mismatched_candidates(self) -> ReviewPacket:
+        if not self.candidates:
+            raise ValueError("review packet must contain at least one candidate")
+        if self.metadata.candidate_count != len(self.candidates):
+            raise ValueError("candidate_count must match candidates")
+        return self
 
 
 DEFAULT_RUBRIC = ReviewRubric(
@@ -86,7 +94,7 @@ def build_review_packet(result: RunResult, *, shuffle_seed: int = 0) -> ReviewPa
         for label, candidate in _labeled_shuffled_finalists(result, shuffle_seed)
     )
     return ReviewPacket(
-        packet_id=_packet_id(result, shuffle_seed, candidates),
+        packet_id=_packet_id(result, shuffle_seed),
         packet_version=PACKET_VERSION,
         task=_review_task(result),
         rubric=DEFAULT_RUBRIC,
@@ -151,17 +159,11 @@ def _review_task(result: RunResult) -> ReviewTask:
     )
 
 
-def _packet_id(
-    result: RunResult, shuffle_seed: int, candidates: tuple[ReviewCandidate, ...]
-) -> str:
+def _packet_id(result: RunResult, shuffle_seed: int) -> str:
     payload = {
         "packet_version": PACKET_VERSION,
         "run_fingerprint": result.reproducibility_fingerprint,
         "shuffle_seed": shuffle_seed,
-        "candidates": [
-            candidate.model_dump(mode="json", exclude_none=True)
-            for candidate in candidates
-        ],
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

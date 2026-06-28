@@ -4,7 +4,10 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from creativity_layer.calibration_packets import build_review_packet
+from creativity_layer.calibration_packets import (
+    ReviewPacket,
+    build_review_packet,
+)
 from creativity_layer.models import (
     EvaluationScores,
     FramedTask,
@@ -197,3 +200,34 @@ def test_review_packet_models_are_immutable() -> None:
 
     with pytest.raises(ValidationError):
         packet.metadata.shuffle_seed = 99
+
+
+def test_packet_id_uses_version_fingerprint_and_seed_only() -> None:
+    result = run_result()
+    original = build_review_packet(result, shuffle_seed=17)
+    changed_candidate_text = result.model_copy(
+        update={
+            "finalists": (
+                result.finalists[0].model_copy(update={"title": "Changed title"}),
+                result.finalists[1],
+            ),
+            "all_candidates": (
+                result.finalists[0].model_copy(update={"title": "Changed title"}),
+                result.finalists[1],
+            ),
+        }
+    )
+
+    changed = build_review_packet(changed_candidate_text, shuffle_seed=17)
+
+    assert changed.packet_id == original.packet_id
+
+
+def test_review_packet_rejects_empty_candidate_content() -> None:
+    packet = build_review_packet(run_result(), shuffle_seed=17)
+    payload = packet.model_dump(mode="json")
+    payload["candidates"] = []
+    payload["metadata"]["candidate_count"] = 0
+
+    with pytest.raises(ValidationError):
+        ReviewPacket.model_validate(payload)
