@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import random
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from pydantic import Field, model_validator
 
@@ -66,6 +69,36 @@ class ReviewPacket(FrozenModel):
         if self.metadata.candidate_count != len(self.candidates):
             raise ValueError("candidate_count must match candidates")
         return self
+
+
+class ReviewPacketStore:
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    def save(self, packet: ReviewPacket) -> Path:
+        self._root.mkdir(parents=True, exist_ok=True)
+        path = self._root / f"{packet.packet_id}.review-packet.json"
+        temp_path: Path | None = None
+        try:
+            with NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                newline="\n",
+                dir=self._root,
+                prefix=f".{packet.packet_id}.",
+                suffix=".tmp",
+                delete=False,
+            ) as temp_file:
+                temp_path = Path(temp_file.name)
+                temp_file.write(json.dumps(packet.model_dump(mode="json"), indent=2))
+                temp_file.flush()
+                os.fsync(temp_file.fileno())
+
+            os.replace(temp_path, path)
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
+        return path
 
 
 DEFAULT_RUBRIC = ReviewRubric(

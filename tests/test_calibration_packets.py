@@ -1,4 +1,5 @@
 import json
+import os
 from uuid import UUID
 
 import pytest
@@ -6,6 +7,7 @@ from pydantic import ValidationError
 
 from creativity_layer.calibration_packets import (
     ReviewPacket,
+    ReviewPacketStore,
     build_review_packet,
 )
 from creativity_layer.models import (
@@ -236,3 +238,46 @@ def test_review_packet_rejects_empty_candidate_content() -> None:
 
     with pytest.raises(ValidationError):
         ReviewPacket.model_validate(payload)
+
+
+def test_review_packet_store_writes_stable_json(tmp_path, monkeypatch) -> None:
+    packet = build_review_packet(run_result(), shuffle_seed=17)
+    replaced_from = []
+    fsynced = []
+    real_replace = os.replace
+    real_fsync = os.fsync
+
+    def record_replace(source, destination) -> None:
+        replaced_from.append((source, destination))
+        real_replace(source, destination)
+
+    def record_fsync(file_descriptor) -> None:
+        fsynced.append(file_descriptor)
+        real_fsync(file_descriptor)
+
+    monkeypatch.setattr(os, "replace", record_replace)
+    monkeypatch.setattr(os, "fsync", record_fsync)
+
+    packet_root = tmp_path / "packets"
+    store = ReviewPacketStore(packet_root)
+    path = store.save(packet)
+    first_bytes = path.read_bytes()
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text("stale packet", encoding="utf-8")
+
+    overwritten_path = store.save(packet)
+
+    assert path == packet_root / f"{packet.packet_id}.review-packet.json"
+    assert path.name == f"{packet.packet_id}.review-packet.json"
+    assert payload == packet.model_dump(mode="json")
+    assert first_bytes == json.dumps(packet.model_dump(mode="json"), indent=2).encode(
+        "utf-8"
+    )
+    assert overwritten_path == path
+    assert overwritten_path.read_bytes() == first_bytes
+    assert len(fsynced) == 2
+    assert len(replaced_from) == 2
+    assert replaced_from[0][0] != replaced_from[1][0]
+    assert all(source.parent == packet_root for source, _ in replaced_from)
+    assert all(destination == path for _, destination in replaced_from)
+    assert list(packet_root.iterdir()) == [path]
