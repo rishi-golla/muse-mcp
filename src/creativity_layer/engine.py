@@ -72,6 +72,13 @@ def _error(
     )
 
 
+def _evaluation_error_details(error: Exception) -> tuple[str, str]:
+    message = str(error).lower()
+    if "score must be finite and between 0 and 1" in message:
+        return "validation_error", "provider returned evaluation scores outside 0..1"
+    return "provider_error", "provider operation failed"
+
+
 def _validated_candidate(
     candidate: IdeaGenome,
     *,
@@ -439,13 +446,14 @@ class CreativeEngine:
             seed_cost = Decimal(str(seeded.cost_usd)) / Decimal(len(seeds))
             seed_latency = Decimal(str(seeded.latency_ms)) / Decimal(len(seeds))
             evaluated: list[IdeaGenome] = []
-            for candidate in seeds:
+            had_evaluation_failure = False
+            for index, candidate in enumerate(seeds):
                 attributed = _validated_candidate(
                     candidate,
                     branch_cost=seed_cost,
                     branch_latency=seed_latency,
                 )
-                result = self._evaluate(
+                result, preserve_candidate, continue_evaluating = self._evaluate(
                     attributed,
                     framed_task,
                     evaluation_quote,
@@ -455,9 +463,23 @@ class CreativeEngine:
                     providers,
                 )
                 if result is None:
-                    return [], "provider_error"
+                    had_evaluation_failure = True
+                    if not preserve_candidate:
+                        return [], "provider_error"
+                    evaluated.append(attributed)
+                    if not continue_evaluating:
+                        for remaining in seeds[index + 1 :]:
+                            evaluated.append(
+                                _validated_candidate(
+                                    remaining,
+                                    branch_cost=seed_cost,
+                                    branch_latency=seed_latency,
+                                )
+                            )
+                        break
+                    continue
                 evaluated.append(result)
-            return evaluated, None
+            return evaluated, "provider_error" if had_evaluation_failure else None
 
     def _transform_and_evaluate(
         self,
@@ -583,7 +605,7 @@ class CreativeEngine:
                 branch_cost=parent_cost + Decimal(str(transformed.cost_usd)),
                 branch_latency=parent_latency + Decimal(str(transformed.latency_ms)),
             )
-            evaluated = self._evaluate(
+            evaluated, _preserve_candidate, _continue_evaluating = self._evaluate(
                 attributed,
                 framed_task,
                 evaluation_quote,
@@ -605,7 +627,7 @@ class CreativeEngine:
         budget: BudgetController,
         errors: list[RunError],
         providers: RunProviders,
-    ) -> IdeaGenome | None:
+    ) -> tuple[IdeaGenome | None, bool, bool]:
         try:
             response = validate_metered_envelope(
                 self._evaluator.evaluate(candidate, framed_task)
@@ -619,17 +641,18 @@ class CreativeEngine:
                 message="provider returned invalid metered response",
                 cost_incurred=False,
             )
-            return None
-        except Exception:
+            return None, False, False
+        except Exception as error:
+            category, message = _evaluation_error_details(error)
             _error(
                 errors,
                 stage="evaluation",
                 provider=providers.evaluator.name,
-                category="provider_error",
-                message="provider operation failed",
+                category=category,
+                message=message,
                 cost_incurred=False,
             )
-            return None
+            return None, True, True
 
         if not self._charge_response(
             response,
@@ -640,7 +663,7 @@ class CreativeEngine:
             expected_provider=providers.evaluator.name,
             errors=errors,
         ):
-            return None
+            return None, True, False
         try:
             scores = validate_evaluation_payload(response)
         except ValidationError:
@@ -652,19 +675,23 @@ class CreativeEngine:
                 message="provider returned invalid evaluation scores",
                 cost_incurred=True,
             )
-            return None
+            return None, False, False
 
-        return _validated_candidate(
-            candidate,
-            scores=scores,
-            branch_cost=(
-                Decimal(str(candidate.branch_cost_usd))
-                + Decimal(str(response.cost_usd))
+        return (
+            _validated_candidate(
+                candidate,
+                scores=scores,
+                branch_cost=(
+                    Decimal(str(candidate.branch_cost_usd))
+                    + Decimal(str(response.cost_usd))
+                ),
+                branch_latency=(
+                    Decimal(str(candidate.branch_latency_ms))
+                    + Decimal(str(response.latency_ms))
+                ),
             ),
-            branch_latency=(
-                Decimal(str(candidate.branch_latency_ms))
-                + Decimal(str(response.latency_ms))
-            ),
+            False,
+            False,
         )
 
     @staticmethod
@@ -763,14 +790,16 @@ class CreativeEngine:
         errors: list[RunError],
         stopped_reason: str,
     ) -> RunResult:
-        finalists = (
-            self._population.select(
-                candidates,
-                finalist_count=min(config.finalist_count, len(candidates)),
-            )
-            if candidates
-            else ()
+        finalist_pool = tuple(
+            candidate for candidate in candidates if candidate.scores is not None
         )
+        if finalist_pool:
+            finalists = self._population.select(
+                finalist_pool,
+                finalist_count=min(config.finalist_count, len(finalist_pool)),
+            )
+        else:
+            finalists = candidates[: config.finalist_count]
         return RunResult(
             config=config,
             providers=providers,

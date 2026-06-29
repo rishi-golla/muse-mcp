@@ -5,7 +5,7 @@ import math
 import unicodedata
 from uuid import UUID, uuid5
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from creativity_layer.models import (
     EvaluationScores,
@@ -206,11 +206,11 @@ class OpenAISeedBatch(OpenAIOutputModel):
 
 
 class OpenAIEvaluation(OpenAIOutputModel):
-    originality: float
-    usefulness: float
-    coherence: float
-    feasibility: float
-    user_fit: float
+    originality: float = Field(description="0.0 to 1.0 score, not 0 to 10.")
+    usefulness: float = Field(description="0.0 to 1.0 score, not 0 to 10.")
+    coherence: float = Field(description="0.0 to 1.0 score, not 0 to 10.")
+    feasibility: float = Field(description="0.0 to 1.0 score, not 0 to 10.")
+    user_fit: float = Field(description="0.0 to 1.0 score, not 0 to 10.")
 
     @field_validator("*")
     @classmethod

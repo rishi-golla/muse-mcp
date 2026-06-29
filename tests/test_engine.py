@@ -177,6 +177,27 @@ class AdversarialProvider(DeterministicCreativeProvider):
         return response.model_copy(update={"cost_usd": self.evaluation_cost_usd})
 
 
+class AlwaysFailingEvaluationProvider(AdversarialProvider):
+    def evaluate(
+        self,
+        candidate: IdeaGenome,
+        framed_task: FramedTask,
+    ) -> MeteredResponse[EvaluationScores]:
+        self.evaluation_calls += 1
+        raise RuntimeError("evaluation failed")
+
+
+class InvalidEvaluationScaleProvider(DeterministicCreativeProvider):
+    def evaluate(
+        self,
+        candidate: IdeaGenome,
+        framed_task: FramedTask,
+    ) -> MeteredResponse[EvaluationScores]:
+        raise RuntimeError(
+            "openai evaluate failed: score must be finite and between 0 and 1"
+        )
+
+
 class RecordingPopulation(PopulationManager):
     def __init__(self) -> None:
         super().__init__()
@@ -459,7 +480,7 @@ def test_engine_records_seed_cost_above_quote_even_past_budget() -> None:
     assert result.stopped_reason == "provider_error"
 
 
-def test_engine_hides_seed_batch_when_later_evaluation_fails() -> None:
+def test_engine_preserves_seed_candidates_when_later_evaluation_fails() -> None:
     provider = AdversarialProvider(raise_evaluation_at=2)
 
     result = build_engine(provider).run(
@@ -467,7 +488,7 @@ def test_engine_hides_seed_batch_when_later_evaluation_fails() -> None:
         RunConfig(
             max_cost_usd=1,
             max_calls=10,
-            max_generations=1,
+            max_generations=0,
             seed_count=2,
             finalist_count=1,
             framing_reserve_usd=0,
@@ -475,23 +496,53 @@ def test_engine_hides_seed_batch_when_later_evaluation_fails() -> None:
         ),
     )
 
-    assert result.all_candidates == ()
-    assert result.finalists == ()
+    assert len(result.all_candidates) == 2
+    assert sum(candidate.scores is None for candidate in result.all_candidates) == 1
+    assert provider.evaluation_calls == 2
+    assert len(result.finalists) == 1
+    assert result.finalists[0].scores is not None
     assert [record.stage for record in result.spend_records] == [
         "framing",
         "seeding",
         "evaluation",
     ]
+    assert result.errors[-1].stage == "evaluation"
+    assert result.errors[-1].category == "provider_error"
+    assert result.errors[-1].message == "provider operation failed"
     assert result.stopped_reason == "provider_error"
 
 
-def test_engine_records_evaluation_cost_above_quote() -> None:
-    provider = AdversarialProvider(evaluation_cost_usd=0.006)
+def test_engine_returns_unevaluated_seed_candidates_when_all_evaluations_fail() -> None:
+    provider = AlwaysFailingEvaluationProvider()
 
     result = build_engine(provider).run(
         TaskContext(goal="Invent a new decision process."),
         RunConfig(
             max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert len(result.all_candidates) == 2
+    assert all(candidate.scores is None for candidate in result.all_candidates)
+    assert provider.evaluation_calls == 2
+    assert len(result.finalists) == 1
+    assert result.finalists[0].scores is None
+    assert result.stopped_reason == "provider_error"
+
+
+def test_engine_records_evaluation_cost_above_quote_without_stacking_overages() -> None:
+    provider = AdversarialProvider(evaluation_cost_usd=0.006)
+
+    result = build_engine(provider).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=0.021,
             max_calls=10,
             max_generations=1,
             seed_count=2,
@@ -501,14 +552,40 @@ def test_engine_records_evaluation_cost_above_quote() -> None:
         ),
     )
 
-    assert result.all_candidates == ()
+    assert len(result.all_candidates) == 2
+    assert all(candidate.scores is None for candidate in result.all_candidates)
+    assert provider.evaluation_calls == 1
+    assert len(result.finalists) == 1
+    assert result.finalists[0].scores is None
     assert [record.stage for record in result.spend_records] == [
         "framing",
         "seeding",
         "evaluation",
     ]
     assert result.spend_records[-1].cost_usd == 0.006
+    assert sum(record.cost_usd for record in result.spend_records) == 0.016
     assert result.stopped_reason == "provider_error"
+
+
+def test_engine_records_safe_evaluation_scale_diagnostic() -> None:
+    result = build_engine(InvalidEvaluationScaleProvider()).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert result.errors[-1].category == "validation_error"
+    assert result.errors[-1].message == (
+        "provider returned evaluation scores outside 0..1"
+    )
+    assert "Invent a new decision process" not in result.errors[-1].message
 
 
 def test_engine_preserves_seed_frontier_when_transform_raises() -> None:

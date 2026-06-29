@@ -131,11 +131,16 @@ def _save_and_print_summary(
             return value
         return trace_view.sanitize(value)
 
+    unevaluated_candidates = tuple(
+        candidate for candidate in result.all_candidates if candidate.scores is None
+    )
     print(
         json.dumps(
             {
                 "run_id": str(result.run_id),
                 "finalist_count": len(result.finalists),
+                "generated_count": len(result.all_candidates),
+                "unevaluated_count": len(unevaluated_candidates),
                 "stopped_reason": result.stopped_reason,
                 "trace_path": str(trace_path),
                 "finalists": [
@@ -149,6 +154,10 @@ def _save_and_print_summary(
                         else None,
                     }
                     for candidate in result.finalists
+                ],
+                "unevaluated_candidates": [
+                    {"title": summary_value(candidate.title)}
+                    for candidate in unevaluated_candidates
                 ],
             },
             indent=2,

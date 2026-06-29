@@ -9,6 +9,7 @@ from uuid import UUID
 import pytest
 
 import creativity_layer.cli as cli
+import creativity_layer.engine as engine_module
 from creativity_layer.budget import BudgetController
 from creativity_layer.cli import run_cli
 from creativity_layer.deterministic import DeterministicCreativeProvider
@@ -294,6 +295,15 @@ def test_malformed_evaluator_scores_become_sanitized_structured_error() -> None:
     assert result.errors[-1].provider == "deterministic-local"
     assert result.errors[-1].category == "validation_error"
     assert result.errors[-1].cost_incurred is True
+
+
+def test_evaluation_scale_errors_are_safe_and_actionable() -> None:
+    source = inspect.getsource(engine_module._evaluation_error_details)
+
+    assert "provider returned evaluation scores outside 0..1" in source
+    assert "score must be finite and between 0 and 1" in source
+    assert "api_key" not in source.lower()
+    assert "request_json" not in source
 
 
 class InvalidSeedProvider(DeterministicCreativeProvider):

@@ -6,6 +6,12 @@ import time
 from collections.abc import Callable, Iterable
 from typing import Any, TypeVar
 
+from openai.resources.responses.responses import (
+    _type_to_text_format_param,
+    parse_response,
+)
+from pydantic import ValidationError
+
 from creativity_layer.live_config import LiveModelConfig
 from creativity_layer.models import (
     EvaluationScores,
@@ -211,14 +217,44 @@ class OpenAICreativeProvider:
         parsed: T | None = None
         value: DomainT | None = None
         last_error: Exception | None = None
+        calls = 0
 
         for attempt in range(self._config.repair_attempts + 1):
+            calls += 1
             try:
                 response = self._execute_parse(
                     model=model,
                     request_input=request_input,
                     schema=schema,
                 )
+            except _StructuredParseValidationError as error:
+                last_error = error.validation_error
+                responses.append(error.response)
+                if attempt >= self._config.repair_attempts:
+                    raise RuntimeError(
+                        _safe_error_message(
+                            operation=operation,
+                            error=error.validation_error,
+                        )
+                    ) from error.validation_error
+                request_input = _repair_request_input(
+                    operation=operation,
+                    domain_payload=domain_payload,
+                    error=error.validation_error,
+                )
+                continue
+            except ValidationError as error:
+                last_error = error
+                if attempt >= self._config.repair_attempts:
+                    raise RuntimeError(
+                        _safe_error_message(operation=operation, error=error)
+                    ) from error
+                request_input = _repair_request_input(
+                    operation=operation,
+                    domain_payload=domain_payload,
+                    error=error,
+                )
+                continue
             except Exception as error:
                 raise RuntimeError(
                     _safe_error_message(operation=operation, error=error)
@@ -238,6 +274,7 @@ class OpenAICreativeProvider:
                 request_input = _repair_request_input(
                     operation=operation,
                     domain_payload=domain_payload,
+                    error=error,
                 )
             except Exception as error:
                 raise RuntimeError(
@@ -283,7 +320,7 @@ class OpenAICreativeProvider:
             provider=self.name,
             model=model,
             cost_usd=estimate.estimated_cost_usd,
-            calls=len(responses),
+            calls=calls,
             latency_ms=max(0, round((end - start) * 1_000)),
             usage=usage,
             pricing_version=estimate.pricing_version,
@@ -299,7 +336,26 @@ class OpenAICreativeProvider:
         request_input: list[dict[str, object]],
         schema: type[T],
     ) -> object:
-        kwargs: dict[str, object] = {
+        if hasattr(self._client.responses, "create"):
+            kwargs: dict[str, object] = {
+                "model": model,
+                "input": request_input,
+                "text": {"format": _type_to_text_format_param(schema)},
+            }
+
+            def operation() -> object:
+                return self._client.responses.create(**kwargs)
+
+            raw_response = self._execute_response_operation(operation)
+            try:
+                return _parse_raw_response(raw_response, schema)
+            except ValidationError as error:
+                raise _StructuredParseValidationError(
+                    validation_error=error,
+                    response=raw_response,
+                ) from error
+
+        kwargs = {
             "model": model,
             "input": request_input,
             "text_format": schema,
@@ -308,6 +364,9 @@ class OpenAICreativeProvider:
         def operation() -> object:
             return self._client.responses.parse(**kwargs)
 
+        return self._execute_response_operation(operation)
+
+    def _execute_response_operation(self, operation: Callable[[], object]) -> object:
         retry_kwargs: dict[str, object] = {
             "policy": self._retry_policy,
             "breaker": self._breaker,
@@ -341,23 +400,66 @@ def _request_input(
     ]
 
 
+class _StructuredParseValidationError(Exception):
+    def __init__(self, *, validation_error: ValidationError, response: object) -> None:
+        super().__init__(str(validation_error))
+        self.validation_error = validation_error
+        self.response = response
+
+
 def _repair_request_input(
     *,
     operation: str,
     domain_payload: dict[str, object],
+    error: BaseException,
 ) -> list[dict[str, object]]:
     request_input = _request_input(operation=operation, domain_payload=domain_payload)
+    guidance = (
+        "Repair attempt: the previous response could not be parsed into "
+        "the required schema. "
+    )
+    if operation == "evaluate":
+        guidance += (
+            "Evaluation scores must be finite floats between 0.0 and 1.0, "
+            "not percentages or 0-10 scores. "
+        )
+    guidance += (
+        f"Previous error: {_safe_error_detail(error)}. "
+        "Return valid structured output only."
+    )
     request_input.insert(
         2,
         {
             "role": "developer",
-            "content": (
-                "Repair attempt: the previous response could not be parsed into "
-                "the required schema. Return valid structured output only."
-            ),
+            "content": guidance,
         },
     )
     return request_input
+
+
+def _parse_raw_response[T](response: object, expected_type: type[T]) -> object:
+    parse_error = getattr(response, "_parse_error", None)
+    if isinstance(parse_error, ValidationError):
+        raise parse_error
+    if _has_fake_parsed_content(response):
+        return response
+    try:
+        _parsed_output(response, expected_type)
+        return response
+    except ValueError:
+        return parse_response(
+            input_tools=None,
+            text_format=expected_type,
+            response=response,
+        )
+
+
+def _has_fake_parsed_content(response: object) -> bool:
+    for output in getattr(response, "output", ()):
+        for content in getattr(output, "content", ()):
+            if hasattr(content, "parsed"):
+                return True
+    return False
 
 
 def _parsed_output[T](response: object, expected_type: type[T]) -> T:
@@ -451,6 +553,15 @@ def _redact_secrets(value: object) -> object:
 
 
 def _safe_error_message(*, operation: str, error: BaseException) -> str:
+    return f"openai {operation} failed: {_safe_error_detail(error)}"
+
+
+def _safe_error_detail(error: BaseException) -> str:
+    if isinstance(error, ValidationError):
+        messages = [
+            str(item.get("msg", "schema validation failed"))
+            for item in error.errors(include_input=False)
+        ]
+        return SECRET_VALUE_PATTERN.sub("[REDACTED]", "; ".join(messages))
     detail = str(error) if isinstance(error, ValueError) else type(error).__name__
-    detail = SECRET_VALUE_PATTERN.sub("[REDACTED]", detail)
-    return f"openai {operation} failed: {detail}"
+    return SECRET_VALUE_PATTERN.sub("[REDACTED]", detail)

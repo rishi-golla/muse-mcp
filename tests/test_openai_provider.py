@@ -61,14 +61,48 @@ class FakeResponse:
         usage: FakeUsage,
         request_id: str = "req_test",
         refusal: str | None = None,
+        parse_error: ValidationError | None = None,
     ) -> None:
         self.output = [FakeOutput(content=[FakeContent(parsed=parsed, refusal=refusal)])]
         self.usage = usage
         self._request_id = request_id
         self.id = "resp_test"
+        self._parse_error = parse_error
 
 
 class FakeResponses:
+    def __init__(self, parent: FakeOpenAIClient) -> None:
+        self._parent = parent
+
+    def parse(self, **kwargs: object) -> FakeResponse:
+        return self._respond(**kwargs)
+
+    def create(self, **kwargs: object) -> FakeResponse:
+        return self._respond(**kwargs)
+
+    def _respond(self, **kwargs: object) -> FakeResponse:
+        self._parent.call_count += 1
+        self._parent.requests.append(kwargs)
+        item = self._parent.next_item()
+        if isinstance(item, ValidationError):
+            return FakeResponse(
+                parsed=None,
+                usage=self._parent.usage,
+                request_id=f"req_{self._parent.call_count}",
+                refusal=self._parent.refusal,
+                parse_error=item,
+            )
+        if isinstance(item, BaseException):
+            raise item
+        return FakeResponse(
+            parsed=item,
+            usage=self._parent.usage,
+            request_id=f"req_{self._parent.call_count}",
+            refusal=self._parent.refusal,
+        )
+
+
+class ParseOnlyFakeResponses:
     def __init__(self, parent: FakeOpenAIClient) -> None:
         self._parent = parent
 
@@ -191,6 +225,18 @@ def sample_parent() -> IdeaGenome:
     )
 
 
+def invalid_openai_evaluation_error() -> ValidationError:
+    with pytest.raises(ValidationError) as error:
+        OpenAIEvaluation(
+            originality=9.7,
+            usefulness=8.4,
+            coherence=9.2,
+            feasibility=7.6,
+            user_fit=9.1,
+        )
+    return error.value
+
+
 def test_live_model_config_exposes_conservative_token_ceilings() -> None:
     config = LiveModelConfig(
         economy_model="economy-test-model",
@@ -220,7 +266,7 @@ def test_openai_provider_frames_with_economy_model_and_structured_schema() -> No
     response = provider.frame(TaskContext(goal="Improve team decisions"))
 
     assert client.last_request["model"] == "economy-test-model"
-    assert client.last_request["text_format"] is OpenAIFrame
+    assert "text" in client.last_request
     assert response.value.obvious_solution == "Use asynchronous voting"
     assert response.usage.input_tokens == 100
     assert response.cost_usd == 0.00026
@@ -293,7 +339,7 @@ def test_openai_provider_uses_strong_model_for_transformations() -> None:
     response = provider.transform(request, (parent,))
 
     assert client.last_request["model"] == "strong-test-model"
-    assert client.last_request["text_format"] is OpenAIIdea
+    assert "text" in client.last_request
     assert response.value.parent_ids == (parent.id,)
     assert response.model == "strong-test-model"
 
@@ -331,8 +377,8 @@ def test_openai_provider_seeds_and_evaluates_with_economy_model() -> None:
         "economy-test-model",
         "economy-test-model",
     ]
-    assert client.requests[0]["text_format"] is OpenAISeedBatch
-    assert client.requests[1]["text_format"] is OpenAIEvaluation
+    assert "text" in client.requests[0]
+    assert "text" in client.requests[1]
     assert len(seeds.value) == 2
     assert evaluation.value.originality == 0.8
 
@@ -428,6 +474,98 @@ def test_openai_provider_retries_one_unparseable_response() -> None:
         },
     ]
     assert "Repair" in str(client.last_request["input"])
+
+
+def test_parse_only_evaluation_validation_error_triggers_repair() -> None:
+    frame = FramedTask(
+        context=TaskContext(goal="Design an interactive portfolio."),
+        assumptions=("3D should support the content",),
+        obvious_solution="Use a normal animated portfolio.",
+    )
+    candidate = sample_openai_idea(title="Living Atlas Portfolio").to_seed()
+    client = FakeOpenAIClient(
+        parsed_sequence=[
+            invalid_openai_evaluation_error(),
+            OpenAIEvaluation(
+                originality=0.97,
+                usefulness=0.84,
+                coherence=0.92,
+                feasibility=0.76,
+                user_fit=0.91,
+            ),
+        ],
+        usage=FakeUsage(input_tokens=100, output_tokens=25),
+    )
+    client.responses = ParseOnlyFakeResponses(client)
+    provider = build_provider(client, repair_attempts=1)
+
+    response = provider.evaluate(candidate, frame)
+
+    assert response.value.originality == 0.97
+    assert response.calls == 2
+    assert client.call_count == 2
+    assert "text_format" in client.requests[0]
+    assert "0.0 and 1.0" in str(client.last_request["input"])
+
+
+def test_evaluation_parse_validation_error_triggers_repair() -> None:
+    frame = FramedTask(
+        context=TaskContext(goal="Design an interactive portfolio."),
+        assumptions=("3D should support the content",),
+        obvious_solution="Use a normal animated portfolio.",
+    )
+    candidate = sample_openai_idea(title="Living Atlas Portfolio").to_seed()
+    client = FakeOpenAIClient(
+        parsed_sequence=[
+            invalid_openai_evaluation_error(),
+            OpenAIEvaluation(
+                originality=0.97,
+                usefulness=0.84,
+                coherence=0.92,
+                feasibility=0.76,
+                user_fit=0.91,
+            ),
+        ],
+        usage=FakeUsage(input_tokens=100, output_tokens=25),
+    )
+    provider = build_provider(client, repair_attempts=1)
+
+    response = provider.evaluate(candidate, frame)
+
+    assert response.value.originality == 0.97
+    assert response.calls == 2
+    assert client.call_count == 2
+    assert response.usage.input_tokens == 200
+    assert response.usage.output_tokens == 50
+    assert response.cost_usd == pytest.approx(0.0004)
+    assert response.operation_trace is not None
+    response_payload = json.loads(response.operation_trace.response_json)
+    assert response_payload["attempts"] == [
+        {
+            "attempt": 1,
+            "request_id": "req_1",
+            "usage": {
+                "input": 100,
+                "cached_input": 0,
+                "output": 25,
+                "reasoning": 0,
+            },
+        },
+        {
+            "attempt": 2,
+            "request_id": "req_2",
+            "usage": {
+                "input": 100,
+                "cached_input": 0,
+                "output": 25,
+                "reasoning": 0,
+            },
+        },
+    ]
+    repair_input = str(client.last_request["input"])
+    assert "0.0 and 1.0" in repair_input
+    assert "input_value" not in repair_input
+    assert "9.7" not in repair_input
 
 
 def test_openai_quotes_include_possible_repair_attempts() -> None:
