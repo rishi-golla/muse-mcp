@@ -446,7 +446,7 @@ class CreativeEngine:
                     branch_cost=seed_cost,
                     branch_latency=seed_latency,
                 )
-                result = self._evaluate(
+                result, preserve_candidate = self._evaluate(
                     attributed,
                     framed_task,
                     evaluation_quote,
@@ -457,6 +457,8 @@ class CreativeEngine:
                 )
                 if result is None:
                     had_evaluation_failure = True
+                    if not preserve_candidate:
+                        return [], "provider_error"
                     evaluated.append(attributed)
                     continue
                 evaluated.append(result)
@@ -586,7 +588,7 @@ class CreativeEngine:
                 branch_cost=parent_cost + Decimal(str(transformed.cost_usd)),
                 branch_latency=parent_latency + Decimal(str(transformed.latency_ms)),
             )
-            evaluated = self._evaluate(
+            evaluated, _preserve_candidate = self._evaluate(
                 attributed,
                 framed_task,
                 evaluation_quote,
@@ -608,7 +610,7 @@ class CreativeEngine:
         budget: BudgetController,
         errors: list[RunError],
         providers: RunProviders,
-    ) -> IdeaGenome | None:
+    ) -> tuple[IdeaGenome | None, bool]:
         try:
             response = validate_metered_envelope(
                 self._evaluator.evaluate(candidate, framed_task)
@@ -622,7 +624,7 @@ class CreativeEngine:
                 message="provider returned invalid metered response",
                 cost_incurred=False,
             )
-            return None
+            return None, False
         except Exception:
             _error(
                 errors,
@@ -632,7 +634,7 @@ class CreativeEngine:
                 message="provider operation failed",
                 cost_incurred=False,
             )
-            return None
+            return None, True
 
         if not self._charge_response(
             response,
@@ -643,7 +645,7 @@ class CreativeEngine:
             expected_provider=providers.evaluator.name,
             errors=errors,
         ):
-            return None
+            return None, True
         try:
             scores = validate_evaluation_payload(response)
         except ValidationError:
@@ -655,19 +657,22 @@ class CreativeEngine:
                 message="provider returned invalid evaluation scores",
                 cost_incurred=True,
             )
-            return None
+            return None, False
 
-        return _validated_candidate(
-            candidate,
-            scores=scores,
-            branch_cost=(
-                Decimal(str(candidate.branch_cost_usd))
-                + Decimal(str(response.cost_usd))
+        return (
+            _validated_candidate(
+                candidate,
+                scores=scores,
+                branch_cost=(
+                    Decimal(str(candidate.branch_cost_usd))
+                    + Decimal(str(response.cost_usd))
+                ),
+                branch_latency=(
+                    Decimal(str(candidate.branch_latency_ms))
+                    + Decimal(str(response.latency_ms))
+                ),
             ),
-            branch_latency=(
-                Decimal(str(candidate.branch_latency_ms))
-                + Decimal(str(response.latency_ms))
-            ),
+            False,
         )
 
     @staticmethod
