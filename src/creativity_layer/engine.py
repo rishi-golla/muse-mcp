@@ -439,7 +439,7 @@ class CreativeEngine:
             seed_cost = Decimal(str(seeded.cost_usd)) / Decimal(len(seeds))
             seed_latency = Decimal(str(seeded.latency_ms)) / Decimal(len(seeds))
             evaluated: list[IdeaGenome] = []
-            for candidate in seeds:
+            for index, candidate in enumerate(seeds):
                 attributed = _validated_candidate(
                     candidate,
                     branch_cost=seed_cost,
@@ -455,7 +455,16 @@ class CreativeEngine:
                     providers,
                 )
                 if result is None:
-                    return [], "provider_error"
+                    evaluated.append(attributed)
+                    evaluated.extend(
+                        _validated_candidate(
+                            remaining,
+                            branch_cost=seed_cost,
+                            branch_latency=seed_latency,
+                        )
+                        for remaining in seeds[index + 1 :]
+                    )
+                    return evaluated, "provider_error"
                 evaluated.append(result)
             return evaluated, None
 
@@ -763,14 +772,16 @@ class CreativeEngine:
         errors: list[RunError],
         stopped_reason: str,
     ) -> RunResult:
-        finalists = (
-            self._population.select(
-                candidates,
-                finalist_count=min(config.finalist_count, len(candidates)),
-            )
-            if candidates
-            else ()
+        finalist_pool = tuple(
+            candidate for candidate in candidates if candidate.scores is not None
         )
+        if finalist_pool:
+            finalists = self._population.select(
+                finalist_pool,
+                finalist_count=min(config.finalist_count, len(finalist_pool)),
+            )
+        else:
+            finalists = candidates[: config.finalist_count]
         return RunResult(
             config=config,
             providers=providers,

@@ -459,7 +459,7 @@ def test_engine_records_seed_cost_above_quote_even_past_budget() -> None:
     assert result.stopped_reason == "provider_error"
 
 
-def test_engine_hides_seed_batch_when_later_evaluation_fails() -> None:
+def test_engine_preserves_seed_candidates_when_later_evaluation_fails() -> None:
     provider = AdversarialProvider(raise_evaluation_at=2)
 
     result = build_engine(provider).run(
@@ -467,7 +467,7 @@ def test_engine_hides_seed_batch_when_later_evaluation_fails() -> None:
         RunConfig(
             max_cost_usd=1,
             max_calls=10,
-            max_generations=1,
+            max_generations=0,
             seed_count=2,
             finalist_count=1,
             framing_reserve_usd=0,
@@ -475,13 +475,41 @@ def test_engine_hides_seed_batch_when_later_evaluation_fails() -> None:
         ),
     )
 
-    assert result.all_candidates == ()
-    assert result.finalists == ()
+    assert len(result.all_candidates) == 2
+    assert sum(candidate.scores is None for candidate in result.all_candidates) == 1
+    assert len(result.finalists) == 1
+    assert result.finalists[0].scores is not None
     assert [record.stage for record in result.spend_records] == [
         "framing",
         "seeding",
         "evaluation",
     ]
+    assert result.errors[-1].stage == "evaluation"
+    assert result.errors[-1].category == "provider_error"
+    assert result.errors[-1].message == "provider operation failed"
+    assert result.stopped_reason == "provider_error"
+
+
+def test_engine_returns_unevaluated_seed_candidates_when_all_evaluations_fail() -> None:
+    provider = AdversarialProvider(raise_evaluation_at=1)
+
+    result = build_engine(provider).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert len(result.all_candidates) == 2
+    assert all(candidate.scores is None for candidate in result.all_candidates)
+    assert len(result.finalists) == 1
+    assert result.finalists[0].scores is None
     assert result.stopped_reason == "provider_error"
 
 
@@ -501,7 +529,10 @@ def test_engine_records_evaluation_cost_above_quote() -> None:
         ),
     )
 
-    assert result.all_candidates == ()
+    assert len(result.all_candidates) == 2
+    assert all(candidate.scores is None for candidate in result.all_candidates)
+    assert len(result.finalists) == 1
+    assert result.finalists[0].scores is None
     assert [record.stage for record in result.spend_records] == [
         "framing",
         "seeding",
