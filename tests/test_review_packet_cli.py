@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import creativity_layer.cli as cli_module
 from creativity_layer.cli import run_cli
 from creativity_layer.models import (
     EvaluationScores,
@@ -147,6 +148,97 @@ def test_review_packet_cli_invalid_trace_returns_two_without_traceback_or_packet
     assert "invalid trace" in captured.err.lower()
     assert "Traceback" not in captured.err
     assert list(output_dir.glob("*.review-packet.json")) == []
+
+
+def test_review_packet_cli_semantically_invalid_trace_returns_two(
+    tmp_path,
+    capsys,
+) -> None:
+    trace_path = tmp_path / "invalid-run-result.json"
+    output_dir = tmp_path / "packets"
+    trace_path.write_text(json.dumps({"run_id": "not enough"}), encoding="utf-8")
+
+    exit_code = run_cli(
+        [
+            "review-packet",
+            "--trace",
+            str(trace_path),
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert captured.out == ""
+    assert "invalid trace" in captured.err.lower()
+    assert "Traceback" not in captured.err
+    assert list(output_dir.glob("*.review-packet.json")) == []
+
+
+def test_review_packet_cli_valid_then_invalid_trace_writes_no_packets(
+    tmp_path,
+    capsys,
+) -> None:
+    valid_trace = tmp_path / "valid-trace.json"
+    invalid_trace = tmp_path / "invalid-trace.json"
+    output_dir = tmp_path / "packets"
+    write_trace(valid_trace, make_result())
+    invalid_trace.write_text("{not json", encoding="utf-8")
+
+    exit_code = run_cli(
+        [
+            "review-packet",
+            "--trace",
+            str(valid_trace),
+            "--trace",
+            str(invalid_trace),
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert captured.out == ""
+    assert "invalid trace" in captured.err.lower()
+    assert "Traceback" not in captured.err
+    assert not output_dir.exists()
+
+
+def test_review_packet_cli_write_failure_returns_one_without_traceback(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    trace_path = tmp_path / "trace.json"
+    output_dir = tmp_path / "packets"
+    write_trace(trace_path, make_result())
+
+    def fail_save(self, packet):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(cli_module.ReviewPacketStore, "save", fail_save)
+
+    exit_code = run_cli(
+        [
+            "review-packet",
+            "--trace",
+            str(trace_path),
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert captured.out == ""
+    assert "could not write review packet" in captured.err
+    assert "disk full" in captured.err
+    assert "Traceback" not in captured.err
 
 
 def test_review_packet_command_is_recognized_instead_of_treated_as_goal(
