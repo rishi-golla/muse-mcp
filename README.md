@@ -55,6 +55,15 @@ run and writes one trace for each. Its search path uses mocked deterministic
 fixtures only; it does not call Exa, Brave, OpenAI web search, or paid OpenAI
 models.
 
+## Calibration review packets
+
+```powershell
+python -m creativity_layer.cli review-packet --trace <trace.json> --output-dir .review-packets --shuffle-seed 17
+```
+
+Review packets are anonymized and randomized artifacts for human review. Rating
+ingestion, agreement metrics, and calibration fitting are later 2C slices.
+
 ## Live OpenAI mode
 
 Set:
