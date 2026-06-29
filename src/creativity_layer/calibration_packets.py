@@ -48,10 +48,7 @@ class ReviewCandidate(FrozenModel):
 
 
 class ReviewPacketMetadata(FrozenModel):
-    run_id: RequiredText
-    stopped_reason: RequiredText
     candidate_count: int = Field(strict=True, ge=1)
-    shuffle_seed: int = Field(strict=True)
 
 
 class ReviewPacket(FrozenModel):
@@ -123,10 +120,7 @@ def build_review_packet(result: RunResult, *, shuffle_seed: int = 0) -> ReviewPa
         rubric=DEFAULT_RUBRIC,
         candidates=candidates,
         metadata=ReviewPacketMetadata(
-            run_id=str(result.run_id),
-            stopped_reason=result.stopped_reason,
             candidate_count=len(candidates),
-            shuffle_seed=shuffle_seed,
         ),
     )
 

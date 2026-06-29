@@ -225,10 +225,12 @@ def test_review_packet_exports_do_not_expose_hidden_fields() -> None:
     result = review_packet_source_result()
     packet = build_review_packet(result, shuffle_seed=17)
     packet_text = packet.model_dump_json()
+    packet_payload = json.loads(packet_text)
 
     assert ReviewPacket.__name__ == "ReviewPacket"
     assert ReviewPacketStore.__name__ == "ReviewPacketStore"
     assert isinstance(packet, ReviewPacket)
+    assert set(packet_payload["metadata"]) == {"candidate_count"}
     for forbidden in (
         "11111111-1111-1111-1111-111111111111",
         "22222222-2222-2222-2222-222222222222",
@@ -248,6 +250,9 @@ def test_review_packet_exports_do_not_expose_hidden_fields() -> None:
         "branch_latency_ms",
         "operation_trace",
         "system_scores",
+        "run_id",
+        "stopped_reason",
+        "shuffle_seed",
         "run_fingerprint",
         "reproducibility_fingerprint",
         result.reproducibility_fingerprint,

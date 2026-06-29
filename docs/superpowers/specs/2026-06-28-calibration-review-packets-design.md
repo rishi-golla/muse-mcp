@@ -51,8 +51,8 @@ Each packet contains:
 - `rubric`: stable prompts for originality, usefulness, coherence, feasibility, user fit, and
   overall preference.
 - `candidates`: randomized tuple of blinded candidates.
-- `metadata`: non-secret bookkeeping such as run ID, stopped reason, candidate count, and
-  shuffle seed.
+- `metadata`: reviewer-safe bookkeeping only, starting with candidate count. Run IDs,
+  stop reasons, fingerprints, providers, costs, and shuffle seeds stay out of the packet.
 
 Each candidate contains:
 

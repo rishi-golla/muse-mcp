@@ -128,7 +128,6 @@ def test_build_review_packet_blinds_and_scores_finalists() -> None:
     assert packet.task.preferences == ("low ceremony",)
     assert packet.task.risk_tolerance == 0.25
     assert packet.metadata.candidate_count == 2
-    assert packet.metadata.shuffle_seed == 17
     assert not hasattr(packet.candidates[0], "candidate_id")
     assert not hasattr(packet.candidates[0], "source_urls")
     assert not hasattr(packet.candidates[0], "parent_ids")
@@ -142,6 +141,7 @@ def test_review_packet_json_excludes_hidden_candidate_and_trace_data() -> None:
 
     assert "rubric" in packet_payload
     assert "candidates" in packet_payload
+    assert set(packet_payload["metadata"]) == {"candidate_count"}
     for forbidden in (
         "11111111-1111-1111-1111-111111111111",
         "22222222-2222-2222-2222-222222222222",
@@ -161,6 +161,9 @@ def test_review_packet_json_excludes_hidden_candidate_and_trace_data() -> None:
         "source_urls",
         "parent_ids",
         "system_scores",
+        "run_id",
+        "stopped_reason",
+        "shuffle_seed",
         "run_fingerprint",
         run_result().reproducibility_fingerprint,
         "providers",
@@ -206,7 +209,7 @@ def test_review_packet_models_are_immutable() -> None:
     packet = build_review_packet(run_result(), shuffle_seed=17)
 
     with pytest.raises(ValidationError):
-        packet.metadata.shuffle_seed = 99
+        packet.metadata.candidate_count = 99
 
 
 def test_packet_id_uses_version_fingerprint_and_seed_only() -> None:

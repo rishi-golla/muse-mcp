@@ -100,10 +100,7 @@ class ReviewCandidate(FrozenModel):
     inspiration_kind: str
 
 class ReviewPacketMetadata(FrozenModel):
-    run_id: RequiredText
-    stopped_reason: RequiredText
     candidate_count: int
-    shuffle_seed: int
 
 class ReviewPacket(FrozenModel):
     packet_id: RequiredText
@@ -121,7 +118,7 @@ def build_review_packet(result: RunResult, *, shuffle_seed: int = 0) -> ReviewPa
         task=_review_task(result),
         rubric=DEFAULT_RUBRIC,
         candidates=candidates,
-        metadata=_metadata(result, shuffle_seed, len(candidates)),
+        metadata=ReviewPacketMetadata(candidate_count=len(candidates)),
     )
 ```
 
