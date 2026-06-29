@@ -6,6 +6,8 @@ import time
 from collections.abc import Callable, Iterable
 from typing import Any, TypeVar
 
+from pydantic import ValidationError
+
 from creativity_layer.live_config import LiveModelConfig
 from creativity_layer.models import (
     EvaluationScores,
@@ -211,14 +213,28 @@ class OpenAICreativeProvider:
         parsed: T | None = None
         value: DomainT | None = None
         last_error: Exception | None = None
+        calls = 0
 
         for attempt in range(self._config.repair_attempts + 1):
+            calls += 1
             try:
                 response = self._execute_parse(
                     model=model,
                     request_input=request_input,
                     schema=schema,
                 )
+            except ValidationError as error:
+                last_error = error
+                if attempt >= self._config.repair_attempts:
+                    raise RuntimeError(
+                        _safe_error_message(operation=operation, error=error)
+                    ) from error
+                request_input = _repair_request_input(
+                    operation=operation,
+                    domain_payload=domain_payload,
+                    error=error,
+                )
+                continue
             except Exception as error:
                 raise RuntimeError(
                     _safe_error_message(operation=operation, error=error)
@@ -238,6 +254,7 @@ class OpenAICreativeProvider:
                 request_input = _repair_request_input(
                     operation=operation,
                     domain_payload=domain_payload,
+                    error=error,
                 )
             except Exception as error:
                 raise RuntimeError(
@@ -283,7 +300,7 @@ class OpenAICreativeProvider:
             provider=self.name,
             model=model,
             cost_usd=estimate.estimated_cost_usd,
-            calls=len(responses),
+            calls=calls,
             latency_ms=max(0, round((end - start) * 1_000)),
             usage=usage,
             pricing_version=estimate.pricing_version,
@@ -345,16 +362,27 @@ def _repair_request_input(
     *,
     operation: str,
     domain_payload: dict[str, object],
+    error: BaseException,
 ) -> list[dict[str, object]]:
     request_input = _request_input(operation=operation, domain_payload=domain_payload)
+    guidance = (
+        "Repair attempt: the previous response could not be parsed into "
+        "the required schema. "
+    )
+    if operation == "evaluate":
+        guidance += (
+            "Evaluation scores must be finite floats between 0.0 and 1.0, "
+            "not percentages or 0-10 scores. "
+        )
+    guidance += (
+        f"Previous error: {_safe_error_detail(error)}. "
+        "Return valid structured output only."
+    )
     request_input.insert(
         2,
         {
             "role": "developer",
-            "content": (
-                "Repair attempt: the previous response could not be parsed into "
-                "the required schema. Return valid structured output only."
-            ),
+            "content": guidance,
         },
     )
     return request_input
@@ -451,6 +479,9 @@ def _redact_secrets(value: object) -> object:
 
 
 def _safe_error_message(*, operation: str, error: BaseException) -> str:
+    return f"openai {operation} failed: {_safe_error_detail(error)}"
+
+
+def _safe_error_detail(error: BaseException) -> str:
     detail = str(error) if isinstance(error, ValueError) else type(error).__name__
-    detail = SECRET_VALUE_PATTERN.sub("[REDACTED]", detail)
-    return f"openai {operation} failed: {detail}"
+    return SECRET_VALUE_PATTERN.sub("[REDACTED]", detail)

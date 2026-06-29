@@ -191,6 +191,18 @@ def sample_parent() -> IdeaGenome:
     )
 
 
+def invalid_openai_evaluation_error() -> ValidationError:
+    with pytest.raises(ValidationError) as error:
+        OpenAIEvaluation(
+            originality=9.7,
+            usefulness=8.4,
+            coherence=9.2,
+            feasibility=7.6,
+            user_fit=9.1,
+        )
+    return error.value
+
+
 def test_live_model_config_exposes_conservative_token_ceilings() -> None:
     config = LiveModelConfig(
         economy_model="economy-test-model",
@@ -428,6 +440,36 @@ def test_openai_provider_retries_one_unparseable_response() -> None:
         },
     ]
     assert "Repair" in str(client.last_request["input"])
+
+
+def test_evaluation_parse_validation_error_triggers_repair() -> None:
+    frame = FramedTask(
+        context=TaskContext(goal="Design an interactive portfolio."),
+        assumptions=("3D should support the content",),
+        obvious_solution="Use a normal animated portfolio.",
+    )
+    candidate = sample_openai_idea(title="Living Atlas Portfolio").to_seed()
+    client = FakeOpenAIClient(
+        parsed_sequence=[
+            invalid_openai_evaluation_error(),
+            OpenAIEvaluation(
+                originality=0.97,
+                usefulness=0.84,
+                coherence=0.92,
+                feasibility=0.76,
+                user_fit=0.91,
+            ),
+        ],
+        usage=FakeUsage(input_tokens=100, output_tokens=25),
+    )
+    provider = build_provider(client, repair_attempts=1)
+
+    response = provider.evaluate(candidate, frame)
+
+    assert response.value.originality == 0.97
+    assert response.calls == 2
+    assert client.call_count == 2
+    assert "0.0 and 1.0" in str(client.last_request["input"])
 
 
 def test_openai_quotes_include_possible_repair_attempts() -> None:
