@@ -84,7 +84,9 @@ creativity-layer live "Invent a low-cost coordination mechanism" `
   --privacy private
 ```
 
-Live mode performs no web search in Slice 2A.
+Live mode performs no web search in Slice 2A. Live summaries include
+`generated_count` and `unevaluated_count` so production-like smoke tests can
+distinguish generation failures from evaluation failures.
 
 ## Live search adapter smoke tests
 
