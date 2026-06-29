@@ -17,7 +17,7 @@ from creativity_layer.models import (
 )
 
 
-def make_candidate(*, scored: bool = True) -> IdeaGenome:
+def make_candidate(*, title: str = "Usable idea", scored: bool = True) -> IdeaGenome:
     scores = (
         EvaluationScores(
             originality=0.8,
@@ -31,7 +31,7 @@ def make_candidate(*, scored: bool = True) -> IdeaGenome:
     )
     return IdeaGenome(
         generation=0,
-        title="Usable idea",
+        title=title,
         core_mechanism="A concrete mechanism.",
         problem_framing="A concrete framing.",
         task_value="A concrete benefit.",
@@ -43,6 +43,7 @@ def make_result(
     *,
     stopped_reason: str,
     finalists: tuple[IdeaGenome, ...],
+    all_candidates: tuple[IdeaGenome, ...] | None = None,
 ) -> RunResult:
     return RunResult(
         config=RunConfig(seed_count=2, finalist_count=1),
@@ -59,7 +60,7 @@ def make_result(
             obvious_solution="An obvious solution.",
         ),
         finalists=finalists,
-        all_candidates=finalists,
+        all_candidates=all_candidates if all_candidates is not None else finalists,
         spend_records=(),
         stopped_reason=stopped_reason,
     )
@@ -172,6 +173,31 @@ def test_cli_returns_one_for_provider_error_but_writes_summary_and_trace(
     )
     assert trace_payload["stopped_reason"] == "provider_error"
     assert captured.err == ""
+
+
+def test_cli_summarizes_unevaluated_generated_candidates(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    scored = make_candidate(title="Scored", scored=True)
+    unevaluated = make_candidate(title="Unevaluated", scored=False)
+    use_engine_result(
+        monkeypatch,
+        make_result(
+            stopped_reason="provider_error",
+            finalists=(scored,),
+            all_candidates=(scored, unevaluated),
+        ),
+    )
+
+    exit_code = run_cli(["Goal", "--trace-dir", str(tmp_path)])
+
+    summary = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert summary["generated_count"] == 2
+    assert summary["unevaluated_count"] == 1
+    assert summary["unevaluated_candidates"] == [{"title": "Unevaluated"}]
 
 
 @pytest.mark.parametrize(
