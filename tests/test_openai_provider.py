@@ -102,6 +102,24 @@ class FakeResponses:
         )
 
 
+class ParseOnlyFakeResponses:
+    def __init__(self, parent: FakeOpenAIClient) -> None:
+        self._parent = parent
+
+    def parse(self, **kwargs: object) -> FakeResponse:
+        self._parent.call_count += 1
+        self._parent.requests.append(kwargs)
+        item = self._parent.next_item()
+        if isinstance(item, BaseException):
+            raise item
+        return FakeResponse(
+            parsed=item,
+            usage=self._parent.usage,
+            request_id=f"req_{self._parent.call_count}",
+            refusal=self._parent.refusal,
+        )
+
+
 class FakeOpenAIClient:
     def __init__(
         self,
@@ -456,6 +474,38 @@ def test_openai_provider_retries_one_unparseable_response() -> None:
         },
     ]
     assert "Repair" in str(client.last_request["input"])
+
+
+def test_parse_only_evaluation_validation_error_triggers_repair() -> None:
+    frame = FramedTask(
+        context=TaskContext(goal="Design an interactive portfolio."),
+        assumptions=("3D should support the content",),
+        obvious_solution="Use a normal animated portfolio.",
+    )
+    candidate = sample_openai_idea(title="Living Atlas Portfolio").to_seed()
+    client = FakeOpenAIClient(
+        parsed_sequence=[
+            invalid_openai_evaluation_error(),
+            OpenAIEvaluation(
+                originality=0.97,
+                usefulness=0.84,
+                coherence=0.92,
+                feasibility=0.76,
+                user_fit=0.91,
+            ),
+        ],
+        usage=FakeUsage(input_tokens=100, output_tokens=25),
+    )
+    client.responses = ParseOnlyFakeResponses(client)
+    provider = build_provider(client, repair_attempts=1)
+
+    response = provider.evaluate(candidate, frame)
+
+    assert response.value.originality == 0.97
+    assert response.calls == 2
+    assert client.call_count == 2
+    assert "text_format" in client.requests[0]
+    assert "0.0 and 1.0" in str(client.last_request["input"])
 
 
 def test_evaluation_parse_validation_error_triggers_repair() -> None:

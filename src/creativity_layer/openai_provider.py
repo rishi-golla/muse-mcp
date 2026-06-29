@@ -243,6 +243,18 @@ class OpenAICreativeProvider:
                     error=error.validation_error,
                 )
                 continue
+            except ValidationError as error:
+                last_error = error
+                if attempt >= self._config.repair_attempts:
+                    raise RuntimeError(
+                        _safe_error_message(operation=operation, error=error)
+                    ) from error
+                request_input = _repair_request_input(
+                    operation=operation,
+                    domain_payload=domain_payload,
+                    error=error,
+                )
+                continue
             except Exception as error:
                 raise RuntimeError(
                     _safe_error_message(operation=operation, error=error)
