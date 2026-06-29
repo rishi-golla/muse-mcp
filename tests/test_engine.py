@@ -177,6 +177,16 @@ class AdversarialProvider(DeterministicCreativeProvider):
         return response.model_copy(update={"cost_usd": self.evaluation_cost_usd})
 
 
+class AlwaysFailingEvaluationProvider(AdversarialProvider):
+    def evaluate(
+        self,
+        candidate: IdeaGenome,
+        framed_task: FramedTask,
+    ) -> MeteredResponse[EvaluationScores]:
+        self.evaluation_calls += 1
+        raise RuntimeError("evaluation failed")
+
+
 class RecordingPopulation(PopulationManager):
     def __init__(self) -> None:
         super().__init__()
@@ -477,6 +487,7 @@ def test_engine_preserves_seed_candidates_when_later_evaluation_fails() -> None:
 
     assert len(result.all_candidates) == 2
     assert sum(candidate.scores is None for candidate in result.all_candidates) == 1
+    assert provider.evaluation_calls == 2
     assert len(result.finalists) == 1
     assert result.finalists[0].scores is not None
     assert [record.stage for record in result.spend_records] == [
@@ -491,7 +502,7 @@ def test_engine_preserves_seed_candidates_when_later_evaluation_fails() -> None:
 
 
 def test_engine_returns_unevaluated_seed_candidates_when_all_evaluations_fail() -> None:
-    provider = AdversarialProvider(raise_evaluation_at=1)
+    provider = AlwaysFailingEvaluationProvider()
 
     result = build_engine(provider).run(
         TaskContext(goal="Invent a new decision process."),
@@ -508,6 +519,7 @@ def test_engine_returns_unevaluated_seed_candidates_when_all_evaluations_fail() 
 
     assert len(result.all_candidates) == 2
     assert all(candidate.scores is None for candidate in result.all_candidates)
+    assert provider.evaluation_calls == 2
     assert len(result.finalists) == 1
     assert result.finalists[0].scores is None
     assert result.stopped_reason == "provider_error"
@@ -531,11 +543,13 @@ def test_engine_records_evaluation_cost_above_quote() -> None:
 
     assert len(result.all_candidates) == 2
     assert all(candidate.scores is None for candidate in result.all_candidates)
+    assert provider.evaluation_calls == 2
     assert len(result.finalists) == 1
     assert result.finalists[0].scores is None
     assert [record.stage for record in result.spend_records] == [
         "framing",
         "seeding",
+        "evaluation",
         "evaluation",
     ]
     assert result.spend_records[-1].cost_usd == 0.006

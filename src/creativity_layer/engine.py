@@ -439,7 +439,8 @@ class CreativeEngine:
             seed_cost = Decimal(str(seeded.cost_usd)) / Decimal(len(seeds))
             seed_latency = Decimal(str(seeded.latency_ms)) / Decimal(len(seeds))
             evaluated: list[IdeaGenome] = []
-            for index, candidate in enumerate(seeds):
+            had_evaluation_failure = False
+            for candidate in seeds:
                 attributed = _validated_candidate(
                     candidate,
                     branch_cost=seed_cost,
@@ -455,18 +456,11 @@ class CreativeEngine:
                     providers,
                 )
                 if result is None:
+                    had_evaluation_failure = True
                     evaluated.append(attributed)
-                    evaluated.extend(
-                        _validated_candidate(
-                            remaining,
-                            branch_cost=seed_cost,
-                            branch_latency=seed_latency,
-                        )
-                        for remaining in seeds[index + 1 :]
-                    )
-                    return evaluated, "provider_error"
+                    continue
                 evaluated.append(result)
-            return evaluated, None
+            return evaluated, "provider_error" if had_evaluation_failure else None
 
     def _transform_and_evaluate(
         self,
