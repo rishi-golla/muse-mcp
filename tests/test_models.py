@@ -60,6 +60,39 @@ def test_idea_genome_records_ancestry_and_separate_scores() -> None:
     assert child.scores.usefulness == 0.7
 
 
+def test_idea_genome_defaults_operational_contract_for_legacy_traces() -> None:
+    idea = IdeaGenome(
+        generation=0,
+        title="Retry loop",
+        core_mechanism="Use failure evidence before retrying.",
+        problem_framing="Retries are too blind.",
+        task_value="Agents recover with less wasted work.",
+    )
+
+    assert idea.inputs_required == ()
+    assert idea.outputs_produced == ()
+    assert idea.agent_workflow == ()
+    assert idea.decision_policy == ""
+    assert idea.integration_points == ()
+    assert idea.verification_strategy == ""
+    assert idea.failure_modes == ()
+
+
+def test_evaluation_scores_include_operational_dimensions() -> None:
+    scores = EvaluationScores(
+        originality=0.7,
+        usefulness=0.8,
+        coherence=0.9,
+        feasibility=0.6,
+        user_fit=0.75,
+        operational_specificity=0.85,
+        workflow_fit=0.95,
+    )
+
+    assert scores.operational_specificity == 0.85
+    assert scores.workflow_fit == 0.95
+
+
 def test_run_config_rejects_impossible_reservations() -> None:
     with pytest.raises(ValidationError):
         RunConfig(
