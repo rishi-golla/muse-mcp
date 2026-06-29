@@ -72,6 +72,13 @@ def _error(
     )
 
 
+def _evaluation_error_details(error: Exception) -> tuple[str, str]:
+    message = str(error).lower()
+    if "score must be finite and between 0 and 1" in message:
+        return "validation_error", "provider returned evaluation scores outside 0..1"
+    return "provider_error", "provider operation failed"
+
+
 def _validated_candidate(
     candidate: IdeaGenome,
     *,
@@ -625,13 +632,14 @@ class CreativeEngine:
                 cost_incurred=False,
             )
             return None, False
-        except Exception:
+        except Exception as error:
+            category, message = _evaluation_error_details(error)
             _error(
                 errors,
                 stage="evaluation",
                 provider=providers.evaluator.name,
-                category="provider_error",
-                message="provider operation failed",
+                category=category,
+                message=message,
                 cost_incurred=False,
             )
             return None, True

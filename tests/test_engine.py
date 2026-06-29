@@ -187,6 +187,17 @@ class AlwaysFailingEvaluationProvider(AdversarialProvider):
         raise RuntimeError("evaluation failed")
 
 
+class InvalidEvaluationScaleProvider(DeterministicCreativeProvider):
+    def evaluate(
+        self,
+        candidate: IdeaGenome,
+        framed_task: FramedTask,
+    ) -> MeteredResponse[EvaluationScores]:
+        raise RuntimeError(
+            "openai evaluate failed: score must be finite and between 0 and 1"
+        )
+
+
 class RecordingPopulation(PopulationManager):
     def __init__(self) -> None:
         super().__init__()
@@ -554,6 +565,27 @@ def test_engine_records_evaluation_cost_above_quote() -> None:
     ]
     assert result.spend_records[-1].cost_usd == 0.006
     assert result.stopped_reason == "provider_error"
+
+
+def test_engine_records_safe_evaluation_scale_diagnostic() -> None:
+    result = build_engine(InvalidEvaluationScaleProvider()).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert result.errors[-1].category == "validation_error"
+    assert result.errors[-1].message == (
+        "provider returned evaluation scores outside 0..1"
+    )
+    assert "Invent a new decision process" not in result.errors[-1].message
 
 
 def test_engine_preserves_seed_frontier_when_transform_raises() -> None:
