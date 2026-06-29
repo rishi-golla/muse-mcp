@@ -536,13 +536,13 @@ def test_engine_returns_unevaluated_seed_candidates_when_all_evaluations_fail() 
     assert result.stopped_reason == "provider_error"
 
 
-def test_engine_records_evaluation_cost_above_quote() -> None:
+def test_engine_records_evaluation_cost_above_quote_without_stacking_overages() -> None:
     provider = AdversarialProvider(evaluation_cost_usd=0.006)
 
     result = build_engine(provider).run(
         TaskContext(goal="Invent a new decision process."),
         RunConfig(
-            max_cost_usd=1,
+            max_cost_usd=0.021,
             max_calls=10,
             max_generations=1,
             seed_count=2,
@@ -554,16 +554,16 @@ def test_engine_records_evaluation_cost_above_quote() -> None:
 
     assert len(result.all_candidates) == 2
     assert all(candidate.scores is None for candidate in result.all_candidates)
-    assert provider.evaluation_calls == 2
+    assert provider.evaluation_calls == 1
     assert len(result.finalists) == 1
     assert result.finalists[0].scores is None
     assert [record.stage for record in result.spend_records] == [
         "framing",
         "seeding",
         "evaluation",
-        "evaluation",
     ]
     assert result.spend_records[-1].cost_usd == 0.006
+    assert sum(record.cost_usd for record in result.spend_records) == 0.016
     assert result.stopped_reason == "provider_error"
 
 

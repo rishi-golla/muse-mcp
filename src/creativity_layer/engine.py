@@ -447,13 +447,13 @@ class CreativeEngine:
             seed_latency = Decimal(str(seeded.latency_ms)) / Decimal(len(seeds))
             evaluated: list[IdeaGenome] = []
             had_evaluation_failure = False
-            for candidate in seeds:
+            for index, candidate in enumerate(seeds):
                 attributed = _validated_candidate(
                     candidate,
                     branch_cost=seed_cost,
                     branch_latency=seed_latency,
                 )
-                result, preserve_candidate = self._evaluate(
+                result, preserve_candidate, continue_evaluating = self._evaluate(
                     attributed,
                     framed_task,
                     evaluation_quote,
@@ -467,6 +467,16 @@ class CreativeEngine:
                     if not preserve_candidate:
                         return [], "provider_error"
                     evaluated.append(attributed)
+                    if not continue_evaluating:
+                        for remaining in seeds[index + 1 :]:
+                            evaluated.append(
+                                _validated_candidate(
+                                    remaining,
+                                    branch_cost=seed_cost,
+                                    branch_latency=seed_latency,
+                                )
+                            )
+                        break
                     continue
                 evaluated.append(result)
             return evaluated, "provider_error" if had_evaluation_failure else None
@@ -595,7 +605,7 @@ class CreativeEngine:
                 branch_cost=parent_cost + Decimal(str(transformed.cost_usd)),
                 branch_latency=parent_latency + Decimal(str(transformed.latency_ms)),
             )
-            evaluated, _preserve_candidate = self._evaluate(
+            evaluated, _preserve_candidate, _continue_evaluating = self._evaluate(
                 attributed,
                 framed_task,
                 evaluation_quote,
@@ -617,7 +627,7 @@ class CreativeEngine:
         budget: BudgetController,
         errors: list[RunError],
         providers: RunProviders,
-    ) -> tuple[IdeaGenome | None, bool]:
+    ) -> tuple[IdeaGenome | None, bool, bool]:
         try:
             response = validate_metered_envelope(
                 self._evaluator.evaluate(candidate, framed_task)
@@ -631,7 +641,7 @@ class CreativeEngine:
                 message="provider returned invalid metered response",
                 cost_incurred=False,
             )
-            return None, False
+            return None, False, False
         except Exception as error:
             category, message = _evaluation_error_details(error)
             _error(
@@ -642,7 +652,7 @@ class CreativeEngine:
                 message=message,
                 cost_incurred=False,
             )
-            return None, True
+            return None, True, True
 
         if not self._charge_response(
             response,
@@ -653,7 +663,7 @@ class CreativeEngine:
             expected_provider=providers.evaluator.name,
             errors=errors,
         ):
-            return None, True
+            return None, True, False
         try:
             scores = validate_evaluation_payload(response)
         except ValidationError:
@@ -665,7 +675,7 @@ class CreativeEngine:
                 message="provider returned invalid evaluation scores",
                 cost_incurred=True,
             )
-            return None, False
+            return None, False, False
 
         return (
             _validated_candidate(
@@ -680,6 +690,7 @@ class CreativeEngine:
                     + Decimal(str(response.latency_ms))
                 ),
             ),
+            False,
             False,
         )
 
