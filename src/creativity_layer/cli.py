@@ -10,6 +10,7 @@ from pathlib import Path
 from openai import OpenAI
 from pydantic import ValidationError
 
+from creativity_layer.calibration_packets import ReviewPacketStore, build_review_packet
 from creativity_layer.deterministic import DeterministicCreativeProvider
 from creativity_layer.engine import CreativeEngine
 from creativity_layer.live_config import (
@@ -17,7 +18,7 @@ from creativity_layer.live_config import (
     OpenAICredentials,
     PrivacyMode,
 )
-from creativity_layer.models import RunConfig, TaskContext
+from creativity_layer.models import RunConfig, RunResult, TaskContext
 from creativity_layer.openai_provider import OpenAICreativeProvider
 from creativity_layer.pricing import PricingTable
 from creativity_layer.privacy import TraceView
@@ -26,7 +27,7 @@ from creativity_layer.search import DeterministicSearchProvider
 from creativity_layer.search_pipeline import SearchAwareEngine
 from creativity_layer.tracing import JsonTraceStore
 
-COMMANDS = frozenset({"deterministic", "live", "compare"})
+COMMANDS = frozenset({"deterministic", "live", "compare", "review-packet"})
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -58,6 +59,14 @@ def build_parser() -> argparse.ArgumentParser:
     compare.add_argument("--finalist-count", type=int, default=2)
     compare.add_argument("--generations", type=int, default=0)
     compare.add_argument("--budget-usd", type=float, default=0.10)
+
+    review_packet = subparsers.add_parser(
+        "review-packet",
+        help="Generate anonymized calibration review packets from trace files.",
+    )
+    review_packet.add_argument("--trace", type=Path, action="append", required=True)
+    review_packet.add_argument("--output-dir", type=Path, default=Path(".review-packets"))
+    review_packet.add_argument("--shuffle-seed", type=int, default=0)
 
     live = subparsers.add_parser(
         "live",
@@ -252,6 +261,69 @@ def _run_compare(args: argparse.Namespace, parser: argparse.ArgumentParser) -> i
     return 0
 
 
+def _load_trace(path: Path) -> RunResult:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as error:
+        raise ValueError(f"could not read trace {path}: {error}") from error
+    except json.JSONDecodeError as error:
+        raise ValueError(f"invalid trace {path}: {error.msg}") from error
+
+    try:
+        return RunResult.model_validate(payload)
+    except ValidationError as error:
+        raise ValueError(f"invalid trace {path}: {_validation_message(error)}") from error
+
+
+def _run_review_packet(args: argparse.Namespace) -> int:
+    results: list[RunResult] = []
+    for trace_path in args.trace:
+        try:
+            results.append(_load_trace(trace_path))
+        except ValueError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
+
+    try:
+        packets = [
+            build_review_packet(result, shuffle_seed=args.shuffle_seed)
+            for result in results
+        ]
+    except ValidationError as error:
+        print(f"error: invalid trace: {_validation_message(error)}", file=sys.stderr)
+        return 2
+
+    store = ReviewPacketStore(args.output_dir.resolve())
+    saved_packets = []
+    try:
+        for packet in packets:
+            path = store.save(packet)
+            saved_packets.append(
+                {
+                    "packet_id": packet.packet_id,
+                    "path": str(path.resolve()),
+                    "candidate_count": len(packet.candidates),
+                }
+            )
+    except OSError as error:
+        print(
+            f"error: could not write review packet to {args.output_dir.resolve()}: {error}",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(
+        json.dumps(
+            {
+                "packet_count": len(saved_packets),
+                "packets": saved_packets,
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
 def _configuration_error(parser: argparse.ArgumentParser, message: str) -> int:
     parser.print_usage(sys.stderr)
     print(f"{parser.prog}: error: {message}", file=sys.stderr)
@@ -380,6 +452,8 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
         return _run_compare(args, parser)
     if args.command == "live":
         return _run_live(args, parser)
+    if args.command == "review-packet":
+        return _run_review_packet(args)
     return _run_deterministic(args, parser)
 
 

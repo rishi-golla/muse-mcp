@@ -1,5 +1,10 @@
 """Creativity Layer research prototype."""
 
+from creativity_layer.calibration_packets import (
+    ReviewPacket,
+    ReviewPacketStore,
+    build_review_packet,
+)
 from creativity_layer.engine import CreativeEngine
 from creativity_layer.models import (
     EvaluationScores,
@@ -25,9 +30,12 @@ __all__ = [
     "InspirationKind",
     "OpenAICreativeProvider",
     "ProviderIdentity",
+    "ReviewPacket",
+    "ReviewPacketStore",
     "RunConfig",
     "RunError",
     "RunProviders",
     "RunResult",
     "TaskContext",
+    "build_review_packet",
 ]
