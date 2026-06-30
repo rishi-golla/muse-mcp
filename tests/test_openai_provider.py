@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 from creativity_layer.live_config import LiveModelConfig
 from creativity_layer.models import FramedTask, IdeaGenome, RunConfig, TaskContext
-from creativity_layer.openai_provider import OpenAICreativeProvider
+from creativity_layer.openai_provider import DEVELOPER_INSTRUCTIONS, OpenAICreativeProvider
 from creativity_layer.openai_schemas import (
     OpenAIEvaluation,
     OpenAIFrame,
@@ -205,6 +205,13 @@ def sample_openai_idea(**overrides: object) -> OpenAIIdea:
         "assumptions_challenged": ["Votes must be final"],
         "task_value": "Reduces premature consensus.",
         "distinguishing_features": ["reversible confidence"],
+        "inputs_required": ["task goal", "repo state"],
+        "outputs_produced": ["candidate plan", "verification gate"],
+        "agent_workflow": ["collect evidence", "choose action", "verify"],
+        "decision_policy": "Stop when verification repeats the same failure.",
+        "integration_points": ["planning middleware"],
+        "verification_strategy": "Run the narrowest relevant check first.",
+        "failure_modes": ["ambiguous evidence"],
         "first_order_effects": [],
         "second_order_effects": [],
         "feasibility_assumptions": [],
@@ -233,6 +240,8 @@ def invalid_openai_evaluation_error() -> ValidationError:
             coherence=9.2,
             feasibility=7.6,
             user_fit=9.1,
+            operational_specificity=9.0,
+            workflow_fit=8.8,
         )
     return error.value
 
@@ -323,6 +332,24 @@ def test_openai_provider_quotes_from_configured_ceilings() -> None:
     assert client.call_count == 0
 
 
+def test_openai_generation_prompts_require_operational_contracts() -> None:
+    seed_instruction = DEVELOPER_INSTRUCTIONS["seed"]
+    transform_instruction = DEVELOPER_INSTRUCTIONS["transform"]
+    evaluate_instruction = DEVELOPER_INSTRUCTIONS["evaluate"]
+
+    assert "inputs_required" in seed_instruction
+    assert "agent_workflow" in seed_instruction
+    assert "analyze logs and retry smarter" in seed_instruction
+    assert "GraphQL" in seed_instruction
+    assert "arbitrary repos" in seed_instruction
+    assert "GraphQL" in transform_instruction
+    assert "arbitrary repos" in transform_instruction
+    assert "GraphQL" in evaluate_instruction
+    assert "operational_specificity" in evaluate_instruction
+    assert "workflow_fit" in evaluate_instruction
+    assert "agent_workflow" in transform_instruction
+
+
 def test_openai_provider_uses_strong_model_for_transformations() -> None:
     parent = sample_parent()
     request = TransformationRequest.for_operator(
@@ -364,6 +391,8 @@ def test_openai_provider_seeds_and_evaluates_with_economy_model() -> None:
                 coherence=0.9,
                 feasibility=0.6,
                 user_fit=0.75,
+                operational_specificity=0.85,
+                workflow_fit=0.95,
             ),
         ],
         usage=FakeUsage(input_tokens=100, output_tokens=40),
@@ -492,6 +521,8 @@ def test_parse_only_evaluation_validation_error_triggers_repair() -> None:
                 coherence=0.92,
                 feasibility=0.76,
                 user_fit=0.91,
+                operational_specificity=0.88,
+                workflow_fit=0.9,
             ),
         ],
         usage=FakeUsage(input_tokens=100, output_tokens=25),
@@ -524,6 +555,8 @@ def test_evaluation_parse_validation_error_triggers_repair() -> None:
                 coherence=0.92,
                 feasibility=0.76,
                 user_fit=0.91,
+                operational_specificity=0.88,
+                workflow_fit=0.9,
             ),
         ],
         usage=FakeUsage(input_tokens=100, output_tokens=25),

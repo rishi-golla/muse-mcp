@@ -65,6 +65,8 @@ class EvaluationScores(FrozenModel):
     coherence: Score
     feasibility: Score
     user_fit: Score
+    operational_specificity: Score = 0.0
+    workflow_fit: Score = 0.0
 
 
 class IdeaGenome(FrozenModel):
@@ -76,6 +78,13 @@ class IdeaGenome(FrozenModel):
     assumptions_challenged: tuple[str, ...] = ()
     task_value: RequiredText
     distinguishing_features: tuple[str, ...] = ()
+    inputs_required: tuple[str, ...] = ()
+    outputs_produced: tuple[str, ...] = ()
+    agent_workflow: tuple[str, ...] = ()
+    decision_policy: str = ""
+    integration_points: tuple[str, ...] = ()
+    verification_strategy: str = ""
+    failure_modes: tuple[str, ...] = ()
     inspiration_principles: tuple[str, ...] = ()
     source_urls: tuple[str, ...] = ()
     first_order_effects: tuple[str, ...] = ()
@@ -303,6 +312,19 @@ class RunError(FrozenModel):
 
 
 FINGERPRINT_PATTERN = re.compile(r"[0-9a-fA-F]{64}\Z")
+DEFAULT_IDEA_CONTRACT_VALUES = {
+    "inputs_required": [],
+    "outputs_produced": [],
+    "agent_workflow": [],
+    "decision_policy": "",
+    "integration_points": [],
+    "verification_strategy": "",
+    "failure_modes": [],
+}
+DEFAULT_SCORE_VALUES = {
+    "operational_specificity": 0.0,
+    "workflow_fit": 0.0,
+}
 
 
 class RunResult(FrozenModel):
@@ -366,7 +388,22 @@ def canonical_run_payload(result: RunResult) -> dict[str, object]:
             record.pop("request_id")
         if record["operation_trace"] is None:
             record.pop("operation_trace")
+    for candidates_key in ("finalists", "all_candidates"):
+        for candidate in payload[candidates_key]:
+            _prune_default_operational_fields(candidate)
     return payload
+
+
+def _prune_default_operational_fields(candidate: dict[str, object]) -> None:
+    for field, default_value in DEFAULT_IDEA_CONTRACT_VALUES.items():
+        if candidate.get(field) == default_value:
+            candidate.pop(field)
+    scores = candidate.get("scores")
+    if not isinstance(scores, dict):
+        return
+    for field, default_value in DEFAULT_SCORE_VALUES.items():
+        if scores.get(field) == default_value:
+            scores.pop(field)
 
 
 def compute_reproducibility_fingerprint(result: RunResult) -> str:

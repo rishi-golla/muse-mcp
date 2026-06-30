@@ -101,6 +101,24 @@ def test_provider_seeds_a_framed_task_without_assumptions() -> None:
     assert all(not candidate.assumptions_challenged for candidate in response.value)
 
 
+def test_deterministic_seed_populates_operational_contract() -> None:
+    provider = DeterministicCreativeProvider()
+    framed = provider.frame(TaskContext(goal="Improve agent retries")).value
+
+    candidate = provider.seed(
+        framed,
+        RunConfig(seed_count=2, finalist_count=1),
+    ).value[0]
+
+    assert candidate.inputs_required
+    assert candidate.outputs_produced
+    assert candidate.agent_workflow
+    assert candidate.decision_policy
+    assert candidate.integration_points
+    assert candidate.verification_strategy
+    assert candidate.failure_modes
+
+
 def test_provider_transforms_the_mechanism_and_records_ancestry() -> None:
     provider = DeterministicCreativeProvider()
     task = TaskContext(goal="Invent a calmer decision process.")

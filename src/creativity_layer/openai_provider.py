@@ -48,9 +48,42 @@ SYSTEM_INSTRUCTIONS = (
 )
 DEVELOPER_INSTRUCTIONS = {
     "frame": "Frame the task by naming assumptions and the obvious baseline solution.",
-    "seed": "Generate diverse candidate mechanisms that satisfy the framed task.",
-    "transform": "Apply the requested structural operator to the supplied parent idea data.",
-    "evaluate": "Score the candidate against the framed task using calibrated floats.",
+    "seed": (
+        "Generate diverse candidate mechanisms that satisfy the framed task. "
+        "Each idea must include an operational contract: inputs_required, "
+        "outputs_produced, agent_workflow, decision_policy, integration_points, "
+        "verification_strategy, and failure_modes. Make the contract concrete "
+        "enough for an AI coding agent or backend middleware to execute. Avoid "
+        "generic ideas such as 'analyze logs and retry smarter' unless the "
+        "contract includes a concrete workflow, decision policy, and verification "
+        "strategy. Avoid arbitrary technology choices such as GraphQL, Redis, or "
+        "Kubernetes unless requested or clearly optional. For arbitrary repos, "
+        "keep the mechanism repo-agnostic. For TypeScript monorepo CI tasks, "
+        "reflect package graph, affected packages, test shards, tsc, Jest, "
+        "Vitest, Playwright, and CI log signals when relevant."
+    ),
+    "transform": (
+        "Apply the requested structural operator to the supplied parent idea "
+        "data. Preserve and improve the operational contract fields, especially "
+        "agent_workflow, decision_policy, integration_points, and "
+        "verification_strategy, so the transformed idea is more executable than "
+        "the parent. Do not introduce arbitrary stack choices such as GraphQL, "
+        "Redis, or Kubernetes unless requested. If the task targets arbitrary "
+        "repos, keep the transformed mechanism repo-agnostic and avoid generic "
+        "shortcuts such as 'analyze logs and retry smarter'."
+    ),
+    "evaluate": (
+        "Score the candidate against the framed task using calibrated floats. "
+        "Penalize generic ideas such as 'analyze logs and retry smarter' when "
+        "they lack concrete inputs_required, agent_workflow, decision_policy, "
+        "or verification_strategy. Penalize arbitrary technology choices such "
+        "as GraphQL for backend middleware in arbitrary repos unless requested "
+        "or clearly justified as optional. Reward repo-agnostic agent workflow "
+        "fit, explicit integration points, verification gates, and task-specific "
+        "signals such as package graph, affected packages, test shards, tsc, "
+        "Jest, Vitest, Playwright, and CI logs. Include operational_specificity "
+        "and workflow_fit scores."
+    ),
 }
 
 

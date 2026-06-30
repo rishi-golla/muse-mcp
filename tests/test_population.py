@@ -13,6 +13,8 @@ def candidate(
     originality: float,
     usefulness: float,
     coherence: float = 0.8,
+    operational_specificity: float = 0.7,
+    workflow_fit: float = 0.7,
 ) -> IdeaGenome:
     return IdeaGenome(
         generation=0,
@@ -27,6 +29,8 @@ def candidate(
             coherence=coherence,
             feasibility=0.7,
             user_fit=0.7,
+            operational_specificity=operational_specificity,
+            workflow_fit=workflow_fit,
         ),
     )
 
@@ -68,6 +72,92 @@ def test_selection_fills_capacity_after_the_frontier() -> None:
     )
 
     assert [item.title for item in selected] == ["best", "second", "third"]
+
+
+def test_population_prefers_operational_workflow_fit_over_shallow_originality() -> None:
+    shallow = candidate(
+        "Shallow",
+        originality=0.95,
+        usefulness=0.85,
+        coherence=0.4,
+        operational_specificity=0.2,
+        workflow_fit=0.2,
+    )
+    operational = candidate(
+        "Operational",
+        originality=0.86,
+        usefulness=0.86,
+        coherence=0.9,
+        operational_specificity=0.95,
+        workflow_fit=0.95,
+    )
+
+    selected = PopulationManager().select(
+        (shallow, operational),
+        finalist_count=1,
+    )
+
+    assert selected == (operational,)
+
+
+def test_single_finalist_prefers_operational_fit_over_low_fit_wildcard() -> None:
+    best = candidate(
+        "best",
+        originality=0.9,
+        usefulness=0.9,
+        coherence=0.9,
+        operational_specificity=0.9,
+        workflow_fit=0.9,
+    )
+    wildcard = candidate(
+        "wildcard",
+        originality=0.99,
+        usefulness=0.2,
+        coherence=0.65,
+        operational_specificity=0.2,
+        workflow_fit=0.2,
+    )
+
+    selected = PopulationManager(minimum_wildcard_coherence=0.6).select(
+        (best, wildcard),
+        finalist_count=1,
+    )
+
+    assert selected == (best,)
+
+
+def test_multi_finalist_can_preserve_originality_wildcard() -> None:
+    best = candidate(
+        "best",
+        originality=0.9,
+        usefulness=0.9,
+        coherence=0.9,
+        operational_specificity=0.9,
+        workflow_fit=0.9,
+    )
+    wildcard = candidate(
+        "wildcard",
+        originality=0.99,
+        usefulness=0.2,
+        coherence=0.65,
+        operational_specificity=0.2,
+        workflow_fit=0.2,
+    )
+    second = candidate(
+        "second",
+        originality=0.8,
+        usefulness=0.8,
+        coherence=0.9,
+        operational_specificity=0.8,
+        workflow_fit=0.8,
+    )
+
+    selected = PopulationManager(minimum_wildcard_coherence=0.6).select(
+        (best, second, wildcard),
+        finalist_count=2,
+    )
+
+    assert selected == (best, wildcard)
 
 
 def test_frontier_rejects_duplicate_candidate_ids() -> None:

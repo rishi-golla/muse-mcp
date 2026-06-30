@@ -36,6 +36,41 @@ def _unique(values: Iterable[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(values))
 
 
+def _operational_contract(goal: str) -> dict[str, object]:
+    return {
+        "inputs_required": (
+            "task goal",
+            "current candidate state",
+            "available verification command",
+        ),
+        "outputs_produced": (
+            "next action recommendation",
+            "verification gate",
+            "stop or continue decision",
+        ),
+        "agent_workflow": (
+            "collect current evidence",
+            "choose one bounded action",
+            "run the narrowest verification",
+        ),
+        "decision_policy": (
+            f"Prefer actions that directly advance '{goal}' and stop after "
+            "repeating the same failed verification."
+        ),
+        "integration_points": (
+            "agent planning step",
+            "post-verification review",
+        ),
+        "verification_strategy": (
+            "Run the smallest relevant check first, then widen only after it passes."
+        ),
+        "failure_modes": (
+            "ambiguous evidence",
+            "missing verification command",
+        ),
+    }
+
+
 def _structural_mechanism(
     request: TransformationRequest,
     parents: tuple[IdeaGenome, ...],
@@ -213,6 +248,7 @@ class DeterministicCreativeProvider:
                     ),
                     task_value=f"Advances the goal: {framed_task.context.goal}",
                     distinguishing_features=(mechanism,),
+                    **_operational_contract(framed_task.context.goal),
                     inspiration_kind=InspirationKind.INDEPENDENT,
                 )
             )
@@ -278,6 +314,7 @@ class DeterministicCreativeProvider:
             + (f"Operator applied: {request.operator.value}",),
             task_value=combined_values,
             distinguishing_features=combined_features + (request.instruction,),
+            **_operational_contract(request.task_goal),
             parent_ids=actual_parent_ids,
             transformations=expected_transformation_history(
                 request.operator,
@@ -310,6 +347,8 @@ class DeterministicCreativeProvider:
             coherence=score(2, 0.65),
             feasibility=score(3, 0.45),
             user_fit=score(4, 0.50),
+            operational_specificity=score(5, 0.50),
+            workflow_fit=score(6, 0.50),
         )
         return MeteredResponse(
             value=scores,
