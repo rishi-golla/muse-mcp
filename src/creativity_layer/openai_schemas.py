@@ -90,6 +90,13 @@ class OpenAIIdea(OpenAIOutputModel):
     assumptions_challenged: list[str]
     task_value: str
     distinguishing_features: list[str]
+    inputs_required: list[str]
+    outputs_produced: list[str]
+    agent_workflow: list[str]
+    decision_policy: str
+    integration_points: list[str]
+    verification_strategy: str
+    failure_modes: list[str]
     first_order_effects: list[str]
     second_order_effects: list[str]
     feasibility_assumptions: list[str]
@@ -105,6 +112,8 @@ class OpenAIIdea(OpenAIOutputModel):
         "core_mechanism",
         "problem_framing",
         "task_value",
+        "decision_policy",
+        "verification_strategy",
     )
     @classmethod
     def validate_required_text(cls, value: str) -> str:
@@ -113,6 +122,11 @@ class OpenAIIdea(OpenAIOutputModel):
     @field_validator(
         "assumptions_challenged",
         "distinguishing_features",
+        "inputs_required",
+        "outputs_produced",
+        "agent_workflow",
+        "integration_points",
+        "failure_modes",
         "first_order_effects",
         "second_order_effects",
         "feasibility_assumptions",
@@ -134,6 +148,13 @@ class OpenAIIdea(OpenAIOutputModel):
             "assumptions_challenged": tuple(self.assumptions_challenged),
             "task_value": self.task_value,
             "distinguishing_features": tuple(self.distinguishing_features),
+            "inputs_required": tuple(self.inputs_required),
+            "outputs_produced": tuple(self.outputs_produced),
+            "agent_workflow": tuple(self.agent_workflow),
+            "decision_policy": self.decision_policy,
+            "integration_points": tuple(self.integration_points),
+            "verification_strategy": self.verification_strategy,
+            "failure_modes": tuple(self.failure_modes),
             "first_order_effects": tuple(self.first_order_effects),
             "second_order_effects": tuple(self.second_order_effects),
             "feasibility_assumptions": tuple(self.feasibility_assumptions),
@@ -211,6 +232,10 @@ class OpenAIEvaluation(OpenAIOutputModel):
     coherence: float = Field(description="0.0 to 1.0 score, not 0 to 10.")
     feasibility: float = Field(description="0.0 to 1.0 score, not 0 to 10.")
     user_fit: float = Field(description="0.0 to 1.0 score, not 0 to 10.")
+    operational_specificity: float = Field(
+        description="0.0 to 1.0 score, not 0 to 10."
+    )
+    workflow_fit: float = Field(description="0.0 to 1.0 score, not 0 to 10.")
 
     @field_validator("*")
     @classmethod

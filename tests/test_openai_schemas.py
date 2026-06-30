@@ -35,6 +35,13 @@ def _idea_payload(**overrides: object) -> dict[str, object]:
         "assumptions_challenged": ["Votes must be final"],
         "task_value": "Reduces premature consensus.",
         "distinguishing_features": ["reversible confidence"],
+        "inputs_required": ["task goal", "repo state"],
+        "outputs_produced": ["candidate plan", "verification gate"],
+        "agent_workflow": ["collect evidence", "choose action", "verify"],
+        "decision_policy": "Stop when verification repeats the same failure.",
+        "integration_points": ["planning middleware"],
+        "verification_strategy": "Run the narrowest relevant check first.",
+        "failure_modes": ["ambiguous evidence"],
         "first_order_effects": [],
         "second_order_effects": [],
         "feasibility_assumptions": [],
@@ -129,6 +136,34 @@ def test_seed_conversion_is_deterministic_for_candidates_and_run_fingerprints() 
     assert _run_fingerprint(first) == _run_fingerprint(second)
 
 
+def test_openai_idea_requires_operational_contract_fields() -> None:
+    payload = _idea_payload()
+    payload.pop("inputs_required")
+
+    with pytest.raises(ValidationError):
+        OpenAIIdea.model_validate(payload)
+
+
+def test_openai_idea_operational_contract_converts_to_domain() -> None:
+    candidate = _idea(
+        inputs_required=["failed test output", "changed files"],
+        outputs_produced=["failure classification", "next action"],
+        agent_workflow=["collect evidence", "choose action", "verify"],
+        decision_policy="Stop after two identical failed attempts.",
+        integration_points=["post-test-failure hook"],
+        verification_strategy="Run targeted test before full suite.",
+        failure_modes=["ambiguous logs"],
+    ).to_seed()
+
+    assert candidate.inputs_required == ("failed test output", "changed files")
+    assert candidate.outputs_produced == ("failure classification", "next action")
+    assert candidate.agent_workflow == ("collect evidence", "choose action", "verify")
+    assert candidate.decision_policy == "Stop after two identical failed attempts."
+    assert candidate.integration_points == ("post-test-failure hook",)
+    assert candidate.verification_strategy == "Run targeted test before full suite."
+    assert candidate.failure_modes == ("ambiguous logs",)
+
+
 @pytest.mark.parametrize(
     "variant",
     [
@@ -184,9 +219,12 @@ def test_openai_evaluation_converts_to_scores() -> None:
         coherence=0.9,
         feasibility=0.6,
         user_fit=0.75,
+        operational_specificity=0.85,
+        workflow_fit=0.95,
     ).to_domain()
 
     assert scores.originality == 0.8
+    assert scores.operational_specificity == 0.85
 
 
 @pytest.mark.parametrize(
