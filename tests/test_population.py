@@ -100,7 +100,7 @@ def test_population_prefers_operational_workflow_fit_over_shallow_originality() 
     assert selected == (operational,)
 
 
-def test_wildcard_can_preserve_originality_despite_low_operational_scores() -> None:
+def test_single_finalist_prefers_operational_fit_over_low_fit_wildcard() -> None:
     best = candidate(
         "best",
         originality=0.9,
@@ -123,7 +123,41 @@ def test_wildcard_can_preserve_originality_despite_low_operational_scores() -> N
         finalist_count=1,
     )
 
-    assert selected == (wildcard,)
+    assert selected == (best,)
+
+
+def test_multi_finalist_can_preserve_originality_wildcard() -> None:
+    best = candidate(
+        "best",
+        originality=0.9,
+        usefulness=0.9,
+        coherence=0.9,
+        operational_specificity=0.9,
+        workflow_fit=0.9,
+    )
+    wildcard = candidate(
+        "wildcard",
+        originality=0.99,
+        usefulness=0.2,
+        coherence=0.65,
+        operational_specificity=0.2,
+        workflow_fit=0.2,
+    )
+    second = candidate(
+        "second",
+        originality=0.8,
+        usefulness=0.8,
+        coherence=0.9,
+        operational_specificity=0.8,
+        workflow_fit=0.8,
+    )
+
+    selected = PopulationManager(minimum_wildcard_coherence=0.6).select(
+        (best, second, wildcard),
+        finalist_count=2,
+    )
+
+    assert selected == (best, wildcard)
 
 
 def test_frontier_rejects_duplicate_candidate_ids() -> None:

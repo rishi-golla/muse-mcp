@@ -94,7 +94,7 @@ class PopulationManager:
         )
 
         selected = list((frontier + remaining)[:finalist_count])
-        if wildcard is not None and wildcard not in selected:
+        if wildcard is not None and wildcard not in selected and finalist_count > 1:
             if len(selected) >= finalist_count:
                 selected[-1] = wildcard
             else:
