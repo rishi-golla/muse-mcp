@@ -345,6 +345,10 @@ DEFAULT_SCORE_VALUES = {
     "operational_specificity": 0.0,
     "workflow_fit": 0.0,
 }
+DEFAULT_CONTEXT_BUNDLE = {
+    "snippets": [],
+    "tags": [],
+}
 
 
 class RunResult(FrozenModel):
@@ -411,6 +415,9 @@ def canonical_run_payload(result: RunResult) -> dict[str, object]:
     for candidates_key in ("finalists", "all_candidates"):
         for candidate in payload[candidates_key]:
             _prune_default_operational_fields(candidate)
+    context = payload["framed_task"]["context"]
+    if context.get("context_bundle") == DEFAULT_CONTEXT_BUNDLE:
+        context.pop("context_bundle")
     return payload
 
 
