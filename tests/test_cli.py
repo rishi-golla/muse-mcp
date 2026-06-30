@@ -160,6 +160,56 @@ def test_deterministic_cli_context_file_feeds_typed_context(
     assert captured.err == ""
 
 
+def test_deterministic_cli_repo_signals_file_builds_context(
+    tmp_path,
+    capsys,
+) -> None:
+    signals_path = tmp_path / "repo-signals.json"
+    signals_path.write_text(
+        json.dumps(
+            {
+                "file_paths": ["pnpm-workspace.yaml", "apps/web/package.json"],
+                "changed_files": ["packages/ui/src/Button.tsx"],
+                "package_manifests": ["apps/web/package.json"],
+                "test_commands": ["pnpm test --filter apps/web -- --shard=2/4"],
+                "ci_logs": ["Vitest shard 2 failed after Playwright smoke tests"],
+                "dependency_hints": ["apps/web depends on packages/ui"],
+                "detected_languages": ["TypeScript"],
+                "detected_frameworks": ["Vitest", "Playwright"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = run_cli(
+        [
+            "deterministic",
+            "Design a debugging workflow for flaky CI",
+            "--repo-signals-file",
+            str(signals_path),
+            "--trace-dir",
+            str(tmp_path / "traces"),
+            "--seed-count",
+            "2",
+            "--finalist-count",
+            "1",
+            "--generations",
+            "0",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    summary = json.loads(captured.out)
+    trace = json.loads(Path(summary["trace_path"]).read_text(encoding="utf-8"))
+    candidate_text = json.dumps(trace["all_candidates"][0]).casefold()
+
+    assert exit_code == 0
+    assert trace["framed_task"]["context"]["context_bundle"]["snippets"]
+    assert "affected packages" in candidate_text
+    assert "test shards" in candidate_text
+    assert captured.err == ""
+
+
 @pytest.mark.parametrize(
     ("arguments", "message"),
     [
