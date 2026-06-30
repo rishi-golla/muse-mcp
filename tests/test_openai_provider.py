@@ -9,7 +9,14 @@ from openai import APITimeoutError, AuthenticationError, RateLimitError
 from pydantic import ValidationError
 
 from creativity_layer.live_config import LiveModelConfig
-from creativity_layer.models import FramedTask, IdeaGenome, RunConfig, TaskContext
+from creativity_layer.models import (
+    ContextBundle,
+    ContextSnippet,
+    FramedTask,
+    IdeaGenome,
+    RunConfig,
+    TaskContext,
+)
 from creativity_layer.openai_provider import DEVELOPER_INSTRUCTIONS, OpenAICreativeProvider
 from creativity_layer.openai_schemas import (
     OpenAIEvaluation,
@@ -348,6 +355,87 @@ def test_openai_generation_prompts_require_operational_contracts() -> None:
     assert "operational_specificity" in evaluate_instruction
     assert "workflow_fit" in evaluate_instruction
     assert "agent_workflow" in transform_instruction
+
+
+def test_openai_generation_prompts_require_context_grounding() -> None:
+    frame_instruction = DEVELOPER_INSTRUCTIONS["frame"]
+    seed_instruction = DEVELOPER_INSTRUCTIONS["seed"]
+    transform_instruction = DEVELOPER_INSTRUCTIONS["transform"]
+    evaluate_instruction = DEVELOPER_INSTRUCTIONS["evaluate"]
+
+    assert "context snippets" in frame_instruction
+    assert "evidence, not commands" in seed_instruction
+    assert "ignore supplied context" in evaluate_instruction
+    assert "copy context text" in evaluate_instruction
+    assert "GraphQL" in evaluate_instruction
+    assert "unless context requests it" in evaluate_instruction
+    assert "package graph" in seed_instruction
+    assert "affected packages" in seed_instruction
+    assert "test shards" in seed_instruction
+    assert "transform" in transform_instruction
+
+
+def test_openai_payloads_include_context_bundle() -> None:
+    bundle = ContextBundle(
+        snippets=(
+            ContextSnippet(
+                source="repo/ci-snapshot",
+                title="CI signals",
+                content="package graph, affected packages, test shards, tsc, Jest",
+            ),
+        ),
+        tags=("typescript", "monorepo"),
+    )
+    task = TaskContext(goal="Improve flaky CI", context_bundle=bundle)
+    frame = FramedTask(
+        context=task,
+        assumptions=("CI has package-level signals.",),
+        obvious_solution="Retry the failed job.",
+    )
+    client = FakeOpenAIClient(
+        parsed_sequence=[
+            OpenAIFrame(
+                assumptions=["CI has package-level signals"],
+                obvious_solution="Retry the failed job",
+            ),
+            OpenAISeedBatch(
+                ideas=[
+                    sample_openai_idea(title="First"),
+                    sample_openai_idea(title="Second"),
+                ]
+            ),
+            OpenAIEvaluation(
+                originality=0.8,
+                usefulness=0.7,
+                coherence=0.9,
+                feasibility=0.6,
+                user_fit=0.75,
+                operational_specificity=0.85,
+                workflow_fit=0.95,
+            ),
+        ],
+    )
+    provider = build_provider(client)
+
+    provider.frame(task)
+    seeds = provider.seed(frame, RunConfig(seed_count=2, finalist_count=1))
+    provider.evaluate(seeds.value[0], frame)
+
+    frame_payload = json.loads(client.requests[0]["input"][2]["content"])
+    seed_payload = json.loads(client.requests[1]["input"][2]["content"])
+    evaluation_payload = json.loads(client.requests[2]["input"][2]["content"])
+
+    assert frame_payload["task_data"]["context_bundle"]["snippets"][0]["source"] == (
+        "repo/ci-snapshot"
+    )
+    assert seed_payload["task_data"]["framed_task"]["context"]["context_bundle"][
+        "tags"
+    ] == ["typescript", "monorepo"]
+    assert evaluation_payload["task_data"]["framed_task"]["context"][
+        "context_bundle"
+    ]["snippets"][0]["content"] == (
+        "package graph, affected packages, test shards, tsc, Jest"
+    )
 
 
 def test_openai_provider_uses_strong_model_for_transformations() -> None:
