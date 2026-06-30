@@ -110,6 +110,7 @@ class TraceView:
             if self.mode == PrivacyMode.PRIVATE and (
                 _is_private_text_key(parent_key)
                 or _is_private_operation_trace_text(path)
+                or _is_private_context_text(path)
             ):
                 return {
                     "sha256": hashlib.sha256(sanitized.encode("utf-8")).hexdigest(),
@@ -148,6 +149,10 @@ def _is_private_operation_trace_text(path: tuple[str, ...]) -> bool:
     if "response" in path and path[-1:] == ("refusal",):
         return True
     return "response" in path and "parsed" in path
+
+
+def _is_private_context_text(path: tuple[str, ...]) -> bool:
+    return "contextbundle" in path and path[-1:] != ("sensitivity",)
 
 
 def _normalized_key(key: str) -> str:

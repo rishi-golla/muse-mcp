@@ -6,6 +6,8 @@ import pytest
 
 from creativity_layer.live_config import PrivacyMode
 from creativity_layer.models import (
+    ContextBundle,
+    ContextSnippet,
     FramedTask,
     IdeaGenome,
     OperationTrace,
@@ -222,6 +224,44 @@ def test_private_trace_store_hashes_search_source_snippets(tmp_path) -> None:
     assert search_result["url"] == "https://example.com/source"
     assert search_result["snippet"]["sha256"]
     assert search_result["bounded_excerpt"]["sha256"]
+
+
+def test_private_trace_store_hashes_context_bundle(tmp_path) -> None:
+    result = run_result()
+    context = result.framed_task.context.model_copy(
+        update={
+            "context_bundle": ContextBundle(
+                snippets=(
+                    ContextSnippet(
+                        source="repo/private-package-graph",
+                        title="Private package graph",
+                        content="apps/secret depends on packages/internal",
+                        metadata={"branch": "secret-feature"},
+                    ),
+                ),
+                tags=("typescript", "monorepo"),
+            )
+        }
+    )
+    result = result.model_copy(
+        update={
+            "framed_task": result.framed_task.model_copy(update={"context": context})
+        }
+    )
+    view = TraceView(mode=PrivacyMode.PRIVATE, secret_values=())
+
+    path = JsonTraceStore(tmp_path, trace_view=view).save(result)
+    raw_trace = path.read_text(encoding="utf-8")
+    payload = json.loads(raw_trace)
+
+    assert "repo/private-package-graph" not in raw_trace
+    assert "apps/secret" not in raw_trace
+    assert "secret-feature" not in raw_trace
+    bundle = payload["framed_task"]["context"]["context_bundle"]
+    assert bundle["snippets"][0]["source"]["sha256"]
+    assert bundle["snippets"][0]["content"]["sha256"]
+    assert bundle["snippets"][0]["metadata"]["branch"]["sha256"]
+    assert bundle["tags"][0]["sha256"]
 
 
 def test_private_trace_store_does_not_mutate_run_result(tmp_path) -> None:

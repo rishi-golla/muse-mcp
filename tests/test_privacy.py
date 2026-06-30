@@ -71,6 +71,35 @@ def test_private_trace_hashes_source_snippets_and_excerpts() -> None:
     assert result["boundedExcerpt"]["length"] == len("Private camel excerpt")
 
 
+def test_private_trace_hashes_context_bundle_text() -> None:
+    view = TraceView(mode=PrivacyMode.PRIVATE, secret_values=())
+
+    payload = view.sanitize(
+        {
+            "context_bundle": {
+                "snippets": [
+                    {
+                        "source": "repo/private-package-graph",
+                        "title": "Private package graph",
+                        "content": "apps/secret depends on packages/internal",
+                        "metadata": {"branch": "secret-feature"},
+                        "sensitivity": "private",
+                    }
+                ],
+                "tags": ["typescript", "monorepo"],
+            }
+        }
+    )
+
+    snippet = payload["context_bundle"]["snippets"][0]
+    assert snippet["source"]["sha256"]
+    assert snippet["title"]["sha256"]
+    assert snippet["content"]["sha256"]
+    assert snippet["metadata"]["branch"]["sha256"]
+    assert snippet["sensitivity"] == "private"
+    assert payload["context_bundle"]["tags"][0]["sha256"]
+
+
 def test_sanitize_removes_secrets_from_nested_errors_and_provider_metadata() -> None:
     view = TraceView(mode=PrivacyMode.RESEARCH, secret_values=("sk-secret",))
 
