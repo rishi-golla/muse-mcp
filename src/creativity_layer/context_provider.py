@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Protocol
 
@@ -95,6 +96,8 @@ class DeterministicContextProvider:
 
 def _snippets_from_signals(signals: RepoSignals) -> list[ContextSnippet]:
     snippets: list[ContextSnippet] = []
+    affected_packages = _affected_packages(signals)
+    test_shards = _test_shard_signals(signals)
     if signals.file_paths or signals.changed_files:
         snippets.append(
             ContextSnippet(
@@ -107,22 +110,31 @@ def _snippets_from_signals(signals: RepoSignals) -> list[ContextSnippet]:
             )
         )
     if signals.package_manifests or signals.dependency_hints:
+        package_evidence = (*signals.package_manifests, *signals.dependency_hints)
+        if affected_packages:
+            package_evidence = (
+                *package_evidence,
+                "affected packages: " + ", ".join(affected_packages),
+            )
         snippets.append(
             ContextSnippet(
                 source="repo/package-graph",
                 title="Package and dependency graph",
-                content=_join_evidence(
-                    "Package graph",
-                    (*signals.package_manifests, *signals.dependency_hints),
-                ),
+                content=_join_evidence("Package graph", package_evidence),
             )
         )
     if signals.test_commands:
+        test_evidence = signals.test_commands
+        if test_shards:
+            test_evidence = (
+                *test_evidence,
+                "test shards: " + ", ".join(test_shards),
+            )
         snippets.append(
             ContextSnippet(
                 source="repo/test-commands",
                 title="Verification commands",
-                content=_join_evidence("Test commands", signals.test_commands),
+                content=_join_evidence("Test commands", test_evidence),
             )
         )
     if signals.ci_logs:
@@ -145,6 +157,23 @@ def _snippets_from_signals(signals: RepoSignals) -> list[ContextSnippet]:
             )
         )
     return snippets
+
+
+def _affected_packages(signals: RepoSignals) -> tuple[str, ...]:
+    candidates: list[str] = []
+    for path in (*signals.changed_files, *signals.file_paths):
+        parts = re.split(r"[\\/]+", path)
+        if len(parts) >= 2 and parts[0] in {"apps", "packages", "libs", "services"}:
+            candidates.append("/".join(parts[:2]))
+    return tuple(dict.fromkeys(candidates))
+
+
+def _test_shard_signals(signals: RepoSignals) -> tuple[str, ...]:
+    candidates: list[str] = []
+    for item in (*signals.test_commands, *signals.ci_logs):
+        if re.search(r"\bshard(?:s|ed)?\b|--shard", item, re.IGNORECASE):
+            candidates.append(item)
+    return tuple(dict.fromkeys(candidates))
 
 
 def _tags_from_signals(signals: RepoSignals) -> tuple[str, ...]:
