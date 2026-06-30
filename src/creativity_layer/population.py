@@ -85,9 +85,6 @@ class PopulationManager:
                 for candidate in candidates
                 if candidate.scores is not None
                 and candidate.scores.coherence >= self._minimum_wildcard_coherence
-                and candidate.scores.operational_specificity
-                >= self._minimum_wildcard_coherence
-                and candidate.scores.workflow_fit >= self._minimum_wildcard_coherence
             ),
             key=lambda candidate: (
                 candidate.scores.originality if candidate.scores is not None else -1,
