@@ -7,8 +7,11 @@ import pytest
 from pydantic import ValidationError
 
 from creativity_layer.models import (
+    ContextBundle,
+    ContextSnippet,
     CostEstimate,
     EvaluationScores,
+    FramedTask,
     IdeaGenome,
     InspirationKind,
     OperationTrace,
@@ -23,6 +26,37 @@ from creativity_layer.models import (
 def test_task_context_requires_a_non_blank_goal() -> None:
     with pytest.raises(ValidationError):
         TaskContext(goal="   ")
+
+
+def test_context_bundle_preserves_repo_evidence() -> None:
+    bundle = ContextBundle(
+        snippets=(
+            ContextSnippet(
+                source="repo/package-graph",
+                title="Package graph",
+                content="apps/web depends on packages/ui",
+                metadata={"kind": "monorepo"},
+            ),
+        ),
+        tags=("typescript", "monorepo"),
+    )
+
+    task = TaskContext(goal="Improve flaky CI", context_bundle=bundle)
+    framed = FramedTask(
+        context=task,
+        assumptions=("CI has package-level signals.",),
+        obvious_solution="Retry failing jobs.",
+    )
+
+    assert framed.context.context_bundle == bundle
+    assert framed.context.context_bundle.snippets[0].source == "repo/package-graph"
+
+
+def test_context_bundle_defaults_empty_for_legacy_traces() -> None:
+    task = TaskContext(goal="Improve retries")
+
+    assert task.context_bundle.snippets == ()
+    assert task.context_bundle.tags == ()
 
 
 def test_idea_genome_records_ancestry_and_separate_scores() -> None:

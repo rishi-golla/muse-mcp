@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import unicodedata
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Annotated
@@ -45,12 +46,31 @@ class InspirationKind(StrEnum):
     LIKELY_COPYING = "likely_copying"
 
 
+class ContextSensitivity(StrEnum):
+    PUBLIC = "public"
+    PRIVATE = "private"
+
+
+class ContextSnippet(FrozenModel):
+    source: RequiredText
+    content: RequiredText
+    title: str = ""
+    metadata: Mapping[str, object] = Field(default_factory=dict)
+    sensitivity: ContextSensitivity = ContextSensitivity.PRIVATE
+
+
+class ContextBundle(FrozenModel):
+    snippets: tuple[ContextSnippet, ...] = ()
+    tags: tuple[str, ...] = ()
+
+
 class TaskContext(FrozenModel):
     goal: str = Field(min_length=1)
     audience: str | None = None
     constraints: tuple[str, ...] = ()
     preferences: tuple[str, ...] = ()
     risk_tolerance: Score = 0.5
+    context_bundle: ContextBundle = Field(default_factory=ContextBundle)
 
     @model_validator(mode="after")
     def reject_blank_goal(self) -> TaskContext:
