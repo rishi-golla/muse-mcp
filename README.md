@@ -88,6 +88,11 @@ Live mode performs no web search in Slice 2A. Live summaries include
 `generated_count` and `unevaluated_count` so production-like smoke tests can
 distinguish generation failures from evaluation failures.
 
+Live idea artifacts include an operational contract (`inputs_required`,
+`outputs_produced`, `agent_workflow`, `decision_policy`, `integration_points`,
+`verification_strategy`, and `failure_modes`) so downstream agents can consume
+ideas as planning artifacts instead of prose-only briefs.
+
 ## Live search adapter smoke tests
 
 Normal tests do not call Exa, Brave, or OpenAI web search. Live search adapter
