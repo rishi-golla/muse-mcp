@@ -22,8 +22,18 @@ def _dominates(left: IdeaGenome, right: IdeaGenome) -> bool:
     assert left.scores is not None
     assert right.scores is not None
 
-    left_values = (left.scores.originality, left.scores.usefulness)
-    right_values = (right.scores.originality, right.scores.usefulness)
+    left_values = (
+        left.scores.originality,
+        left.scores.usefulness,
+        left.scores.operational_specificity,
+        left.scores.workflow_fit,
+    )
+    right_values = (
+        right.scores.originality,
+        right.scores.usefulness,
+        right.scores.operational_specificity,
+        right.scores.workflow_fit,
+    )
     return all(a >= b for a, b in zip(left_values, right_values, strict=True)) and any(
         a > b for a, b in zip(left_values, right_values, strict=True)
     )
@@ -75,6 +85,9 @@ class PopulationManager:
                 for candidate in candidates
                 if candidate.scores is not None
                 and candidate.scores.coherence >= self._minimum_wildcard_coherence
+                and candidate.scores.operational_specificity
+                >= self._minimum_wildcard_coherence
+                and candidate.scores.workflow_fit >= self._minimum_wildcard_coherence
             ),
             key=lambda candidate: (
                 candidate.scores.originality if candidate.scores is not None else -1,
@@ -94,6 +107,16 @@ class PopulationManager:
     @staticmethod
     def _balanced_rank(candidate: IdeaGenome) -> tuple[float, float, float, str]:
         assert candidate.scores is not None
-        joint = min(candidate.scores.originality, candidate.scores.usefulness)
-        total = candidate.scores.originality + candidate.scores.usefulness
+        joint = min(
+            candidate.scores.originality,
+            candidate.scores.usefulness,
+            candidate.scores.operational_specificity,
+            candidate.scores.workflow_fit,
+        )
+        total = (
+            candidate.scores.originality
+            + candidate.scores.usefulness
+            + candidate.scores.operational_specificity
+            + candidate.scores.workflow_fit
+        )
         return joint, total, candidate.scores.coherence, str(candidate.id)

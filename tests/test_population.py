@@ -13,6 +13,8 @@ def candidate(
     originality: float,
     usefulness: float,
     coherence: float = 0.8,
+    operational_specificity: float = 0.7,
+    workflow_fit: float = 0.7,
 ) -> IdeaGenome:
     return IdeaGenome(
         generation=0,
@@ -27,6 +29,8 @@ def candidate(
             coherence=coherence,
             feasibility=0.7,
             user_fit=0.7,
+            operational_specificity=operational_specificity,
+            workflow_fit=workflow_fit,
         ),
     )
 
@@ -68,6 +72,32 @@ def test_selection_fills_capacity_after_the_frontier() -> None:
     )
 
     assert [item.title for item in selected] == ["best", "second", "third"]
+
+
+def test_population_prefers_operational_workflow_fit_over_shallow_originality() -> None:
+    shallow = candidate(
+        "Shallow",
+        originality=0.95,
+        usefulness=0.85,
+        coherence=0.9,
+        operational_specificity=0.2,
+        workflow_fit=0.2,
+    )
+    operational = candidate(
+        "Operational",
+        originality=0.86,
+        usefulness=0.86,
+        coherence=0.9,
+        operational_specificity=0.95,
+        workflow_fit=0.95,
+    )
+
+    selected = PopulationManager().select(
+        (shallow, operational),
+        finalist_count=1,
+    )
+
+    assert selected == (operational,)
 
 
 def test_frontier_rejects_duplicate_candidate_ids() -> None:
