@@ -26,6 +26,7 @@ from creativity_layer.models import (
     SpendRecord,
     TaskContext,
 )
+from creativity_layer.openai_provider import DEVELOPER_INSTRUCTIONS
 from creativity_layer.providers import MeteredResponse
 from creativity_layer.transforms import TransformationRequest
 
@@ -304,6 +305,30 @@ def test_evaluation_scale_errors_are_safe_and_actionable() -> None:
     assert "score must be finite and between 0 and 1" in source
     assert "api_key" not in source.lower()
     assert "request_json" not in source
+
+
+def test_retry_strategy_contract_rejects_shallow_log_analysis() -> None:
+    source = DEVELOPER_INSTRUCTIONS["evaluate"]
+
+    assert "analyze logs and retry smarter" in source
+    assert "penalize" in source.lower()
+    assert "decision_policy" in source
+    assert "verification_strategy" in source
+
+
+def test_arbitrary_repo_middleware_penalizes_graphql_by_default() -> None:
+    source = DEVELOPER_INSTRUCTIONS["evaluate"]
+
+    assert "GraphQL" in source
+    assert "unless requested" in source
+    assert "arbitrary repos" in source
+
+
+def test_typescript_monorepo_contract_mentions_repo_specific_signals() -> None:
+    source = DEVELOPER_INSTRUCTIONS["seed"] + DEVELOPER_INSTRUCTIONS["evaluate"]
+
+    for expected in ("package graph", "affected packages", "test shards", "tsc"):
+        assert expected in source
 
 
 class InvalidSeedProvider(DeterministicCreativeProvider):
