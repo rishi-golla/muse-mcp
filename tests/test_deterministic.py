@@ -2,7 +2,14 @@ import pytest
 from pydantic import ValidationError
 
 from creativity_layer.deterministic import DeterministicCreativeProvider
-from creativity_layer.models import FramedTask, IdeaGenome, RunConfig, TaskContext
+from creativity_layer.models import (
+    ContextBundle,
+    ContextSnippet,
+    FramedTask,
+    IdeaGenome,
+    RunConfig,
+    TaskContext,
+)
 from creativity_layer.providers import OperationQuote
 from creativity_layer.transforms import OperatorName, TransformationRequest
 
@@ -119,6 +126,53 @@ def test_deterministic_seed_populates_operational_contract() -> None:
     assert candidate.failure_modes
 
 
+def test_deterministic_seed_uses_context_bundle_from_python_api() -> None:
+    provider = DeterministicCreativeProvider()
+    task = TaskContext(
+        goal="Design a creative debugging workflow for a TypeScript monorepo with flaky CI",
+        context_bundle=ContextBundle(
+            snippets=(
+                ContextSnippet(
+                    source="repo/ci-snapshot",
+                    title="CI signals",
+                    content=(
+                        "The repo has a package graph with affected packages, "
+                        "test shards, tsc, Jest, Vitest, Playwright, and CI logs."
+                    ),
+                ),
+            ),
+            tags=("typescript", "monorepo"),
+        ),
+    )
+
+    candidate = provider.seed(
+        provider.frame(task).value,
+        RunConfig(seed_count=2, finalist_count=1),
+    ).value[0]
+    contract_text = " ".join(
+        (
+            candidate.core_mechanism,
+            candidate.problem_framing,
+            " ".join(candidate.inputs_required),
+            " ".join(candidate.agent_workflow),
+            candidate.decision_policy,
+            candidate.verification_strategy,
+        )
+    ).casefold()
+
+    for expected in (
+        "package graph",
+        "affected packages",
+        "test shards",
+        "tsc",
+        "jest",
+        "vitest",
+        "playwright",
+        "ci logs",
+    ):
+        assert expected in contract_text
+
+
 def test_provider_transforms_the_mechanism_and_records_ancestry() -> None:
     provider = DeterministicCreativeProvider()
     task = TaskContext(goal="Invent a calmer decision process.")
@@ -139,6 +193,48 @@ def test_provider_transforms_the_mechanism_and_records_ancestry() -> None:
     assert child.generation == 1
     assert child.transformations == ("invert",)
     assert child.core_mechanism != parent.core_mechanism
+
+
+def test_deterministic_transform_preserves_context_grounding() -> None:
+    provider = DeterministicCreativeProvider()
+    task = TaskContext(
+        goal="Design a TypeScript monorepo CI workflow",
+        context_bundle=ContextBundle(
+            snippets=(
+                ContextSnippet(
+                    source="repo/ci-snapshot",
+                    content="package graph, affected packages, test shards, tsc, Jest",
+                ),
+            ),
+        ),
+    )
+    framed = provider.frame(task).value
+    parent = provider.seed(
+        framed,
+        RunConfig(seed_count=2, finalist_count=1),
+    ).value[0]
+    request = TransformationRequest.for_operator(
+        operator=OperatorName.REFRAME,
+        parents=(parent,),
+        task_goal=task.goal,
+    )
+
+    child = provider.transform(request, (parent,), framed).value
+    contract_text = " ".join(
+        (
+            child.core_mechanism,
+            " ".join(child.inputs_required),
+            " ".join(child.agent_workflow),
+            child.decision_policy,
+            child.verification_strategy,
+        )
+    ).casefold()
+
+    assert "package graph" in contract_text
+    assert "affected packages" in contract_text
+    assert "test shards" in contract_text
+    assert "tsc" in contract_text
+    assert "jest" in contract_text
 
 
 def test_unary_transform_preserves_the_parent_history_exactly() -> None:

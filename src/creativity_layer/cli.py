@@ -18,7 +18,7 @@ from creativity_layer.live_config import (
     OpenAICredentials,
     PrivacyMode,
 )
-from creativity_layer.models import RunConfig, RunResult, TaskContext
+from creativity_layer.models import ContextBundle, RunConfig, RunResult, TaskContext
 from creativity_layer.openai_provider import OpenAICreativeProvider
 from creativity_layer.pricing import PricingTable
 from creativity_layer.privacy import TraceView
@@ -48,6 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     deterministic.add_argument("--generations", type=int, default=1)
     deterministic.add_argument("--max-cost-usd", type=float, default=1.0)
     deterministic.add_argument("--max-calls", type=int, default=30)
+    deterministic.add_argument("--context-file", type=Path)
 
     compare = subparsers.add_parser(
         "compare",
@@ -59,6 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
     compare.add_argument("--finalist-count", type=int, default=2)
     compare.add_argument("--generations", type=int, default=0)
     compare.add_argument("--budget-usd", type=float, default=0.10)
+    compare.add_argument("--context-file", type=Path)
 
     review_packet = subparsers.add_parser(
         "review-packet",
@@ -89,6 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
     live.add_argument("--timeout-seconds", type=float)
     live.add_argument("--max-retries", type=int)
     live.add_argument("--pricing-file", type=Path)
+    live.add_argument("--context-file", type=Path)
     return parser
 
 
@@ -105,6 +108,23 @@ def _normalize_argv(argv: Sequence[str] | None) -> list[str]:
 def _validation_message(error: ValidationError) -> str:
     message = error.errors()[0]["msg"]
     return message.removeprefix("Value error, ").removeprefix("Input should be ")
+
+
+def _load_context_bundle(path: Path | None) -> ContextBundle:
+    if path is None:
+        return ContextBundle()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except OSError as error:
+        raise ValueError(f"could not read context file {path}: {error}") from error
+    except json.JSONDecodeError as error:
+        raise ValueError(f"could not read context file {path}: {error.msg}") from error
+    try:
+        return ContextBundle.model_validate(payload)
+    except ValidationError as error:
+        raise ValueError(
+            f"invalid context file {path}: {_validation_message(error)}"
+        ) from error
 
 
 def _save_and_print_summary(
@@ -173,7 +193,10 @@ def _save_and_print_summary(
 
 def _run_deterministic(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     try:
-        task = TaskContext(goal=args.goal)
+        task = TaskContext(
+            goal=args.goal,
+            context_bundle=_load_context_bundle(args.context_file),
+        )
         config = RunConfig(
             max_cost_usd=args.max_cost_usd,
             max_calls=args.max_calls,
@@ -185,6 +208,8 @@ def _run_deterministic(args: argparse.Namespace, parser: argparse.ArgumentParser
         )
     except ValidationError as error:
         parser.error(_validation_message(error))
+    except ValueError as error:
+        parser.error(str(error))
 
     provider = DeterministicCreativeProvider()
     engine = CreativeEngine(
@@ -206,7 +231,10 @@ def _save_compare_trace(result, *, trace_root: Path) -> Path:
 
 def _run_compare(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     try:
-        task = TaskContext(goal=args.goal)
+        task = TaskContext(
+            goal=args.goal,
+            context_bundle=_load_context_bundle(args.context_file),
+        )
         config = RunConfig(
             max_cost_usd=args.budget_usd,
             max_calls=30,
@@ -218,6 +246,8 @@ def _run_compare(args: argparse.Namespace, parser: argparse.ArgumentParser) -> i
         )
     except ValidationError as error:
         parser.error(_validation_message(error))
+    except ValueError as error:
+        parser.error(str(error))
 
     baseline_provider = DeterministicCreativeProvider()
     baseline_result = CreativeEngine(
@@ -418,7 +448,10 @@ def _run_live(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         live_config = _live_config_from_args(args)
         pricing = _load_pricing_table(args)
         _validate_live_pricing(live_config, pricing)
-        task = TaskContext(goal=args.goal)
+        task = TaskContext(
+            goal=args.goal,
+            context_bundle=_load_context_bundle(args.context_file),
+        )
         config = RunConfig(
             max_cost_usd=args.budget_usd,
             max_generations=args.generations,

@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import unicodedata
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Annotated
@@ -45,12 +46,31 @@ class InspirationKind(StrEnum):
     LIKELY_COPYING = "likely_copying"
 
 
+class ContextSensitivity(StrEnum):
+    PUBLIC = "public"
+    PRIVATE = "private"
+
+
+class ContextSnippet(FrozenModel):
+    source: RequiredText
+    content: RequiredText
+    title: str = ""
+    metadata: Mapping[str, object] = Field(default_factory=dict)
+    sensitivity: ContextSensitivity = ContextSensitivity.PRIVATE
+
+
+class ContextBundle(FrozenModel):
+    snippets: tuple[ContextSnippet, ...] = ()
+    tags: tuple[str, ...] = ()
+
+
 class TaskContext(FrozenModel):
     goal: str = Field(min_length=1)
     audience: str | None = None
     constraints: tuple[str, ...] = ()
     preferences: tuple[str, ...] = ()
     risk_tolerance: Score = 0.5
+    context_bundle: ContextBundle = Field(default_factory=ContextBundle)
 
     @model_validator(mode="after")
     def reject_blank_goal(self) -> TaskContext:
@@ -325,6 +345,10 @@ DEFAULT_SCORE_VALUES = {
     "operational_specificity": 0.0,
     "workflow_fit": 0.0,
 }
+DEFAULT_CONTEXT_BUNDLE = {
+    "snippets": [],
+    "tags": [],
+}
 
 
 class RunResult(FrozenModel):
@@ -391,6 +415,9 @@ def canonical_run_payload(result: RunResult) -> dict[str, object]:
     for candidates_key in ("finalists", "all_candidates"):
         for candidate in payload[candidates_key]:
             _prune_default_operational_fields(candidate)
+    context = payload["framed_task"]["context"]
+    if context.get("context_bundle") == DEFAULT_CONTEXT_BUNDLE:
+        context.pop("context_bundle")
     return payload
 
 

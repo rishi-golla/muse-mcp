@@ -36,13 +36,58 @@ def _unique(values: Iterable[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(values))
 
 
-def _operational_contract(goal: str) -> dict[str, object]:
+def _context_terms(task: TaskContext) -> tuple[str, ...]:
+    texts = [*task.context_bundle.tags]
+    texts.extend(snippet.content for snippet in task.context_bundle.snippets)
+    joined = " ".join(texts).casefold()
+    terms = []
+    for label in (
+        "package graph",
+        "affected packages",
+        "test shards",
+        "tsc",
+        "jest",
+        "vitest",
+        "playwright",
+        "ci logs",
+    ):
+        if label in joined:
+            terms.append(label)
+    return tuple(dict.fromkeys(terms))
+
+
+def _operational_contract(
+    goal: str,
+    *,
+    context_terms: tuple[str, ...] = (),
+) -> dict[str, object]:
+    context_inputs = tuple(f"context signal: {term}" for term in context_terms)
+    context_workflow = (
+        (
+            "map supplied context signals into the action plan: "
+            + ", ".join(context_terms)
+        ),
+    ) if context_terms else ()
+    context_policy = (
+        " Use supplied context signals before making stack or workflow choices: "
+        + ", ".join(context_terms)
+        + "."
+        if context_terms
+        else ""
+    )
+    context_verification = (
+        " Verify the proposal against supplied context signals: "
+        + ", ".join(context_terms)
+        + "."
+        if context_terms
+        else ""
+    )
     return {
         "inputs_required": (
             "task goal",
             "current candidate state",
             "available verification command",
-        ),
+        ) + context_inputs,
         "outputs_produced": (
             "next action recommendation",
             "verification gate",
@@ -50,12 +95,14 @@ def _operational_contract(goal: str) -> dict[str, object]:
         ),
         "agent_workflow": (
             "collect current evidence",
+            *context_workflow,
             "choose one bounded action",
             "run the narrowest verification",
         ),
         "decision_policy": (
             f"Prefer actions that directly advance '{goal}' and stop after "
             "repeating the same failed verification."
+            f"{context_policy}"
         ),
         "integration_points": (
             "agent planning step",
@@ -63,6 +110,7 @@ def _operational_contract(goal: str) -> dict[str, object]:
         ),
         "verification_strategy": (
             "Run the smallest relevant check first, then widen only after it passes."
+            f"{context_verification}"
         ),
         "failure_modes": (
             "ambiguous evidence",
@@ -206,6 +254,7 @@ class DeterministicCreativeProvider:
             "task": framed_task.model_dump(mode="json"),
             "config": config.model_dump(mode="json"),
         }
+        context_terms = _context_terms(framed_task.context)
         candidates = []
         for index in range(config.seed_count):
             title, mechanism, framing = mechanisms[index % len(mechanisms)]
@@ -248,7 +297,10 @@ class DeterministicCreativeProvider:
                     ),
                     task_value=f"Advances the goal: {framed_task.context.goal}",
                     distinguishing_features=(mechanism,),
-                    **_operational_contract(framed_task.context.goal),
+                    **_operational_contract(
+                        framed_task.context.goal,
+                        context_terms=context_terms,
+                    ),
                     inspiration_kind=InspirationKind.INDEPENDENT,
                 )
             )
@@ -263,6 +315,7 @@ class DeterministicCreativeProvider:
         self,
         request: TransformationRequest,
         parents: tuple[IdeaGenome, ...],
+        framed_task: FramedTask | None = None,
     ) -> MeteredResponse[IdeaGenome]:
         actual_parent_ids = tuple(parent.id for parent in parents)
         if actual_parent_ids != request.parent_ids:
@@ -295,6 +348,11 @@ class DeterministicCreativeProvider:
             for parent in parents
             for feature in parent.distinguishing_features
         )
+        context_terms = (
+            _context_terms(framed_task.context)
+            if framed_task is not None
+            else ()
+        )
         child = IdeaGenome(
             id=_stable_uuid(
                 "transform",
@@ -314,7 +372,10 @@ class DeterministicCreativeProvider:
             + (f"Operator applied: {request.operator.value}",),
             task_value=combined_values,
             distinguishing_features=combined_features + (request.instruction,),
-            **_operational_contract(request.task_goal),
+            **_operational_contract(
+                request.task_goal,
+                context_terms=context_terms,
+            ),
             parent_ids=actual_parent_ids,
             transformations=expected_transformation_history(
                 request.operator,

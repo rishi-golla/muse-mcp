@@ -108,3 +108,35 @@ python -m pytest -m "live_search"
 ```
 
 The default compare path remains no-network and deterministic.
+
+## Context grounding harness
+
+Core callers should pass typed `ContextBundle` data directly into `TaskContext`.
+The CLI `--context-file` flag is only a local harness for exercising that same
+middleware-shaped path:
+
+```powershell
+creativity-layer live "Design a debugging workflow for flaky CI" `
+  --context-file .\context.json `
+  --budget-usd 0.25 `
+  --privacy private
+```
+
+Context files use this shape:
+
+```json
+{
+  "snippets": [
+    {
+      "source": "repo/ci-snapshot",
+      "title": "CI signals",
+      "content": "package graph, affected packages, test shards, tsc, Jest, Vitest, Playwright, CI logs",
+      "metadata": {"kind": "monorepo"}
+    }
+  ],
+  "tags": ["typescript", "monorepo"]
+}
+```
+
+The engine does not read this file. The CLI parses it into `ContextBundle`, then
+calls the same provider-neutral API a future middleware layer will call.
