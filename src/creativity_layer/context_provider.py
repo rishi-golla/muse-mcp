@@ -94,6 +94,27 @@ class DeterministicContextProvider:
         )
 
 
+def build_task_context(
+    *,
+    task: TaskContext,
+    repo_signals: RepoSignals,
+    provider: ContextProvider,
+    max_snippets: int = 8,
+) -> TaskContext:
+    request = ContextRequest(
+        task=task,
+        repo_signals=repo_signals,
+        max_snippets=max_snippets,
+    )
+    generated = provider.build_context(request).value
+    existing = task.context_bundle
+    merged = ContextBundle(
+        snippets=(*existing.snippets, *generated.snippets),
+        tags=tuple(dict.fromkeys((*existing.tags, *generated.tags))),
+    )
+    return task.model_copy(update={"context_bundle": merged})
+
+
 def _snippets_from_signals(signals: RepoSignals) -> list[ContextSnippet]:
     snippets: list[ContextSnippet] = []
     affected_packages = _affected_packages(signals)

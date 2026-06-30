@@ -7,6 +7,7 @@ from creativity_layer.context_provider import (
     ContextRequest,
     DeterministicContextProvider,
     RepoSignals,
+    build_task_context,
 )
 from creativity_layer.models import ContextBundle, ContextSnippet, TaskContext
 
@@ -154,3 +155,34 @@ def test_graphql_appears_only_when_supplied_by_signals() -> None:
     text = " ".join(snippet.content for snippet in response.value.snippets).casefold()
 
     assert "graphql" in text
+
+
+def test_build_task_context_merges_existing_and_provider_context() -> None:
+    existing = ContextBundle(
+        snippets=(
+            ContextSnippet(
+                source="agent/task-brief",
+                content="User asked for no hardcoded repo behavior.",
+            ),
+        ),
+        tags=("agent",),
+    )
+    task = TaskContext(goal="Design middleware", context_bundle=existing)
+    provider = DeterministicContextProvider()
+
+    resolved = build_task_context(
+        task=task,
+        repo_signals=RepoSignals(
+            file_paths=("src/agent/planner.py",),
+            test_commands=("python -m pytest",),
+            detected_languages=("Python",),
+        ),
+        provider=provider,
+        max_snippets=4,
+    )
+
+    sources = [snippet.source for snippet in resolved.context_bundle.snippets]
+    assert sources[0] == "agent/task-brief"
+    assert "repo/structure" in sources
+    assert "repo/test-commands" in sources
+    assert resolved.context_bundle.tags == ("agent", "python")
