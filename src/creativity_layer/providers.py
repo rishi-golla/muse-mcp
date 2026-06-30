@@ -79,6 +79,7 @@ class IdeaTransformer(Protocol):
         self,
         request: TransformationRequest,
         parents: tuple[IdeaGenome, ...],
+        framed_task: FramedTask,
     ) -> MeteredResponse[IdeaGenome]: ...
 
 

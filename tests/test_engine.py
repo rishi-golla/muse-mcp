@@ -38,9 +38,10 @@ class CountingProvider(DeterministicCreativeProvider):
         self,
         request: TransformationRequest,
         parents: tuple[IdeaGenome, ...],
+        framed_task: FramedTask | None = None,
     ) -> MeteredResponse[IdeaGenome]:
         self.transform_calls += 1
-        return super().transform(request, parents)
+        return super().transform(request, parents, framed_task)
 
 
 class AdversarialProvider(DeterministicCreativeProvider):
@@ -151,11 +152,12 @@ class AdversarialProvider(DeterministicCreativeProvider):
         self,
         request: TransformationRequest,
         parents: tuple[IdeaGenome, ...],
+        framed_task: FramedTask | None = None,
     ) -> MeteredResponse[IdeaGenome]:
         self.transform_calls += 1
         if self.raise_transform:
             raise RuntimeError("transform failed")
-        response = super().transform(request, parents)
+        response = super().transform(request, parents, framed_task)
         value = (
             response.value.model_copy(update={"id": parents[0].id})
             if self.duplicate_transform_id

@@ -114,6 +114,7 @@ class FakeLiveProvider:
         self,
         request: TransformationRequest,
         parents: tuple[IdeaGenome, ...],
+        _framed_task: FramedTask | None = None,
     ) -> MeteredResponse[IdeaGenome]:
         parent = parents[0]
         transformed = IdeaGenome(

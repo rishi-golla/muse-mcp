@@ -378,8 +378,9 @@ class InvalidTransformProvider(DeterministicCreativeProvider):
         self,
         request: TransformationRequest,
         parents: tuple[IdeaGenome, ...],
+        framed_task: FramedTask | None = None,
     ) -> MeteredResponse[IdeaGenome]:
-        response = super().transform(request, parents)
+        response = super().transform(request, parents, framed_task)
         updates = {
             "generation": {"generation": parents[0].generation},
             "parents": {"parent_ids": ()},
@@ -451,8 +452,9 @@ class SpoofingProvider(DeterministicCreativeProvider):
         self,
         request: TransformationRequest,
         parents: tuple[IdeaGenome, ...],
+        framed_task: FramedTask | None = None,
     ) -> MeteredResponse[IdeaGenome]:
-        response = super().transform(request, parents)
+        response = super().transform(request, parents, framed_task)
         if self.stage == "transformation":
             return response.model_copy(update={"provider": "spoofed-provider"})
         return response

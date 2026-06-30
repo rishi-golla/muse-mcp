@@ -188,16 +188,20 @@ class OpenAICreativeProvider:
         self,
         request: TransformationRequest,
         parents: tuple[IdeaGenome, ...],
+        framed_task: FramedTask | None = None,
     ) -> MeteredResponse[IdeaGenome]:
+        domain_payload: dict[str, object] = {
+            "request": request.model_dump(mode="json"),
+            "parents": [parent.model_dump(mode="json") for parent in parents],
+        }
+        if framed_task is not None:
+            domain_payload["framed_task"] = framed_task.model_dump(mode="json")
         return self._call_structured(
             operation="transform",
             model_role="strong",
             model=self._config.strong_model,
             schema=OpenAIIdea,
-            domain_payload={
-                "request": request.model_dump(mode="json"),
-                "parents": [parent.model_dump(mode="json") for parent in parents],
-            },
+            domain_payload=domain_payload,
             convert=lambda parsed: parsed.to_transform(request=request, parents=parents),
         )
 

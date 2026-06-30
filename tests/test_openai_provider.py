@@ -438,6 +438,38 @@ def test_openai_payloads_include_context_bundle() -> None:
     )
 
 
+def test_openai_transform_payload_includes_context_bundle() -> None:
+    bundle = ContextBundle(
+        snippets=(
+            ContextSnippet(
+                source="repo/ci-snapshot",
+                content="package graph, affected packages, test shards, tsc, Jest",
+            ),
+        ),
+        tags=("typescript", "monorepo"),
+    )
+    frame = FramedTask(
+        context=TaskContext(goal="Improve flaky CI", context_bundle=bundle),
+        assumptions=("CI has package-level signals.",),
+        obvious_solution="Retry the failed job.",
+    )
+    parent = sample_parent()
+    request = TransformationRequest.for_operator(
+        operator=OperatorName.REFRAME,
+        parents=(parent,),
+        task_goal=frame.context.goal,
+    )
+    client = FakeOpenAIClient(parsed=sample_openai_idea(title="Transformed"))
+    provider = build_provider(client)
+
+    provider.transform(request, (parent,), frame)
+
+    payload = json.loads(client.last_request["input"][2]["content"])
+    assert payload["task_data"]["framed_task"]["context"]["context_bundle"][
+        "snippets"
+    ][0]["source"] == "repo/ci-snapshot"
+
+
 def test_openai_provider_uses_strong_model_for_transformations() -> None:
     parent = sample_parent()
     request = TransformationRequest.for_operator(

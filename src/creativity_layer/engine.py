@@ -540,7 +540,7 @@ class CreativeEngine:
         with reservation:
             try:
                 transformed = validate_metered_envelope(
-                    self._transformer.transform(request, parents)
+                    self._transformer.transform(request, parents, framed_task)
                 )
             except ValidationError:
                 _error(

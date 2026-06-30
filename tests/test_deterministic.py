@@ -195,6 +195,48 @@ def test_provider_transforms_the_mechanism_and_records_ancestry() -> None:
     assert child.core_mechanism != parent.core_mechanism
 
 
+def test_deterministic_transform_preserves_context_grounding() -> None:
+    provider = DeterministicCreativeProvider()
+    task = TaskContext(
+        goal="Design a TypeScript monorepo CI workflow",
+        context_bundle=ContextBundle(
+            snippets=(
+                ContextSnippet(
+                    source="repo/ci-snapshot",
+                    content="package graph, affected packages, test shards, tsc, Jest",
+                ),
+            ),
+        ),
+    )
+    framed = provider.frame(task).value
+    parent = provider.seed(
+        framed,
+        RunConfig(seed_count=2, finalist_count=1),
+    ).value[0]
+    request = TransformationRequest.for_operator(
+        operator=OperatorName.REFRAME,
+        parents=(parent,),
+        task_goal=task.goal,
+    )
+
+    child = provider.transform(request, (parent,), framed).value
+    contract_text = " ".join(
+        (
+            child.core_mechanism,
+            " ".join(child.inputs_required),
+            " ".join(child.agent_workflow),
+            child.decision_policy,
+            child.verification_strategy,
+        )
+    ).casefold()
+
+    assert "package graph" in contract_text
+    assert "affected packages" in contract_text
+    assert "test shards" in contract_text
+    assert "tsc" in contract_text
+    assert "jest" in contract_text
+
+
 def test_unary_transform_preserves_the_parent_history_exactly() -> None:
     provider = DeterministicCreativeProvider()
     task = TaskContext(goal="Invent a calmer decision process.")

@@ -315,6 +315,7 @@ class DeterministicCreativeProvider:
         self,
         request: TransformationRequest,
         parents: tuple[IdeaGenome, ...],
+        framed_task: FramedTask | None = None,
     ) -> MeteredResponse[IdeaGenome]:
         actual_parent_ids = tuple(parent.id for parent in parents)
         if actual_parent_ids != request.parent_ids:
@@ -347,6 +348,11 @@ class DeterministicCreativeProvider:
             for parent in parents
             for feature in parent.distinguishing_features
         )
+        context_terms = (
+            _context_terms(framed_task.context)
+            if framed_task is not None
+            else ()
+        )
         child = IdeaGenome(
             id=_stable_uuid(
                 "transform",
@@ -366,7 +372,10 @@ class DeterministicCreativeProvider:
             + (f"Operator applied: {request.operator.value}",),
             task_value=combined_values,
             distinguishing_features=combined_features + (request.instruction,),
-            **_operational_contract(request.task_goal),
+            **_operational_contract(
+                request.task_goal,
+                context_terms=context_terms,
+            ),
             parent_ids=actual_parent_ids,
             transformations=expected_transformation_history(
                 request.operator,
