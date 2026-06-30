@@ -58,6 +58,58 @@ def test_compare_cli_writes_baseline_and_search_aware_traces(
     assert captured.err == ""
 
 
+def test_compare_cli_context_file_feeds_both_runs(tmp_path, capsys) -> None:
+    context_path = tmp_path / "context.json"
+    context_path.write_text(
+        json.dumps(
+            {
+                "snippets": [
+                    {
+                        "source": "repo/package-graph",
+                        "content": "package graph with affected packages and test shards",
+                    }
+                ],
+                "tags": ["typescript", "monorepo"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = run_cli(
+        [
+            "compare",
+            "Design a TypeScript monorepo CI workflow",
+            "--context-file",
+            str(context_path),
+            "--trace-dir",
+            str(tmp_path / "traces"),
+            "--seed-count",
+            "4",
+            "--finalist-count",
+            "2",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    summary = json.loads(captured.out)
+    baseline = json.loads(
+        Path(summary["baseline"]["trace_path"]).read_text(encoding="utf-8")
+    )
+    search_aware = json.loads(
+        Path(summary["search_aware"]["trace_path"]).read_text(encoding="utf-8")
+    )
+
+    assert exit_code == 0
+    assert baseline["framed_task"]["context"]["context_bundle"]["snippets"][0][
+        "source"
+    ] == "repo/package-graph"
+    assert search_aware["framed_task"]["context"]["context_bundle"]["tags"] == [
+        "typescript",
+        "monorepo",
+    ]
+    assert captured.err == ""
+
+
 def test_compare_is_recognized_as_command_instead_of_goal(
     tmp_path,
     capsys,

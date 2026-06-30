@@ -105,6 +105,61 @@ def test_cli_runs_research_spine_and_writes_trace(tmp_path, capsys) -> None:
     assert captured.err == ""
 
 
+def test_deterministic_cli_context_file_feeds_typed_context(
+    tmp_path,
+    capsys,
+) -> None:
+    context_path = tmp_path / "context.json"
+    context_path.write_text(
+        json.dumps(
+            {
+                "snippets": [
+                    {
+                        "source": "repo/ci-snapshot",
+                        "title": "CI signals",
+                        "content": (
+                            "package graph, affected packages, test shards, "
+                            "tsc, Jest, Vitest, Playwright, CI logs"
+                        ),
+                    }
+                ],
+                "tags": ["typescript", "monorepo"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = run_cli(
+        [
+            "deterministic",
+            "Design a debugging workflow for flaky CI",
+            "--context-file",
+            str(context_path),
+            "--trace-dir",
+            str(tmp_path / "traces"),
+            "--seed-count",
+            "2",
+            "--finalist-count",
+            "1",
+            "--generations",
+            "0",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    summary = json.loads(captured.out)
+    trace = json.loads(Path(summary["trace_path"]).read_text(encoding="utf-8"))
+    candidate_text = json.dumps(trace["all_candidates"][0]).casefold()
+
+    assert exit_code == 0
+    assert trace["framed_task"]["context"]["context_bundle"]["snippets"][0][
+        "source"
+    ] == "repo/ci-snapshot"
+    assert "package graph" in candidate_text
+    assert "test shards" in candidate_text
+    assert captured.err == ""
+
+
 @pytest.mark.parametrize(
     ("arguments", "message"),
     [
@@ -144,6 +199,21 @@ def test_cli_reports_invalid_numeric_input_as_argparse_error(capsys) -> None:
     assert exc_info.value.code == 2
     assert captured.out == ""
     assert "invalid float value" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_cli_reports_invalid_context_file_without_traceback(tmp_path, capsys) -> None:
+    context_path = tmp_path / "context.json"
+    context_path.write_text("{not valid json", encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_cli(["Goal", "--context-file", str(context_path)])
+
+    captured = capsys.readouterr()
+
+    assert exc_info.value.code == 2
+    assert captured.out == ""
+    assert "could not read context file" in captured.err
     assert "Traceback" not in captured.err
 
 

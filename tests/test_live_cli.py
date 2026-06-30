@@ -328,6 +328,59 @@ def test_live_cli_model_flags_enter_trace_operation_metadata(
     assert output.err == ""
 
 
+def test_live_cli_context_file_enters_trace(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    configure_live(monkeypatch, tmp_path)
+    context_path = tmp_path / "context.json"
+    context_path.write_text(
+        json.dumps(
+            {
+                "snippets": [
+                    {
+                        "source": "repo/ci-snapshot",
+                        "content": "affected packages, tsc, Jest, and CI logs",
+                    }
+                ],
+                "tags": ["typescript", "monorepo"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = run_cli(
+        [
+            "live",
+            "Invent a context-grounded workflow",
+            "--context-file",
+            str(context_path),
+            "--trace-dir",
+            str(tmp_path / "traces"),
+            "--seed-count",
+            "2",
+            "--finalist-count",
+            "1",
+            "--generations",
+            "0",
+        ]
+    )
+
+    output = capsys.readouterr()
+    trace = trace_payload_from_summary(output.out)
+
+    assert exit_code == 0
+    assert trace["framed_task"]["context"]["context_bundle"]["snippets"][0][
+        "source"
+    ] == "repo/ci-snapshot"
+    assert trace["framed_task"]["context"]["context_bundle"]["tags"] == [
+        "typescript",
+        "monorepo",
+    ]
+    assert output.err == ""
+
+
 def test_live_privacy_private_writes_no_raw_goal_text(
     monkeypatch,
     tmp_path,
