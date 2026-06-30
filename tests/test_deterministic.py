@@ -2,7 +2,14 @@ import pytest
 from pydantic import ValidationError
 
 from creativity_layer.deterministic import DeterministicCreativeProvider
-from creativity_layer.models import FramedTask, IdeaGenome, RunConfig, TaskContext
+from creativity_layer.models import (
+    ContextBundle,
+    ContextSnippet,
+    FramedTask,
+    IdeaGenome,
+    RunConfig,
+    TaskContext,
+)
 from creativity_layer.providers import OperationQuote
 from creativity_layer.transforms import OperatorName, TransformationRequest
 
@@ -117,6 +124,53 @@ def test_deterministic_seed_populates_operational_contract() -> None:
     assert candidate.integration_points
     assert candidate.verification_strategy
     assert candidate.failure_modes
+
+
+def test_deterministic_seed_uses_context_bundle_from_python_api() -> None:
+    provider = DeterministicCreativeProvider()
+    task = TaskContext(
+        goal="Design a creative debugging workflow for a TypeScript monorepo with flaky CI",
+        context_bundle=ContextBundle(
+            snippets=(
+                ContextSnippet(
+                    source="repo/ci-snapshot",
+                    title="CI signals",
+                    content=(
+                        "The repo has a package graph with affected packages, "
+                        "test shards, tsc, Jest, Vitest, Playwright, and CI logs."
+                    ),
+                ),
+            ),
+            tags=("typescript", "monorepo"),
+        ),
+    )
+
+    candidate = provider.seed(
+        provider.frame(task).value,
+        RunConfig(seed_count=2, finalist_count=1),
+    ).value[0]
+    contract_text = " ".join(
+        (
+            candidate.core_mechanism,
+            candidate.problem_framing,
+            " ".join(candidate.inputs_required),
+            " ".join(candidate.agent_workflow),
+            candidate.decision_policy,
+            candidate.verification_strategy,
+        )
+    ).casefold()
+
+    for expected in (
+        "package graph",
+        "affected packages",
+        "test shards",
+        "tsc",
+        "jest",
+        "vitest",
+        "playwright",
+        "ci logs",
+    ):
+        assert expected in contract_text
 
 
 def test_provider_transforms_the_mechanism_and_records_ancestry() -> None:
