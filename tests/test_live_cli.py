@@ -382,6 +382,58 @@ def test_live_cli_context_file_enters_trace(
     assert output.err == ""
 
 
+def test_live_cli_repo_signals_file_builds_context(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    configure_live(monkeypatch, tmp_path)
+    signals_path = tmp_path / "repo-signals.json"
+    signals_path.write_text(
+        json.dumps(
+            {
+                "file_paths": ["pyproject.toml", "src/service/app.py"],
+                "changed_files": ["tests/test_api.py"],
+                "package_manifests": ["pyproject.toml"],
+                "test_commands": ["python -m pytest tests/test_api.py"],
+                "ci_logs": ["pytest failed in tests/test_api.py"],
+                "detected_languages": ["Python"],
+                "detected_frameworks": ["pytest"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = run_cli(
+        [
+            "live",
+            "Invent a Python test recovery workflow",
+            "--repo-signals-file",
+            str(signals_path),
+            "--trace-dir",
+            str(tmp_path / "traces"),
+            "--seed-count",
+            "2",
+            "--finalist-count",
+            "1",
+            "--generations",
+            "0",
+        ]
+    )
+
+    output = capsys.readouterr()
+    trace = trace_payload_from_summary(output.out)
+    context_text = json.dumps(
+        trace["framed_task"]["context"]["context_bundle"]
+    ).casefold()
+
+    assert exit_code == 0
+    assert "python" in context_text
+    assert "pytest" in context_text
+    assert "typescript" not in context_text
+    assert output.err == ""
+
+
 def test_live_privacy_private_writes_no_raw_goal_text(
     monkeypatch,
     tmp_path,

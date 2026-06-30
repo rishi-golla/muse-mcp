@@ -11,6 +11,11 @@ from openai import OpenAI
 from pydantic import ValidationError
 
 from creativity_layer.calibration_packets import ReviewPacketStore, build_review_packet
+from creativity_layer.context_provider import (
+    DeterministicContextProvider,
+    RepoSignals,
+    build_task_context,
+)
 from creativity_layer.deterministic import DeterministicCreativeProvider
 from creativity_layer.engine import CreativeEngine
 from creativity_layer.live_config import (
@@ -49,6 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
     deterministic.add_argument("--max-cost-usd", type=float, default=1.0)
     deterministic.add_argument("--max-calls", type=int, default=30)
     deterministic.add_argument("--context-file", type=Path)
+    deterministic.add_argument("--repo-signals-file", type=Path)
 
     compare = subparsers.add_parser(
         "compare",
@@ -61,6 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
     compare.add_argument("--generations", type=int, default=0)
     compare.add_argument("--budget-usd", type=float, default=0.10)
     compare.add_argument("--context-file", type=Path)
+    compare.add_argument("--repo-signals-file", type=Path)
 
     review_packet = subparsers.add_parser(
         "review-packet",
@@ -92,6 +99,7 @@ def build_parser() -> argparse.ArgumentParser:
     live.add_argument("--max-retries", type=int)
     live.add_argument("--pricing-file", type=Path)
     live.add_argument("--context-file", type=Path)
+    live.add_argument("--repo-signals-file", type=Path)
     return parser
 
 
@@ -125,6 +133,40 @@ def _load_context_bundle(path: Path | None) -> ContextBundle:
         raise ValueError(
             f"invalid context file {path}: {_validation_message(error)}"
         ) from error
+
+
+def _load_repo_signals(path: Path | None) -> RepoSignals:
+    if path is None:
+        return RepoSignals()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except OSError as error:
+        raise ValueError(f"could not read repo signals file {path}: {error}") from error
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            f"could not read repo signals file {path}: {error.msg}"
+        ) from error
+    try:
+        return RepoSignals.model_validate(payload)
+    except ValidationError as error:
+        raise ValueError(
+            f"invalid repo signals file {path}: {_validation_message(error)}"
+        ) from error
+
+
+def _task_context_from_args(args: argparse.Namespace) -> TaskContext:
+    task = TaskContext(
+        goal=args.goal,
+        context_bundle=_load_context_bundle(args.context_file),
+    )
+    repo_signals = _load_repo_signals(args.repo_signals_file)
+    if repo_signals == RepoSignals():
+        return task
+    return build_task_context(
+        task=task,
+        repo_signals=repo_signals,
+        provider=DeterministicContextProvider(),
+    )
 
 
 def _save_and_print_summary(
@@ -193,10 +235,7 @@ def _save_and_print_summary(
 
 def _run_deterministic(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     try:
-        task = TaskContext(
-            goal=args.goal,
-            context_bundle=_load_context_bundle(args.context_file),
-        )
+        task = _task_context_from_args(args)
         config = RunConfig(
             max_cost_usd=args.max_cost_usd,
             max_calls=args.max_calls,
@@ -231,10 +270,7 @@ def _save_compare_trace(result, *, trace_root: Path) -> Path:
 
 def _run_compare(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     try:
-        task = TaskContext(
-            goal=args.goal,
-            context_bundle=_load_context_bundle(args.context_file),
-        )
+        task = _task_context_from_args(args)
         config = RunConfig(
             max_cost_usd=args.budget_usd,
             max_calls=30,
@@ -448,10 +484,7 @@ def _run_live(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         live_config = _live_config_from_args(args)
         pricing = _load_pricing_table(args)
         _validate_live_pricing(live_config, pricing)
-        task = TaskContext(
-            goal=args.goal,
-            context_bundle=_load_context_bundle(args.context_file),
-        )
+        task = _task_context_from_args(args)
         config = RunConfig(
             max_cost_usd=args.budget_usd,
             max_generations=args.generations,

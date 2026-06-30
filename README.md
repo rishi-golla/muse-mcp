@@ -140,3 +140,29 @@ Context files use this shape:
 
 The engine does not read this file. The CLI parses it into `ContextBundle`, then
 calls the same provider-neutral API a future middleware layer will call.
+
+`--repo-signals-file` exercises the V3-C context provider harness. The engine still
+does not crawl the repository or read this file directly; the CLI parses generic repo
+facts into `RepoSignals`, then uses `DeterministicContextProvider` to build a
+`ContextBundle`:
+
+```powershell
+creativity-layer "Design a debugging workflow for flaky CI" `
+  --repo-signals-file .\repo-signals.json `
+  --trace-dir .traces
+```
+
+Example:
+
+```json
+{
+  "file_paths": ["pnpm-workspace.yaml", "apps/web/package.json"],
+  "changed_files": ["packages/ui/src/Button.tsx"],
+  "package_manifests": ["apps/web/package.json", "packages/ui/package.json"],
+  "test_commands": ["pnpm test --filter apps/web -- --shard=2/4"],
+  "ci_logs": ["Vitest shard 2 failed after Playwright smoke tests"],
+  "dependency_hints": ["apps/web depends on packages/ui"],
+  "detected_languages": ["TypeScript"],
+  "detected_frameworks": ["Vitest", "Playwright"]
+}
+```
