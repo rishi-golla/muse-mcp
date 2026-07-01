@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import json
 
-from creativity_layer.middleware import CreativeMiddlewareRunner, CreativePlanRequest
+from creativity_layer.deterministic import DeterministicCreativeProvider
+from creativity_layer.middleware import (
+    CreativeMiddlewareRunner,
+    CreativePlanRequest,
+    ProviderMode,
+    run_creative_plan,
+)
 
 
 def test_runner_returns_json_safe_operational_plan_from_repo_signals() -> None:
@@ -39,8 +45,57 @@ def test_runner_uses_cheap_agent_defaults() -> None:
 
     result = CreativeMiddlewareRunner.deterministic().run(request)
 
+    assert request.provider_mode is ProviderMode.DETERMINISTIC
+    assert result["provider_mode"] == "deterministic"
     assert result["config"]["budget_usd"] == 0.35
     assert result["config"]["seed_count"] == 4
     assert result["config"]["finalist_count"] == 2
     assert result["config"]["max_generations"] == 1
     assert result["finalist_count"] == 2
+
+
+def test_live_openai_mode_returns_structured_configuration_error(
+    monkeypatch,
+) -> None:
+    for name in (
+        "OPENAI_API_KEY",
+        "OPENAI_ECONOMY_MODEL",
+        "OPENAI_STRONG_MODEL",
+        "OPENAI_PRICING_FILE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    result = run_creative_plan(
+        {
+            "goal": "Design a retry strategy for AI coding agents",
+            "provider_mode": "live_openai",
+        }
+    )
+
+    assert result["provider_mode"] == "live_openai"
+    assert result["stopped_reason"] == "configuration_error"
+    assert result["finalist_count"] == 0
+    assert result["finalists"] == []
+    assert result["errors"][0]["category"] == "configuration_error"
+    assert "OPENAI_API_KEY" in result["errors"][0]["message"]
+
+
+def test_live_openai_runner_uses_injected_provider() -> None:
+    provider = DeterministicCreativeProvider()
+    runner = CreativeMiddlewareRunner.live_openai(
+        provider=provider,
+    )
+
+    result = runner.run(
+        CreativePlanRequest(
+            goal="Design a planning hook for arbitrary repos",
+            provider_mode="live_openai",
+            seed_count=2,
+            finalist_count=1,
+            max_generations=0,
+            budget_usd=0.20,
+        )
+    )
+
+    assert result["provider_mode"] == "live_openai"
+    assert result["finalist_count"] == 1
