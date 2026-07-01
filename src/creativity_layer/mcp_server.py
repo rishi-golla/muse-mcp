@@ -15,28 +15,37 @@ def creative_plan(
     repo_signals: Mapping[str, object] | None = None,
     provider_mode: str = "deterministic",
     privacy: str = "research",
-    budget_usd: float = 0.35,
-    seed_count: int = 4,
-    finalist_count: int = 2,
-    max_generations: int = 1,
+    effort: str = "quick",
+    budget_usd: float | None = None,
+    seed_count: int | None = None,
+    finalist_count: int | None = None,
+    max_generations: int | None = None,
     max_calls: int = 20,
     max_context_snippets: int = 8,
 ) -> dict[str, Any]:
-    """Generate an operational creative plan for an agent's current task."""
-    return run_creative_plan(
-        {
-            "goal": goal,
-            "provider_mode": provider_mode,
-            "privacy": privacy,
-            "repo_signals": repo_signals or {},
-            "budget_usd": budget_usd,
-            "seed_count": seed_count,
-            "finalist_count": finalist_count,
-            "max_generations": max_generations,
-            "max_calls": max_calls,
-            "max_context_snippets": max_context_snippets,
-        }
-    )
+    """Generate an operational creative plan for an agent's current task.
+
+    Use quick for cheap normal coding loops, standard when a first repair fails,
+    and deep for deliberate planning before high-impact edits.
+    """
+    request: dict[str, Any] = {
+        "goal": goal,
+        "provider_mode": provider_mode,
+        "privacy": privacy,
+        "effort": effort,
+        "repo_signals": repo_signals or {},
+        "max_calls": max_calls,
+        "max_context_snippets": max_context_snippets,
+    }
+    for key, value in (
+        ("budget_usd", budget_usd),
+        ("seed_count", seed_count),
+        ("finalist_count", finalist_count),
+        ("max_generations", max_generations),
+    ):
+        if value is not None:
+            request[key] = value
+    return run_creative_plan(request)
 
 
 def build_mcp_server() -> FastMCP:

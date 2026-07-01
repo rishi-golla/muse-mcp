@@ -17,10 +17,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("goal")
     parser.add_argument("--provider-mode", default="deterministic")
     parser.add_argument("--privacy", default="research")
-    parser.add_argument("--budget-usd", type=float, default=0.35)
-    parser.add_argument("--seed-count", type=int, default=4)
-    parser.add_argument("--finalist-count", type=int, default=2)
-    parser.add_argument("--generations", type=int, default=1)
+    parser.add_argument("--effort", choices=("quick", "standard", "deep"), default="quick")
+    parser.add_argument("--budget-usd", type=float)
+    parser.add_argument("--seed-count", type=int)
+    parser.add_argument("--finalist-count", type=int)
+    parser.add_argument("--generations", type=int)
     parser.add_argument("--repo-language", action="append", default=[])
     parser.add_argument("--repo-framework", action="append", default=[])
     parser.add_argument("--changed-file", action="append", default=[])
@@ -55,11 +56,9 @@ def run_smoke(argv: Sequence[str] | None = None) -> int:
                 "goal": args.goal,
                 "provider_mode": args.provider_mode,
                 "privacy": args.privacy,
+                "effort": args.effort,
                 "repo_signals": repo_signals,
-                "budget_usd": args.budget_usd,
-                "seed_count": args.seed_count,
-                "finalist_count": args.finalist_count,
-                "max_generations": args.generations,
+                **_optional_run_config(args),
             }
         )
     )
@@ -69,6 +68,19 @@ def run_smoke(argv: Sequence[str] | None = None) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     return run_smoke(argv)
+
+
+def _optional_run_config(args: argparse.Namespace) -> dict[str, float | int]:
+    config: dict[str, float | int] = {}
+    if args.budget_usd is not None:
+        config["budget_usd"] = args.budget_usd
+    if args.seed_count is not None:
+        config["seed_count"] = args.seed_count
+    if args.finalist_count is not None:
+        config["finalist_count"] = args.finalist_count
+    if args.generations is not None:
+        config["max_generations"] = args.generations
+    return config
 
 
 if __name__ == "__main__":
