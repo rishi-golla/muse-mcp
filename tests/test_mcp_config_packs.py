@@ -90,6 +90,7 @@ def test_agent_host_guide_links_config_packs_and_smoke_workflow() -> None:
     assert "config-packs/codex/config.toml" in guide
     assert "config-packs/claude-code/.mcp.json" in guide
     assert "config-packs/generic-mcp/mcp.json" in guide
+    assert "docs/integrations/agent-dogfood-playbook.md" in guide
     assert "creativity-layer-mcp-smoke" in guide
     assert '"provider_mode": "live_openai"' in guide
     assert "creative_plan" in guide
@@ -99,3 +100,17 @@ def test_readme_links_agent_host_guide() -> None:
     readme = _read_text(ROOT / "README.md")
 
     assert "docs/integrations/mcp-agent-hosts.md" in readme
+    assert "docs/integrations/agent-dogfood-playbook.md" in readme
+
+
+def test_agent_dogfood_playbook_describes_coding_loop_usage() -> None:
+    playbook = _read_text(ROOT / "docs" / "integrations" / "agent-dogfood-playbook.md")
+
+    assert "quick" in playbook
+    assert "standard" in playbook
+    assert "deep" in playbook
+    assert "before-edit" in playbook
+    assert "after-failure" in playbook
+    assert "after-fix" in playbook
+    assert "creative_plan" in playbook
+    assert "repo_signals" in playbook
