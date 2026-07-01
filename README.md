@@ -138,6 +138,51 @@ Context files use this shape:
 }
 ```
 
+## Agent MCP integration
+
+The preferred workflow integration surface is MCP, not the CLI. Install the
+package into the Python environment your agent host can run, then point the
+agent at the stdio server:
+
+```json
+{
+  "mcpServers": {
+    "creativity-layer": {
+      "command": "creativity-layer-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+The server exposes `creative_plan`. Agents should pass repo facts they already
+observed instead of asking creativity-layer to crawl the repository:
+
+```json
+{
+  "goal": "Design a better retry strategy for AI coding agents after failed tests",
+  "budget_usd": 0.35,
+  "seed_count": 4,
+  "finalist_count": 2,
+  "max_generations": 1,
+  "repo_signals": {
+    "file_paths": ["pnpm-workspace.yaml", "apps/web/package.json"],
+    "changed_files": ["packages/ui/src/Button.tsx"],
+    "test_commands": ["pnpm test --filter apps/web -- --shard=2/4"],
+    "ci_logs": ["Vitest shard 2 failed after Playwright smoke tests"],
+    "dependency_hints": ["apps/web depends on packages/ui"],
+    "detected_languages": ["TypeScript"],
+    "detected_frameworks": ["Vitest", "Playwright"]
+  }
+}
+```
+
+The MCP tool returns JSON-safe finalists with operational fields such as
+`inputs_required`, `agent_workflow`, `decision_policy`,
+`integration_points`, `verification_strategy`, and `failure_modes`. The
+current MCP server uses the deterministic local provider by default, so it does
+not require OpenAI, Exa, Brave, pricing files, or network access.
+
 The engine does not read this file. The CLI parses it into `ContextBundle`, then
 calls the same provider-neutral API a future middleware layer will call.
 

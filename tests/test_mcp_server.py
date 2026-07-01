@@ -1,0 +1,63 @@
+from __future__ import annotations
+
+import asyncio
+import tomllib
+from pathlib import Path
+
+from creativity_layer.mcp_server import build_mcp_server, creative_plan
+
+
+def test_creative_plan_tool_delegates_to_middleware_runner() -> None:
+    result = creative_plan(
+        goal="Design a backend middleware planning hook for arbitrary repos",
+        repo_signals={"detected_languages": ("Python",)},
+        seed_count=2,
+        finalist_count=1,
+        max_generations=0,
+        budget_usd=0.20,
+    )
+
+    assert result["finalist_count"] == 1
+    assert result["finalists"][0]["inputs_required"]
+    assert result["context_tags"] == ["python"]
+
+
+def test_build_mcp_server_returns_named_server() -> None:
+    server = build_mcp_server()
+
+    assert server is not None
+
+
+def test_fastmcp_server_exposes_and_invokes_creative_plan_tool() -> None:
+    async def run_probe() -> None:
+        server = build_mcp_server()
+
+        tools = await server.list_tools()
+        tool_names = {tool.name for tool in tools}
+        result = await server.call_tool(
+            "creative_plan",
+            {
+                "goal": "Design a retry strategy for AI coding agents",
+                "repo_signals": {"detected_languages": ("Python",)},
+                "seed_count": 2,
+                "finalist_count": 1,
+                "max_generations": 0,
+                "budget_usd": 0.20,
+            },
+        )
+        _content_blocks, structured_result = result
+
+        assert "creative_plan" in tool_names
+        assert isinstance(structured_result, dict)
+        assert structured_result["finalist_count"] == 1
+        assert structured_result["context_tags"] == ["python"]
+
+    asyncio.run(run_probe())
+
+
+def test_package_exposes_mcp_console_script() -> None:
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+
+    assert pyproject["project"]["scripts"]["creativity-layer-mcp"] == (
+        "creativity_layer.mcp_server:main"
+    )
