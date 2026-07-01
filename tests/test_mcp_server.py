@@ -82,6 +82,39 @@ def test_creative_plan_live_mode_returns_structured_configuration_error(
     assert result["errors"][0]["stage"] == "configuration"
 
 
+def test_creative_plan_invalid_provider_mode_returns_structured_error() -> None:
+    result = creative_plan(
+        goal="Design a retry strategy for AI coding agents",
+        provider_mode="bogus",
+    )
+
+    assert result["provider_mode"] == "bogus"
+    assert result["stopped_reason"] == "configuration_error"
+    assert result["finalist_count"] == 0
+    assert result["errors"][0]["category"] == "configuration_error"
+
+
+def test_fastmcp_invalid_provider_mode_returns_structured_error() -> None:
+    async def run_probe() -> None:
+        server = build_mcp_server()
+
+        result = await server.call_tool(
+            "creative_plan",
+            {
+                "goal": "Design a retry strategy for AI coding agents",
+                "provider_mode": "bogus",
+            },
+        )
+        _content_blocks, structured_result = result
+
+        assert isinstance(structured_result, dict)
+        assert structured_result["provider_mode"] == "bogus"
+        assert structured_result["stopped_reason"] == "configuration_error"
+        assert structured_result["finalist_count"] == 0
+
+    asyncio.run(run_probe())
+
+
 def test_package_exposes_mcp_console_script() -> None:
     pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
 
