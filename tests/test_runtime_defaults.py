@@ -49,3 +49,14 @@ def test_runtime_defaults_ignore_blank_environment_values() -> None:
 def test_runtime_defaults_reject_invalid_budget() -> None:
     with pytest.raises(ValueError, match="CREATIVITY_LAYER_BUDGET_USD"):
         RuntimeDefaults.from_environment({"CREATIVITY_LAYER_BUDGET_USD": "not-money"})
+
+
+def test_runtime_defaults_explicit_budget_overrides_invalid_environment() -> None:
+    defaults = RuntimeDefaults.resolve(
+        provider_mode="deterministic",
+        budget_usd=0.2,
+        environ={"CREATIVITY_LAYER_BUDGET_USD": "not-money"},
+    )
+
+    assert defaults.provider_mode == "deterministic"
+    assert defaults.budget_usd == 0.2

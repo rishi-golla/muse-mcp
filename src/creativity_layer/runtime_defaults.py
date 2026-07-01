@@ -29,6 +29,31 @@ class RuntimeDefaults:
             budget_usd=_env_float(values, "CREATIVITY_LAYER_BUDGET_USD"),
         )
 
+    @classmethod
+    def resolve(
+        cls,
+        *,
+        provider_mode: str | None = None,
+        effort: str | None = None,
+        privacy: str | None = None,
+        budget_usd: float | None = None,
+        environ: Mapping[str, str] | None = None,
+    ) -> RuntimeDefaults:
+        values = os.environ if environ is None else environ
+        return cls(
+            provider_mode=provider_mode
+            or _env_text(
+                values,
+                "CREATIVITY_LAYER_PROVIDER_MODE",
+                "live_openai",
+            ),
+            effort=effort or _env_text(values, "CREATIVITY_LAYER_EFFORT", "quick"),
+            privacy=privacy or _env_text(values, "CREATIVITY_LAYER_PRIVACY", "research"),
+            budget_usd=budget_usd
+            if budget_usd is not None
+            else _env_float(values, "CREATIVITY_LAYER_BUDGET_USD"),
+        )
+
 
 def _env_text(values: Mapping[str, str], name: str, default: str) -> str:
     value = values.get(name)

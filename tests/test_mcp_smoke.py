@@ -125,6 +125,32 @@ def test_mcp_smoke_reports_invalid_runtime_default_environment(
     assert "CREATIVITY_LAYER_BUDGET_USD" in payload["errors"][0]["message"]
 
 
+def test_mcp_smoke_explicit_budget_overrides_invalid_runtime_default(
+    capsys,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("CREATIVITY_LAYER_PROVIDER_MODE", "live_openai")
+    monkeypatch.setenv("CREATIVITY_LAYER_BUDGET_USD", "not-money")
+
+    exit_code = run_smoke(
+        [
+            "Design a retry strategy for AI coding agents",
+            "--provider-mode",
+            "deterministic",
+            "--budget-usd",
+            "0.20",
+            "--repo-language",
+            "Python",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["provider_mode"] == "deterministic"
+    assert payload["config"]["budget_usd"] == 0.20
+    assert payload["finalist_count"] == 1
+
+
 def test_package_exposes_mcp_smoke_console_script() -> None:
     pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
 
