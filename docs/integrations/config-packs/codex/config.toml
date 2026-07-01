@@ -1,0 +1,20 @@
+# Copy into ~/.codex/config.toml or .codex/config.toml.
+# Requires: python -m pip install -e "C:\path\to\creativity-layer"
+
+[mcp_servers.creativity-layer]
+command = "creativity-layer-mcp"
+args = []
+enabled = true
+enabled_tools = ["creative_plan"]
+startup_timeout_sec = 10
+tool_timeout_sec = 120
+
+# Optional live OpenAI environment. Keep secrets in your local environment or
+# an ignored local config, not in a committed repository config.
+# env = {
+#   OPENAI_API_KEY = "<OPENAI_API_KEY>",
+#   OPENAI_ECONOMY_MODEL = "<OPENAI_ECONOMY_MODEL>",
+#   OPENAI_STRONG_MODEL = "<OPENAI_STRONG_MODEL>",
+#   OPENAI_EMBEDDING_MODEL = "text-embedding-3-small",
+#   OPENAI_PRICING_FILE = "C:\\path\\to\\openai-pricing.json"
+# }

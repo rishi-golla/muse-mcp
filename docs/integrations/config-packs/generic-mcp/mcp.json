@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "creativity-layer": {
+      "command": "creativity-layer-mcp",
+      "args": []
+    }
+  }
+}
