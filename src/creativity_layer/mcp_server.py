@@ -5,7 +5,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from creativity_layer.middleware import run_creative_plan
+from creativity_layer.middleware import configuration_error_result, run_creative_plan
 from creativity_layer.runtime_defaults import RuntimeDefaults
 
 SERVER_NAME = "creativity-layer"
@@ -29,7 +29,13 @@ def creative_plan(
     Use quick for cheap normal coding loops, standard when a first repair fails,
     and deep for deliberate planning before high-impact edits.
     """
-    defaults = RuntimeDefaults.from_environment()
+    try:
+        defaults = RuntimeDefaults.from_environment()
+    except ValueError as error:
+        return configuration_error_result(
+            provider_mode=provider_mode or "live_openai",
+            message=str(error),
+        )
     request: dict[str, Any] = {
         "goal": goal,
         "provider_mode": provider_mode or defaults.provider_mode,

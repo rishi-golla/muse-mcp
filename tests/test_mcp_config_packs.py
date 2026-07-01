@@ -52,7 +52,7 @@ def test_codex_optional_env_example_is_valid_when_uncommented() -> None:
     assert env["OPENAI_PRICING_FILE"] == "${OPENAI_PRICING_FILE}"
 
 
-def test_generic_mcp_json_pack_is_valid_and_deterministic_by_default() -> None:
+def test_generic_mcp_json_pack_is_valid_and_provider_env_free() -> None:
     config = json.loads(
         _read_text(CONFIG_ROOT / "generic-mcp" / "mcp.json"),
     )
@@ -61,6 +61,21 @@ def test_generic_mcp_json_pack_is_valid_and_deterministic_by_default() -> None:
     assert server["command"] == "creativity-layer-mcp"
     assert server["args"] == []
     assert "env" not in server
+
+
+def test_docs_describe_live_first_provider_posture() -> None:
+    readme = _read_text(ROOT / "README.md")
+    guide = _read_text(ROOT / "docs" / "integrations" / "mcp-agent-hosts.md")
+    playbook = _read_text(ROOT / "docs" / "integrations" / "agent-dogfood-playbook.md")
+    combined = "\n".join((readme, guide, playbook)).casefold()
+
+    assert "live-first" in combined
+    assert "creativity_layer_provider_mode" in combined
+    assert "creativity_layer_effort" in combined
+    assert "creativity_layer_privacy" in combined
+    assert "creativity_layer_budget_usd" in combined
+    assert "deterministic test provider" in combined
+    assert "--provider-mode deterministic" in combined
 
 
 def test_config_packs_do_not_contain_real_secrets() -> None:

@@ -7,7 +7,6 @@ from collections.abc import Sequence
 from typing import Any
 
 from creativity_layer.mcp_server import build_mcp_server
-from creativity_layer.runtime_defaults import RuntimeDefaults
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -44,7 +43,6 @@ async def _call_smoke_tool(arguments: dict[str, Any]) -> dict[str, Any]:
 
 def run_smoke(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    defaults = RuntimeDefaults.from_environment()
     repo_signals = {
         "detected_languages": args.repo_language,
         "detected_frameworks": args.repo_framework,
@@ -52,16 +50,21 @@ def run_smoke(argv: Sequence[str] | None = None) -> int:
         "test_commands": args.test_command,
         "ci_logs": args.ci_log,
     }
+    arguments: dict[str, Any] = {
+        "goal": args.goal,
+        "repo_signals": repo_signals,
+        **_optional_run_config(args),
+    }
+    for key, value in (
+        ("provider_mode", args.provider_mode),
+        ("privacy", args.privacy),
+        ("effort", args.effort),
+    ):
+        if value is not None:
+            arguments[key] = value
     payload = asyncio.run(
         _call_smoke_tool(
-            {
-                "goal": args.goal,
-                "provider_mode": args.provider_mode or defaults.provider_mode,
-                "privacy": args.privacy or defaults.privacy,
-                "effort": args.effort or defaults.effort,
-                "repo_signals": repo_signals,
-                **_optional_run_config(args, defaults),
-            }
+            arguments,
         )
     )
     print(json.dumps(payload, indent=2, sort_keys=True))
@@ -72,14 +75,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     return run_smoke(argv)
 
 
-def _optional_run_config(
-    args: argparse.Namespace,
-    defaults: RuntimeDefaults,
-) -> dict[str, float | int]:
+def _optional_run_config(args: argparse.Namespace) -> dict[str, float | int]:
     config: dict[str, float | int] = {}
-    budget_usd = args.budget_usd if args.budget_usd is not None else defaults.budget_usd
-    if budget_usd is not None:
-        config["budget_usd"] = budget_usd
+    if args.budget_usd is not None:
+        config["budget_usd"] = args.budget_usd
     if args.seed_count is not None:
         config["seed_count"] = args.seed_count
     if args.finalist_count is not None:

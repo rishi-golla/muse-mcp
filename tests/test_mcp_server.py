@@ -63,6 +63,23 @@ def test_creative_plan_tool_uses_runtime_default_environment(monkeypatch) -> Non
     assert result["finalist_count"] == 2
 
 
+def test_creative_plan_tool_reports_invalid_runtime_default_environment(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("CREATIVITY_LAYER_PROVIDER_MODE", raising=False)
+    monkeypatch.setenv("CREATIVITY_LAYER_BUDGET_USD", "not-money")
+
+    result = creative_plan(
+        goal="Design a backend middleware planning hook for arbitrary repos",
+        repo_signals={"detected_languages": ("Python",)},
+    )
+
+    assert result["provider_mode"] == "live_openai"
+    assert result["stopped_reason"] == "configuration_error"
+    assert result["finalist_count"] == 0
+    assert "CREATIVITY_LAYER_BUDGET_USD" in result["errors"][0]["message"]
+
+
 def test_creative_plan_tool_accepts_deep_effort_preset() -> None:
     result = creative_plan(
         goal="Design a backend middleware planning hook for arbitrary repos",
