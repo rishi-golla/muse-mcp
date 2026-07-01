@@ -39,6 +39,26 @@ def test_creative_plan_tool_accepts_deep_effort_preset() -> None:
     assert result["config"]["max_generations"] == 2
 
 
+def test_creative_plan_tool_preserves_old_positional_numeric_arguments() -> None:
+    result = creative_plan(
+        "Design a backend middleware planning hook for arbitrary repos",
+        {"detected_languages": ("Python",)},
+        "deterministic",
+        "research",
+        0.35,
+        4,
+        2,
+        1,
+    )
+
+    assert result["stopped_reason"] == "generation_limit"
+    assert result["config"]["effort"] == "quick"
+    assert result["config"]["budget_usd"] == 0.35
+    assert result["config"]["seed_count"] == 4
+    assert result["config"]["finalist_count"] == 2
+    assert result["config"]["max_generations"] == 1
+
+
 def test_build_mcp_server_returns_named_server() -> None:
     server = build_mcp_server()
 

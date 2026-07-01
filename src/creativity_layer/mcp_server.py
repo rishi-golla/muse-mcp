@@ -15,13 +15,13 @@ def creative_plan(
     repo_signals: Mapping[str, object] | None = None,
     provider_mode: str = "deterministic",
     privacy: str = "research",
-    effort: str = "quick",
     budget_usd: float | None = None,
     seed_count: int | None = None,
     finalist_count: int | None = None,
     max_generations: int | None = None,
     max_calls: int = 20,
     max_context_snippets: int = 8,
+    effort: str = "quick",
 ) -> dict[str, Any]:
     """Generate an operational creative plan for an agent's current task.
 

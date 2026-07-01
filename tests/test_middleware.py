@@ -124,6 +124,7 @@ def test_live_openai_mode_returns_structured_configuration_error(
         {
             "goal": "Design a retry strategy for AI coding agents",
             "provider_mode": "live_openai",
+            "effort": "deep",
         }
     )
 
@@ -133,6 +134,7 @@ def test_live_openai_mode_returns_structured_configuration_error(
     assert result["finalists"] == []
     assert result["errors"][0]["category"] == "configuration_error"
     assert "OPENAI_API_KEY" in result["errors"][0]["message"]
+    assert result["agent_guidance"]["effort"] == "deep"
 
 
 def test_live_openai_runner_uses_injected_provider() -> None:

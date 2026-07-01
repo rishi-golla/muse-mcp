@@ -193,6 +193,7 @@ def _serialize_result(
 
 
 def run_creative_plan(request: CreativePlanRequest | Mapping[str, object]) -> dict[str, Any]:
+    parsed_request: CreativePlanRequest | None = None
     try:
         parsed_request = CreativePlanRequest.model_validate(request)
         runner = _runner_for_request(parsed_request)
@@ -206,6 +207,7 @@ def run_creative_plan(request: CreativePlanRequest | Mapping[str, object]) -> di
         return _configuration_error_result(
             provider_mode=_provider_mode_from_raw(request),
             message=str(error),
+            effort=parsed_request.effort if parsed_request else EffortPreset.QUICK,
         )
 
 
@@ -276,7 +278,12 @@ def _provider_mode_from_raw(request: CreativePlanRequest | Mapping[str, object])
     return str(raw_mode or ProviderMode.DETERMINISTIC.value)
 
 
-def _configuration_error_result(*, provider_mode: str, message: str) -> dict[str, Any]:
+def _configuration_error_result(
+    *,
+    provider_mode: str,
+    message: str,
+    effort: EffortPreset = EffortPreset.QUICK,
+) -> dict[str, Any]:
     return {
         "run_id": None,
         "provider_mode": provider_mode,
@@ -286,7 +293,7 @@ def _configuration_error_result(*, provider_mode: str, message: str) -> dict[str
         "context_tags": [],
         "context_sources": [],
         "config": {},
-        "agent_guidance": _agent_guidance(EffortPreset.QUICK),
+        "agent_guidance": _agent_guidance(effort),
         "spend_usd": 0.0,
         "errors": [
             {
