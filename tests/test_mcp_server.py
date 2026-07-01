@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import tomllib
 from pathlib import Path
 
@@ -25,6 +26,33 @@ def test_build_mcp_server_returns_named_server() -> None:
     server = build_mcp_server()
 
     assert server is not None
+
+
+def test_fastmcp_server_exposes_and_invokes_creative_plan_tool() -> None:
+    async def run_probe() -> None:
+        server = build_mcp_server()
+
+        tools = await server.list_tools()
+        tool_names = {tool.name for tool in tools}
+        result = await server.call_tool(
+            "creative_plan",
+            {
+                "goal": "Design a retry strategy for AI coding agents",
+                "repo_signals": {"detected_languages": ("Python",)},
+                "seed_count": 2,
+                "finalist_count": 1,
+                "max_generations": 0,
+                "budget_usd": 0.20,
+            },
+        )
+        _content_blocks, structured_result = result
+
+        assert "creative_plan" in tool_names
+        assert isinstance(structured_result, dict)
+        assert structured_result["finalist_count"] == 1
+        assert structured_result["context_tags"] == ["python"]
+
+    asyncio.run(run_probe())
 
 
 def test_package_exposes_mcp_console_script() -> None:
