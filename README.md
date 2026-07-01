@@ -183,6 +183,54 @@ The MCP tool returns JSON-safe finalists with operational fields such as
 current MCP server uses the deterministic local provider by default, so it does
 not require OpenAI, Exa, Brave, pricing files, or network access.
 
+To smoke-test the actual MCP tool registration without an agent host:
+
+```powershell
+creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" `
+  --repo-language Python `
+  --seed-count 2 `
+  --finalist-count 1 `
+  --generations 0 `
+  --budget-usd 0.20
+```
+
+For live OpenAI MCP calls, keep the same MCP server command and pass
+`"provider_mode": "live_openai"` in the tool payload. The live path uses the
+same environment variables as CLI live mode:
+
+```powershell
+$env:OPENAI_API_KEY = "<your-api-key>"
+$env:OPENAI_ECONOMY_MODEL = "<cheap-model-id>"
+$env:OPENAI_STRONG_MODEL = "<stronger-model-id>"
+$env:OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
+$env:OPENAI_PRICING_FILE = "C:\path\to\openai-pricing.json"
+```
+
+Example live MCP payload:
+
+```json
+{
+  "goal": "Design a better retry strategy for AI coding agents after failed tests",
+  "provider_mode": "live_openai",
+  "privacy": "private",
+  "budget_usd": 0.25,
+  "seed_count": 4,
+  "finalist_count": 2,
+  "max_generations": 1,
+  "repo_signals": {
+    "changed_files": ["src/agent/runner.py"],
+    "test_commands": ["python -m pytest tests/test_runner.py"],
+    "ci_logs": ["pytest failed after retry loop change"],
+    "detected_languages": ["Python"],
+    "detected_frameworks": ["pytest"]
+  }
+}
+```
+
+If live configuration is missing or invalid, the MCP tool returns
+`stopped_reason: "configuration_error"` with a structured error and no finalists
+instead of charging provider calls.
+
 The engine does not read this file. The CLI parses it into `ContextBundle`, then
 calls the same provider-neutral API a future middleware layer will call.
 
