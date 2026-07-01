@@ -1,5 +1,6 @@
 .worktrees/
 .traces/
+.agent-proof*/
 .coverage
 htmlcov/
 .pytest_cache/
