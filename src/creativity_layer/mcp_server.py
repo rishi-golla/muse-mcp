@@ -5,7 +5,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from creativity_layer.middleware import CreativeMiddlewareRunner, CreativePlanRequest
+from creativity_layer.middleware import CreativePlanRequest, run_creative_plan
 
 SERVER_NAME = "creativity-layer"
 
@@ -13,6 +13,8 @@ SERVER_NAME = "creativity-layer"
 def creative_plan(
     goal: str,
     repo_signals: Mapping[str, object] | None = None,
+    provider_mode: str = "deterministic",
+    privacy: str = "research",
     budget_usd: float = 0.35,
     seed_count: int = 4,
     finalist_count: int = 2,
@@ -23,6 +25,8 @@ def creative_plan(
     """Generate an operational creative plan for an agent's current task."""
     request = CreativePlanRequest(
         goal=goal,
+        provider_mode=provider_mode,
+        privacy=privacy,
         repo_signals=repo_signals or {},
         budget_usd=budget_usd,
         seed_count=seed_count,
@@ -31,7 +35,7 @@ def creative_plan(
         max_calls=max_calls,
         max_context_snippets=max_context_snippets,
     )
-    return CreativeMiddlewareRunner.deterministic().run(request)
+    return run_creative_plan(request)
 
 
 def build_mcp_server() -> FastMCP:

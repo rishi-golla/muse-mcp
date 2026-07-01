@@ -11,12 +11,14 @@ def test_creative_plan_tool_delegates_to_middleware_runner() -> None:
     result = creative_plan(
         goal="Design a backend middleware planning hook for arbitrary repos",
         repo_signals={"detected_languages": ("Python",)},
+        provider_mode="deterministic",
         seed_count=2,
         finalist_count=1,
         max_generations=0,
         budget_usd=0.20,
     )
 
+    assert result["provider_mode"] == "deterministic"
     assert result["finalist_count"] == 1
     assert result["finalists"][0]["inputs_required"]
     assert result["context_tags"] == ["python"]
@@ -39,6 +41,7 @@ def test_fastmcp_server_exposes_and_invokes_creative_plan_tool() -> None:
             {
                 "goal": "Design a retry strategy for AI coding agents",
                 "repo_signals": {"detected_languages": ("Python",)},
+                "provider_mode": "deterministic",
                 "seed_count": 2,
                 "finalist_count": 1,
                 "max_generations": 0,
@@ -49,10 +52,34 @@ def test_fastmcp_server_exposes_and_invokes_creative_plan_tool() -> None:
 
         assert "creative_plan" in tool_names
         assert isinstance(structured_result, dict)
+        assert structured_result["provider_mode"] == "deterministic"
         assert structured_result["finalist_count"] == 1
         assert structured_result["context_tags"] == ["python"]
 
     asyncio.run(run_probe())
+
+
+def test_creative_plan_live_mode_returns_structured_configuration_error(
+    monkeypatch,
+) -> None:
+    for name in (
+        "OPENAI_API_KEY",
+        "OPENAI_ECONOMY_MODEL",
+        "OPENAI_STRONG_MODEL",
+        "OPENAI_PRICING_FILE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    result = creative_plan(
+        goal="Design a retry strategy for AI coding agents",
+        provider_mode="live_openai",
+        privacy="private",
+    )
+
+    assert result["provider_mode"] == "live_openai"
+    assert result["stopped_reason"] == "configuration_error"
+    assert result["finalist_count"] == 0
+    assert result["errors"][0]["stage"] == "configuration"
 
 
 def test_package_exposes_mcp_console_script() -> None:
