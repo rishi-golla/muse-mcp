@@ -84,7 +84,10 @@ def run_verification(repo_path: Path) -> VerificationResult:
     )
 
 
-def _build_repo_signals(repo_path: Path, failed_verification: VerificationResult) -> dict[str, list[str]]:
+def _build_repo_signals(
+    repo_path: Path,
+    failed_verification: VerificationResult,
+) -> dict[str, list[str]]:
     return {
         "file_paths": [
             path.name
