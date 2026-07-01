@@ -5,6 +5,7 @@ import json
 from creativity_layer.deterministic import DeterministicCreativeProvider
 from creativity_layer.middleware import (
     CreativeMiddlewareRunner,
+    EffortPreset,
     CreativePlanRequest,
     ProviderMode,
     run_creative_plan,
@@ -46,12 +47,66 @@ def test_runner_uses_cheap_agent_defaults() -> None:
     result = CreativeMiddlewareRunner.deterministic().run(request)
 
     assert request.provider_mode is ProviderMode.DETERMINISTIC
+    assert request.effort is EffortPreset.QUICK
     assert result["provider_mode"] == "deterministic"
-    assert result["config"]["budget_usd"] == 0.35
-    assert result["config"]["seed_count"] == 4
-    assert result["config"]["finalist_count"] == 2
-    assert result["config"]["max_generations"] == 1
-    assert result["finalist_count"] == 2
+    assert result["config"]["effort"] == "quick"
+    assert result["config"]["budget_usd"] == 0.20
+    assert result["config"]["seed_count"] == 2
+    assert result["config"]["finalist_count"] == 1
+    assert result["config"]["max_generations"] == 0
+    assert result["finalist_count"] == 1
+
+
+def test_runner_resolves_standard_and_deep_effort_presets() -> None:
+    standard = CreativePlanRequest(
+        goal="Design a planning hook for arbitrary repos",
+        effort="standard",
+    )
+    deep = CreativePlanRequest(
+        goal="Design a planning hook for arbitrary repos",
+        effort="deep",
+    )
+
+    assert standard.budget_usd == 0.35
+    assert standard.seed_count == 4
+    assert standard.finalist_count == 2
+    assert standard.max_generations == 1
+    assert deep.budget_usd == 0.75
+    assert deep.seed_count == 6
+    assert deep.finalist_count == 3
+    assert deep.max_generations == 2
+
+
+def test_runner_explicit_values_override_effort_presets() -> None:
+    request = CreativePlanRequest(
+        goal="Design a planning hook for arbitrary repos",
+        effort="deep",
+        budget_usd=0.21,
+        seed_count=2,
+        finalist_count=1,
+        max_generations=0,
+    )
+
+    result = CreativeMiddlewareRunner.deterministic().run(request)
+
+    assert result["config"]["effort"] == "deep"
+    assert result["config"]["budget_usd"] == 0.21
+    assert result["config"]["seed_count"] == 2
+    assert result["config"]["finalist_count"] == 1
+    assert result["config"]["max_generations"] == 0
+
+
+def test_runner_returns_agent_guidance_contract() -> None:
+    result = CreativeMiddlewareRunner.deterministic().run(
+        CreativePlanRequest(goal="Design a planning hook for arbitrary repos")
+    )
+
+    guidance = result["agent_guidance"]
+
+    assert guidance["intended_use"] == "planning_middleware"
+    assert guidance["verification_required"] is True
+    assert "observe_repo_state" in guidance["recommended_agent_loop"]
+    assert "verification keeps failing" in guidance["escalation_policy"]
 
 
 def test_live_openai_mode_returns_structured_configuration_error(

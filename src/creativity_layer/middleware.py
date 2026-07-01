@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from openai import OpenAI
-from pydantic import Field, ValidationError
+from pydantic import Field, ValidationError, model_validator
 
 from creativity_layer.context_provider import (
     ContextProvider,
@@ -30,18 +30,58 @@ class ProviderMode(StrEnum):
     LIVE_OPENAI = "live_openai"
 
 
+class EffortPreset(StrEnum):
+    QUICK = "quick"
+    STANDARD = "standard"
+    DEEP = "deep"
+
+
+EFFORT_PRESETS: dict[EffortPreset, dict[str, float | int]] = {
+    EffortPreset.QUICK: {
+        "budget_usd": 0.20,
+        "seed_count": 2,
+        "finalist_count": 1,
+        "max_generations": 0,
+    },
+    EffortPreset.STANDARD: {
+        "budget_usd": 0.35,
+        "seed_count": 4,
+        "finalist_count": 2,
+        "max_generations": 1,
+    },
+    EffortPreset.DEEP: {
+        "budget_usd": 0.75,
+        "seed_count": 6,
+        "finalist_count": 3,
+        "max_generations": 2,
+    },
+}
+
+
 class CreativePlanRequest(FrozenModel):
     goal: str = Field(min_length=1)
     provider_mode: ProviderMode = ProviderMode.DETERMINISTIC
     privacy: PrivacyMode = PrivacyMode.RESEARCH
     repo_signals: RepoSignals | Mapping[str, object] = Field(default_factory=RepoSignals)
-    budget_usd: float = Field(default=0.35, strict=True, gt=0)
-    seed_count: int = Field(default=4, strict=True, ge=2)
-    finalist_count: int = Field(default=2, strict=True, ge=1)
-    max_generations: int = Field(default=1, strict=True, ge=0)
+    effort: EffortPreset = EffortPreset.QUICK
+    budget_usd: float = Field(strict=True, gt=0)
+    seed_count: int = Field(strict=True, ge=2)
+    finalist_count: int = Field(strict=True, ge=1)
+    max_generations: int = Field(strict=True, ge=0)
     max_calls: int = Field(default=20, strict=True, gt=0)
     max_context_snippets: int = Field(default=8, strict=True, ge=1, le=20)
     random_seed: int = Field(default=0, strict=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_effort_defaults(cls, value: object) -> object:
+        if not isinstance(value, Mapping):
+            return value
+        payload = dict(value)
+        effort = EffortPreset(str(payload.get("effort", EffortPreset.QUICK.value)))
+        for field, default_value in EFFORT_PRESETS[effort].items():
+            payload.setdefault(field, default_value)
+        return payload
 
 
 class ConfigurationError(RuntimeError):
@@ -137,6 +177,7 @@ def _serialize_result(
             snippet.source for snippet in result.framed_task.context.context_bundle.snippets
         ],
         "config": {
+            "effort": request.effort.value,
             "budget_usd": request.budget_usd,
             "seed_count": request.seed_count,
             "finalist_count": request.finalist_count,
@@ -144,6 +185,7 @@ def _serialize_result(
             "max_calls": request.max_calls,
             "privacy": request.privacy.value,
         },
+        "agent_guidance": _agent_guidance(request.effort),
         "spend_usd": spend_total,
         "errors": [error.model_dump(mode="json") for error in result.errors],
         "finalists": [_serialize_finalist(finalist) for finalist in result.finalists],
@@ -244,6 +286,7 @@ def _configuration_error_result(*, provider_mode: str, message: str) -> dict[str
         "context_tags": [],
         "context_sources": [],
         "config": {},
+        "agent_guidance": _agent_guidance(EffortPreset.QUICK),
         "spend_usd": 0.0,
         "errors": [
             {
@@ -255,6 +298,30 @@ def _configuration_error_result(*, provider_mode: str, message: str) -> dict[str
             }
         ],
         "finalists": [],
+    }
+
+
+def _agent_guidance(effort: EffortPreset) -> dict[str, Any]:
+    return {
+        "intended_use": "planning_middleware",
+        "effort": effort.value,
+        "verification_required": True,
+        "recommended_agent_loop": [
+            "observe_repo_state",
+            "call_creative_plan_with_current_repo_signals",
+            "choose_one_bounded_action_from_a_finalist",
+            "run_the_narrowest_relevant_verification",
+            "stop_or_escalate_based_on_verification",
+        ],
+        "escalation_policy": (
+            "Start with quick. Escalate to standard when verification keeps failing or "
+            "repo context is ambiguous; use deep only for high-impact planning before edits."
+        ),
+        "usage_warnings": [
+            "Do not treat finalists as applied code.",
+            "Do not skip repository-owned verification.",
+            "Pass observed repo facts instead of asking creativity-layer to crawl the repo.",
+        ],
     }
 
 
