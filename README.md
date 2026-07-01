@@ -146,6 +146,8 @@ agent at the stdio server:
 
 For host-specific config packs and setup notes, see
 `docs/integrations/mcp-agent-hosts.md`.
+For a deterministic local proof that an agent loop can consume the MCP output
+and apply a bounded repair, see `docs/integrations/agent-loop-proof.md`.
 
 ```json
 {

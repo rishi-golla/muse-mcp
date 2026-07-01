@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import argparse
 import asyncio
+import json
 import subprocess
 import sys
 import unicodedata
@@ -177,3 +179,28 @@ def run_agent_loop_proof(workspace: Path) -> dict[str, Any]:
         "initial_verification": initial_verification.to_dict(),
         "final_verification": final_verification.to_dict(),
     }
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="creativity-layer-agent-proof",
+        description="Run a deterministic local proof that an agent loop can consume MCP planning.",
+    )
+    parser.add_argument(
+        "--workspace",
+        type=Path,
+        default=Path(".agent-proof-tmp"),
+        help="Directory where the generated sample repo should be created.",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    result = run_agent_loop_proof(args.workspace)
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0 if result["passed"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
