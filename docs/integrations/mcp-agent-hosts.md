@@ -142,13 +142,10 @@ Live mode is opt-in per tool call:
 
 Set these environment variables in the agent host environment:
 
-```powershell
-$env:OPENAI_API_KEY = "<OPENAI_API_KEY>"
-$env:OPENAI_ECONOMY_MODEL = "<OPENAI_ECONOMY_MODEL>"
-$env:OPENAI_STRONG_MODEL = "<OPENAI_STRONG_MODEL>"
-$env:OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
-$env:OPENAI_PRICING_FILE = "C:\path\to\openai-pricing.json"
-```
+Set `OPENAI_API_KEY`, `OPENAI_ECONOMY_MODEL`, `OPENAI_STRONG_MODEL`,
+`OPENAI_EMBEDDING_MODEL`, and `OPENAI_PRICING_FILE` in the shell or local
+agent-host environment before starting the MCP server. Do not commit real
+values to the repository.
 
 If config is missing or invalid, `creative_plan` returns
 `stopped_reason: "configuration_error"` with a structured error and no finalists.

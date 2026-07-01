@@ -34,7 +34,22 @@ def test_claude_code_config_pack_is_valid_mcp_json() -> None:
     assert server["command"] == "creativity-layer-mcp"
     assert server["args"] == []
     assert "OPENAI_API_KEY" in server["env"]
-    assert server["env"]["OPENAI_API_KEY"].startswith("<")
+    assert server["env"]["OPENAI_API_KEY"] == "${OPENAI_API_KEY}"
+    assert server["env"]["OPENAI_PRICING_FILE"] == "${OPENAI_PRICING_FILE}"
+
+
+def test_codex_optional_env_example_is_valid_when_uncommented() -> None:
+    text = _read_text(CONFIG_ROOT / "codex" / "config.toml")
+    uncommented = text + "\n" + "\n".join(
+        line.removeprefix("# ")
+        for line in text.splitlines()
+        if line.startswith("# [mcp_servers.") or line.startswith("# OPENAI_")
+    )
+    config = tomllib.loads(uncommented)
+    env = config["mcp_servers"]["creativity-layer"]["env"]
+
+    assert env["OPENAI_API_KEY"] == "${OPENAI_API_KEY}"
+    assert env["OPENAI_PRICING_FILE"] == "${OPENAI_PRICING_FILE}"
 
 
 def test_generic_mcp_json_pack_is_valid_and_deterministic_by_default() -> None:
@@ -49,10 +64,19 @@ def test_generic_mcp_json_pack_is_valid_and_deterministic_by_default() -> None:
 
 
 def test_config_packs_do_not_contain_real_secrets() -> None:
+    docs_to_scan = [
+        ROOT / "README.md",
+        ROOT / "docs" / "integrations" / "mcp-agent-hosts.md",
+    ]
     combined = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in CONFIG_ROOT.rglob("*")
-        if path.is_file()
+        [
+            *(
+                path.read_text(encoding="utf-8")
+                for path in CONFIG_ROOT.rglob("*")
+                if path.is_file()
+            ),
+            *(path.read_text(encoding="utf-8") for path in docs_to_scan),
+        ]
     )
 
     assert "sk-" not in combined
