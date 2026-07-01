@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
+import shutil
 import subprocess
 import sys
 import unicodedata
@@ -11,6 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from creativity_layer.mcp_server import build_mcp_server
+
+SAMPLE_REPO_MARKER = ".creativity-layer-agent-proof"
 
 
 @dataclass(frozen=True)
@@ -35,7 +39,27 @@ class VerificationResult:
 
 
 def create_sample_retry_repo(repo_path: Path) -> Path:
+    if repo_path.exists():
+        marker = repo_path / SAMPLE_REPO_MARKER
+        if not marker.exists():
+            raise ValueError(f"refusing to replace unmarked directory: {repo_path}")
+        shutil.rmtree(repo_path)
     repo_path.mkdir(parents=True, exist_ok=True)
+    (repo_path / SAMPLE_REPO_MARKER).write_text(
+        "generated sample repo for creativity-layer agent-loop proof\n",
+        encoding="utf-8",
+    )
+    (repo_path / "pytest.ini").write_text(
+        "\n".join(
+            [
+                "[pytest]",
+                "testpaths = .",
+                "addopts =",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
     (repo_path / "retry_policy.py").write_text(
         "\n".join(
             [
@@ -68,11 +92,14 @@ def create_sample_retry_repo(repo_path: Path) -> Path:
 
 def run_verification(repo_path: Path) -> VerificationResult:
     command = (sys.executable, "-m", "pytest", "-q")
+    env = os.environ.copy()
+    env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     completed = subprocess.run(
         command,
         cwd=repo_path,
         capture_output=True,
         check=False,
+        env=env,
         text=True,
         timeout=30,
     )
@@ -169,15 +196,22 @@ def run_agent_loop_proof(workspace: Path) -> dict[str, Any]:
     initial_verification = run_verification(repo_path)
     repo_signals = _build_repo_signals(repo_path, initial_verification)
     mcp_result = asyncio.run(_call_creative_plan(repo_signals))
+    selected_plan = _select_first_plan(mcp_result)
     repair = _apply_bounded_repair(repo_path)
     final_verification = run_verification(repo_path)
+    passed = (
+        initial_verification.exit_code != 0
+        and final_verification.exit_code == 0
+        and not mcp_result.get("errors")
+        and bool(selected_plan)
+    )
 
     return {
-        "passed": initial_verification.exit_code != 0 and final_verification.exit_code == 0,
+        "passed": passed,
         "sample_repo": str(repo_path),
         "repo_signals": repo_signals,
         "mcp_result": mcp_result,
-        "selected_plan": _select_first_plan(mcp_result),
+        "selected_plan": selected_plan,
         "repair": repair,
         "initial_verification": initial_verification.to_dict(),
         "final_verification": final_verification.to_dict(),
