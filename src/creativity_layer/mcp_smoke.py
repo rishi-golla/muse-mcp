@@ -15,9 +15,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Invoke the creativity-layer MCP tool in-process.",
     )
     parser.add_argument("goal")
-    parser.add_argument("--provider-mode", default="deterministic")
-    parser.add_argument("--privacy", default="research")
-    parser.add_argument("--effort", choices=("quick", "standard", "deep"), default="quick")
+    parser.add_argument("--provider-mode")
+    parser.add_argument("--privacy")
+    parser.add_argument("--effort", choices=("quick", "standard", "deep"))
     parser.add_argument("--budget-usd", type=float)
     parser.add_argument("--seed-count", type=int)
     parser.add_argument("--finalist-count", type=int)
@@ -50,16 +50,21 @@ def run_smoke(argv: Sequence[str] | None = None) -> int:
         "test_commands": args.test_command,
         "ci_logs": args.ci_log,
     }
+    arguments: dict[str, Any] = {
+        "goal": args.goal,
+        "repo_signals": repo_signals,
+        **_optional_run_config(args),
+    }
+    for key, value in (
+        ("provider_mode", args.provider_mode),
+        ("privacy", args.privacy),
+        ("effort", args.effort),
+    ):
+        if value is not None:
+            arguments[key] = value
     payload = asyncio.run(
         _call_smoke_tool(
-            {
-                "goal": args.goal,
-                "provider_mode": args.provider_mode,
-                "privacy": args.privacy,
-                "effort": args.effort,
-                "repo_signals": repo_signals,
-                **_optional_run_config(args),
-            }
+            arguments,
         )
     )
     print(json.dumps(payload, indent=2, sort_keys=True))

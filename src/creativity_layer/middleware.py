@@ -211,6 +211,19 @@ def run_creative_plan(request: CreativePlanRequest | Mapping[str, object]) -> di
         )
 
 
+def configuration_error_result(
+    *,
+    provider_mode: str,
+    message: str,
+    effort: EffortPreset = EffortPreset.QUICK,
+) -> dict[str, Any]:
+    return _configuration_error_result(
+        provider_mode=provider_mode,
+        message=message,
+        effort=effort,
+    )
+
+
 def _runner_for_request(request: CreativePlanRequest) -> CreativeMiddlewareRunner:
     if request.provider_mode is ProviderMode.DETERMINISTIC:
         return CreativeMiddlewareRunner.deterministic()

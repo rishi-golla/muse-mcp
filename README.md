@@ -184,13 +184,30 @@ observed instead of asking creativity-layer to crawl the repository:
 The MCP tool returns JSON-safe finalists with operational fields such as
 `inputs_required`, `agent_workflow`, `decision_policy`,
 `integration_points`, `verification_strategy`, and `failure_modes`. The
-current MCP server uses the deterministic local provider by default, so it does
-not require OpenAI, Exa, Brave, pricing files, or network access.
+agent-facing posture is live-first: if `provider_mode` is omitted, MCP calls use
+`live_openai` and return a structured `configuration_error` when required live
+environment variables are missing.
+
+Set runtime defaults in the agent host environment when you want every omitted
+tool field to use the same posture:
+
+```powershell
+$env:CREATIVITY_LAYER_PROVIDER_MODE = "live_openai"
+$env:CREATIVITY_LAYER_EFFORT = "quick"
+$env:CREATIVITY_LAYER_PRIVACY = "research"
+$env:CREATIVITY_LAYER_BUDGET_USD = "0.25"
+```
+
+The deterministic test provider exists for no-network CI, protocol checks, and
+transport smoke tests. Use it explicitly with `--provider-mode deterministic`
+or `CREATIVITY_LAYER_PROVIDER_MODE=deterministic`; do not treat deterministic
+output as product-quality creative planning.
 
 To smoke-test the actual MCP tool registration without an agent host:
 
 ```powershell
 creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" `
+  --provider-mode deterministic `
   --repo-language Python `
   --seed-count 2 `
   --finalist-count 1 `
@@ -198,9 +215,9 @@ creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" `
   --budget-usd 0.20
 ```
 
-For live OpenAI MCP calls, keep the same MCP server command and pass
-`"provider_mode": "live_openai"` in the tool payload. The live path uses the
-same environment variables as CLI live mode:
+For live OpenAI MCP calls, keep the same MCP server command and either omit
+`provider_mode` or pass `"provider_mode": "live_openai"` in the tool payload.
+The live path uses the same environment variables as CLI live mode:
 
 ```powershell
 $env:OPENAI_API_KEY = "<OPENAI_API_KEY>"

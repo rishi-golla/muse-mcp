@@ -17,12 +17,15 @@ Then verify the MCP tool without starting an agent host:
 
 ```powershell
 creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" `
+  --provider-mode deterministic `
   --repo-language Python `
   --effort quick
 ```
 
 The smoke command invokes the FastMCP server in-process and prints the
-structured payload returned by `creative_plan`.
+structured payload returned by `creative_plan`. This example uses the
+deterministic test provider so install and transport problems can be isolated
+without spending money or requiring live model credentials.
 
 For when to call the tool inside a normal coding loop, see
 `docs/integrations/agent-dogfood-playbook.md`.
@@ -104,12 +107,13 @@ not install or mutate editor config automatically.
 ## Tool Payload
 
 Agents should pass repo signals they already observed. The server should not
-crawl arbitrary repositories:
+crawl arbitrary repositories. The agent-facing default is live-first, so omit
+`provider_mode` for normal live planning once live environment variables are
+configured:
 
 ```json
 {
   "goal": "Design a better retry strategy for AI coding agents after failed tests",
-  "provider_mode": "deterministic",
   "effort": "quick",
   "repo_signals": {
     "changed_files": ["src/agent/runner.py"],
@@ -126,9 +130,36 @@ context. Use `effort: "deep"` only for deliberate planning before high-impact
 edits or repeated failure loops. Explicit `budget_usd`, `seed_count`,
 `finalist_count`, and `max_generations` values override the preset.
 
+## Provider Posture
+
+MCP and `creativity-layer-mcp-smoke` are live-first by default. If
+`provider_mode` is omitted, `creative_plan` resolves it from
+`CREATIVITY_LAYER_PROVIDER_MODE`, falling back to `live_openai`.
+
+Set these runtime defaults in the agent host environment when you want a stable
+default without repeating fields in every tool call:
+
+```powershell
+$env:CREATIVITY_LAYER_PROVIDER_MODE = "live_openai"
+$env:CREATIVITY_LAYER_EFFORT = "quick"
+$env:CREATIVITY_LAYER_PRIVACY = "research"
+$env:CREATIVITY_LAYER_BUDGET_USD = "0.25"
+```
+
+The deterministic test provider is only for no-network CI, protocol checks, and
+local smoke tests. Use it explicitly with `--provider-mode deterministic` or:
+
+```powershell
+$env:CREATIVITY_LAYER_PROVIDER_MODE = "deterministic"
+```
+
+Do not use deterministic output to judge product quality; it is intentionally
+repeatable and cheap.
+
 ## Live OpenAI
 
-Live mode is opt-in per tool call:
+Live mode can be selected explicitly per tool call, or used implicitly by
+omitting `provider_mode`:
 
 ```json
 {

@@ -10,6 +10,25 @@ This playbook is for using creativity-layer while coding normally in another rep
 
 Explicit values such as `budget_usd`, `seed_count`, `finalist_count`, and `max_generations` override the preset for that call.
 
+## Provider Posture
+
+Normal dogfood runs should use the live-first MCP posture. If `provider_mode` is
+omitted, the tool uses `CREATIVITY_LAYER_PROVIDER_MODE` and falls back to
+`live_openai`. Use runtime defaults when your agent host should apply the same
+settings to every call:
+
+```powershell
+$env:CREATIVITY_LAYER_PROVIDER_MODE = "live_openai"
+$env:CREATIVITY_LAYER_EFFORT = "quick"
+$env:CREATIVITY_LAYER_PRIVACY = "research"
+$env:CREATIVITY_LAYER_BUDGET_USD = "0.25"
+```
+
+The deterministic test provider is only for no-network CI, smoke tests, and
+protocol checks. Use `--provider-mode deterministic` or
+`CREATIVITY_LAYER_PROVIDER_MODE=deterministic` when you need that mode, but do
+not judge creative quality from it.
+
 ## before-edit
 
 Call `creative_plan` before editing when the task has multiple plausible approaches, unclear boundaries, or needs a repo-agnostic workflow idea.
