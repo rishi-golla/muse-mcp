@@ -69,7 +69,7 @@ ingestion, agreement metrics, and calibration fitting are later 2C slices.
 Set:
 
 ```powershell
-$env:OPENAI_API_KEY = "<your-api-key>"
+$env:OPENAI_API_KEY = "<OPENAI_API_KEY>"
 $env:OPENAI_ECONOMY_MODEL = "<explicit model id>"
 $env:OPENAI_STRONG_MODEL = "<explicit model id>"
 $env:OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
@@ -144,6 +144,9 @@ The preferred workflow integration surface is MCP, not the CLI. Install the
 package into the Python environment your agent host can run, then point the
 agent at the stdio server:
 
+For host-specific config packs and setup notes, see
+`docs/integrations/mcp-agent-hosts.md`.
+
 ```json
 {
   "mcpServers": {
@@ -199,7 +202,7 @@ For live OpenAI MCP calls, keep the same MCP server command and pass
 same environment variables as CLI live mode:
 
 ```powershell
-$env:OPENAI_API_KEY = "<your-api-key>"
+$env:OPENAI_API_KEY = "<OPENAI_API_KEY>"
 $env:OPENAI_ECONOMY_MODEL = "<cheap-model-id>"
 $env:OPENAI_STRONG_MODEL = "<stronger-model-id>"
 $env:OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"

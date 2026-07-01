@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "creativity-layer": {
+      "command": "creativity-layer-mcp",
+      "args": [],
+      "env": {
+        "OPENAI_API_KEY": "${OPENAI_API_KEY}",
+        "OPENAI_ECONOMY_MODEL": "${OPENAI_ECONOMY_MODEL}",
+        "OPENAI_STRONG_MODEL": "${OPENAI_STRONG_MODEL}",
+        "OPENAI_EMBEDDING_MODEL": "text-embedding-3-small",
+        "OPENAI_PRICING_FILE": "${OPENAI_PRICING_FILE}"
+      }
+    }
+  }
+}
