@@ -144,6 +144,9 @@ The preferred workflow integration surface is MCP, not the CLI. Install the
 package into the Python environment your agent host can run, then point the
 agent at the stdio server:
 
+For host-specific config packs and setup notes, see
+`docs/integrations/mcp-agent-hosts.md`.
+
 ```json
 {
   "mcpServers": {

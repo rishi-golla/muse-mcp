@@ -58,3 +58,20 @@ def test_config_packs_do_not_contain_real_secrets() -> None:
     assert "sk-" not in combined
     assert "gho_" not in combined
     assert "your-api-key" not in combined.casefold()
+
+
+def test_agent_host_guide_links_config_packs_and_smoke_workflow() -> None:
+    guide = _read_text(ROOT / "docs" / "integrations" / "mcp-agent-hosts.md")
+
+    assert "config-packs/codex/config.toml" in guide
+    assert "config-packs/claude-code/.mcp.json" in guide
+    assert "config-packs/generic-mcp/mcp.json" in guide
+    assert "creativity-layer-mcp-smoke" in guide
+    assert '"provider_mode": "live_openai"' in guide
+    assert "creative_plan" in guide
+
+
+def test_readme_links_agent_host_guide() -> None:
+    readme = _read_text(ROOT / "README.md")
+
+    assert "docs/integrations/mcp-agent-hosts.md" in readme
