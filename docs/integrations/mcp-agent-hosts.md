@@ -18,14 +18,14 @@ Then verify the MCP tool without starting an agent host:
 ```powershell
 creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" `
   --repo-language Python `
-  --seed-count 2 `
-  --finalist-count 1 `
-  --generations 0 `
-  --budget-usd 0.20
+  --effort quick
 ```
 
 The smoke command invokes the FastMCP server in-process and prints the
 structured payload returned by `creative_plan`.
+
+For when to call the tool inside a normal coding loop, see
+`docs/integrations/agent-dogfood-playbook.md`.
 
 ## Config Packs
 
@@ -110,10 +110,7 @@ crawl arbitrary repositories:
 {
   "goal": "Design a better retry strategy for AI coding agents after failed tests",
   "provider_mode": "deterministic",
-  "budget_usd": 0.35,
-  "seed_count": 4,
-  "finalist_count": 2,
-  "max_generations": 1,
+  "effort": "quick",
   "repo_signals": {
     "changed_files": ["src/agent/runner.py"],
     "test_commands": ["python -m pytest tests/test_runner.py"],
@@ -124,6 +121,11 @@ crawl arbitrary repositories:
 }
 ```
 
+Use `effort: "standard"` after an initial verification failure or ambiguous repo
+context. Use `effort: "deep"` only for deliberate planning before high-impact
+edits or repeated failure loops. Explicit `budget_usd`, `seed_count`,
+`finalist_count`, and `max_generations` values override the preset.
+
 ## Live OpenAI
 
 Live mode is opt-in per tool call:
@@ -133,10 +135,8 @@ Live mode is opt-in per tool call:
   "goal": "Design a debugging workflow for flaky CI",
   "provider_mode": "live_openai",
   "privacy": "private",
-  "budget_usd": 0.25,
-  "seed_count": 4,
-  "finalist_count": 2,
-  "max_generations": 1
+  "effort": "quick",
+  "budget_usd": 0.25
 }
 ```
 

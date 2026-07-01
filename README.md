@@ -148,6 +148,8 @@ For host-specific config packs and setup notes, see
 `docs/integrations/mcp-agent-hosts.md`.
 For a deterministic local proof that an agent loop can consume the MCP output
 and apply a bounded repair, see `docs/integrations/agent-loop-proof.md`.
+For when to call the tool during normal coding in another repo, see
+`docs/integrations/agent-dogfood-playbook.md`.
 
 ```json
 {
@@ -166,10 +168,7 @@ observed instead of asking creativity-layer to crawl the repository:
 ```json
 {
   "goal": "Design a better retry strategy for AI coding agents after failed tests",
-  "budget_usd": 0.35,
-  "seed_count": 4,
-  "finalist_count": 2,
-  "max_generations": 1,
+  "effort": "quick",
   "repo_signals": {
     "file_paths": ["pnpm-workspace.yaml", "apps/web/package.json"],
     "changed_files": ["packages/ui/src/Button.tsx"],
