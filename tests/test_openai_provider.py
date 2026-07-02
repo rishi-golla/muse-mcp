@@ -17,7 +17,11 @@ from creativity_layer.models import (
     RunConfig,
     TaskContext,
 )
-from creativity_layer.openai_provider import DEVELOPER_INSTRUCTIONS, OpenAICreativeProvider
+from creativity_layer.openai_provider import (
+    DEVELOPER_INSTRUCTIONS,
+    DOGFOOD_QUALITY_PROMPT_BLOCK,
+    OpenAICreativeProvider,
+)
 from creativity_layer.openai_schemas import (
     OpenAIEvaluation,
     OpenAIFrame,
@@ -355,6 +359,26 @@ def test_openai_generation_prompts_require_operational_contracts() -> None:
     assert "operational_specificity" in evaluate_instruction
     assert "workflow_fit" in evaluate_instruction
     assert "agent_workflow" in transform_instruction
+
+
+def test_dogfood_quality_prompt_block_names_quality_gates() -> None:
+    block = DOGFOOD_QUALITY_PROMPT_BLOCK
+
+    assert "dogfood quality gates" in block
+    assert "generic_title" in block
+    assert "generic_mechanism" in block
+    assert "missing_required_terms" in block
+    assert "missing_operational_field" in block
+    assert "arbitrary stack" in block
+    assert "Decision garden" in block
+
+
+def test_live_generation_prompts_include_dogfood_quality_pressure() -> None:
+    for operation in ("seed", "transform", "evaluate"):
+        instruction = DEVELOPER_INSTRUCTIONS[operation]
+        assert DOGFOOD_QUALITY_PROMPT_BLOCK in instruction
+        assert "missing_required_terms" in instruction
+        assert "generic_mechanism" in instruction
 
 
 def test_openai_generation_prompts_require_context_grounding() -> None:

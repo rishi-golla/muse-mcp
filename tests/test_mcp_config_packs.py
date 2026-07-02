@@ -165,3 +165,15 @@ def test_docs_describe_v3l_dogfood_quality_suite() -> None:
     assert "search-light" in combined
     assert "search-deep" in combined
     assert "deterministic output can intentionally fail quality gates" in combined
+
+
+def test_dogfood_playbook_describes_v4b_live_quality_pressure() -> None:
+    playbook = _read_text(ROOT / "docs" / "integrations" / "agent-dogfood-playbook.md")
+    normalized = playbook.casefold()
+
+    assert "v4-b" in normalized
+    assert "live prompt pressure" in normalized
+    assert "dogfood quality gates" in normalized
+    assert "generic_title" in playbook
+    assert "generic_mechanism" in playbook
+    assert "missing_required_terms" in playbook
