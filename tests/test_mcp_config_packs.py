@@ -209,3 +209,13 @@ def test_docs_describe_v4e_suggested_next_call() -> None:
     assert "suggested_next_call" in playbook
     assert "repo_signal_requests" in playbook
     assert "automatic" in normalized
+
+
+def test_docs_describe_v4f_agent_handoff() -> None:
+    playbook = _read_text(ROOT / "docs" / "integrations" / "agent-dogfood-playbook.md")
+    normalized = playbook.casefold()
+
+    assert "v4-f" in normalized
+    assert "agent_handoff" in playbook
+    assert "recommended_action" in playbook
+    assert "selected_finalist_id" in playbook

@@ -123,6 +123,54 @@ def test_runner_returns_suggested_next_call_for_warning_results() -> None:
     assert suggestion == result["agent_guidance"]["suggested_next_call"]
 
 
+def test_runner_returns_agent_handoff_for_warning_results() -> None:
+    result = CreativeMiddlewareRunner.deterministic().run(
+        CreativePlanRequest(
+            goal="Design a better retry strategy for AI coding agents after failed tests",
+            repo_signals={
+                "ci_logs": ("pytest failed after retry loop change",),
+                "detected_languages": ("Python",),
+                "detected_frameworks": ("pytest",),
+            },
+            seed_count=2,
+            finalist_count=1,
+            max_generations=0,
+            budget_usd=0.20,
+        )
+    )
+
+    handoff = result["agent_handoff"]
+
+    assert handoff["status"] == "retry_recommended"
+    assert handoff["recommended_action"] == "retry_creative_plan"
+    assert handoff["use_current_finalist"] is False
+    assert handoff["selected_finalist_id"] == result["finalists"][0]["id"]
+    assert handoff["suggested_next_call_available"] is True
+    assert handoff["verification_required"] is True
+    assert handoff == result["agent_guidance"]["agent_handoff"]
+
+
+def test_runner_returns_review_agent_handoff_for_generic_review_results() -> None:
+    result = CreativeMiddlewareRunner.deterministic().run(
+        CreativePlanRequest(
+            goal="Design a planning hook for arbitrary repos",
+            seed_count=2,
+            finalist_count=1,
+            max_generations=0,
+            budget_usd=0.20,
+        )
+    )
+
+    handoff = result["agent_handoff"]
+
+    assert result["quality_action_policy"]["status"] == "review"
+    assert handoff["status"] == "review"
+    assert handoff["recommended_action"] == "review_current_finalist"
+    assert handoff["use_current_finalist"] is True
+    assert handoff["selected_finalist_id"] == result["finalists"][0]["id"]
+    assert handoff["suggested_next_call_available"] is True
+
+
 def test_runner_uses_cheap_agent_defaults() -> None:
     request = CreativePlanRequest(goal="Design a planning hook for arbitrary repos")
 
@@ -368,6 +416,25 @@ def test_configuration_error_includes_clear_quality_action_policy() -> None:
     )
     assert result["suggested_next_call"] is None
     assert result["agent_guidance"]["suggested_next_call"] is None
+
+
+def test_configuration_error_includes_blocked_agent_handoff() -> None:
+    result = run_creative_plan(
+        {
+            "goal": "Design a retry strategy for AI coding agents",
+            "provider_mode": "bogus",
+        }
+    )
+
+    assert result["agent_handoff"] == {
+        "status": "blocked",
+        "recommended_action": "fix_configuration",
+        "use_current_finalist": False,
+        "selected_finalist_id": None,
+        "suggested_next_call_available": False,
+        "verification_required": True,
+    }
+    assert result["agent_handoff"] == result["agent_guidance"]["agent_handoff"]
 
 
 def test_invalid_search_mode_error_preserves_response_shape() -> None:

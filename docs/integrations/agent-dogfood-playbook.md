@@ -137,6 +137,20 @@ Use it as a prepared follow-up payload, not as permission to spend more money.
 If it is `null`, continue with the current result and repository-owned
 verification.
 
+## V4-F agent handoff
+
+V4-F adds `agent_handoff` as the first routing field host agents should inspect.
+It is mirrored inside `agent_guidance.agent_handoff`.
+
+The handoff summarizes the richer policy fields into `status`,
+`recommended_action`, `use_current_finalist`, `selected_finalist_id`,
+`suggested_next_call_available`, and `verification_required`. A host can use it
+to decide whether to inspect the current finalist, call `creative_plan` again
+with `suggested_next_call`, or fix configuration before continuing.
+
+`agent_handoff` is still advisory. It does not apply edits, does not authorize
+spend, and does not replace repository-owned verification.
+
 ## before-edit
 
 Call `creative_plan` before editing when the task has multiple plausible approaches, unclear boundaries, or needs a repo-agnostic workflow idea.

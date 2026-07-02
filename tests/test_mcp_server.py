@@ -319,6 +319,34 @@ def test_fastmcp_server_exposes_suggested_next_call() -> None:
     asyncio.run(run_probe())
 
 
+def test_fastmcp_server_exposes_agent_handoff() -> None:
+    async def run_probe() -> None:
+        server = build_mcp_server()
+
+        result = await server.call_tool(
+            "creative_plan",
+            {
+                "goal": "Design a retry strategy for AI coding agents",
+                "repo_signals": {
+                    "ci_logs": ("pytest failed after retry loop change",),
+                    "detected_languages": ("Python",),
+                    "detected_frameworks": ("pytest",),
+                },
+                "provider_mode": "deterministic",
+            },
+        )
+        _content_blocks, structured_result = result
+
+        assert isinstance(structured_result, dict)
+        assert structured_result["agent_handoff"]["status"] == "retry_recommended"
+        assert (
+            structured_result["agent_handoff"]
+            == structured_result["agent_guidance"]["agent_handoff"]
+        )
+
+    asyncio.run(run_probe())
+
+
 def test_creative_plan_live_mode_returns_structured_configuration_error(
     monkeypatch,
 ) -> None:
