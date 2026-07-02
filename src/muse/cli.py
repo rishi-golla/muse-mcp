@@ -23,6 +23,7 @@ from muse.live_config import (
     OpenAICredentials,
     PrivacyMode,
 )
+from muse.live_preflight import resolve_openai_pricing_table
 from muse.models import ContextBundle, RunConfig, RunResult, TaskContext
 from muse.openai_provider import OpenAICreativeProvider
 from muse.pricing import PricingTable
@@ -435,18 +436,13 @@ def _live_config_from_args(args: argparse.Namespace) -> LiveModelConfig:
 
 
 def _load_pricing_table(args: argparse.Namespace) -> PricingTable:
-    raw_path = args.pricing_file or os.getenv("OPENAI_PRICING_FILE")
-    if raw_path is None:
-        raise ValueError("OPENAI_PRICING_FILE is required")
-    path = Path(raw_path)
-    try:
-        payload = path.read_text(encoding="utf-8")
-    except OSError as error:
-        raise ValueError(f"could not read pricing config {path}: {error}") from error
-    try:
-        return PricingTable.model_validate_json(payload)
-    except ValueError as error:
-        raise ValueError(f"invalid pricing config {path}: {error}") from error
+    if args.pricing_file is not None:
+        pricing, _source = resolve_openai_pricing_table(
+            {"OPENAI_PRICING_FILE": str(args.pricing_file)}
+        )
+        return pricing
+    pricing, _source = resolve_openai_pricing_table()
+    return pricing
 
 
 def _validate_live_pricing(config: LiveModelConfig, pricing: PricingTable) -> None:

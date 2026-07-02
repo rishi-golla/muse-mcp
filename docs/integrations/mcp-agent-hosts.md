@@ -20,6 +20,14 @@ real coding workflows.
 Then verify the MCP tool without starting an agent host:
 
 ```powershell
+muse-mcp-doctor --json
+```
+
+The doctor command performs local live OpenAI preflight checks without making
+provider calls. It reports missing env vars, selected model ids, and pricing
+coverage using redacted output.
+
+```powershell
 muse-mcp-smoke "Design a retry strategy for AI coding agents" `
   --repo-language Python `
   --effort quick `
@@ -32,8 +40,9 @@ returns a structured `configuration_error`; with valid OpenAI config, it runs
 the actual live planning path.
 
 For live runs, copy `.env.example` into your local shell or agent-host
-environment and use `openai-pricing.example.json` as the safe pricing schema
-example. Do not commit local files with real secrets.
+environment. Muse includes packaged default pricing for the documented example
+models; use `openai-pricing.example.json` as the safe schema example only when
+you want a local override. Do not commit local files with real secrets.
 
 For when to call the tool inside a normal coding loop, see
 `docs/integrations/agent-dogfood-playbook.md`.
@@ -227,9 +236,10 @@ omitting `provider_mode`:
 Set these environment variables in the agent host environment:
 
 Set `OPENAI_API_KEY`, `OPENAI_ECONOMY_MODEL`, `OPENAI_STRONG_MODEL`,
-`OPENAI_EMBEDDING_MODEL`, and `OPENAI_PRICING_FILE` in the shell or local
-agent-host environment before starting the MCP server. Do not commit real
-values to the repository.
+and `OPENAI_EMBEDDING_MODEL` in the shell or local agent-host environment before
+starting the MCP server. `OPENAI_PRICING_FILE` is optional when the selected
+models are covered by packaged default pricing; set it for local pricing
+overrides. Do not commit real values to the repository.
 
 If config is missing or invalid, `muse_plan` returns
 `stopped_reason: "configuration_error"` with a structured error and no finalists.

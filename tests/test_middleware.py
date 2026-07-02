@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from muse import middleware as middleware_module
 from muse.deterministic import DeterministicCreativeProvider
 from muse.middleware import (
     CreativeMiddlewareRunner,
@@ -377,6 +378,17 @@ def test_live_openai_mode_returns_structured_configuration_error(
         "finalist_warning_count": 0,
         "warnings": {},
     }
+
+
+def test_middleware_uses_packaged_pricing_when_pricing_env_is_absent(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("OPENAI_PRICING_FILE", raising=False)
+
+    pricing = middleware_module._load_pricing_table_from_environment()
+
+    assert pricing.version == "example-v1"
+    assert pricing.text_price("gpt-5.4-mini").input_per_million > 0
 
 
 def test_configuration_error_includes_empty_quality_warning_fields() -> None:
