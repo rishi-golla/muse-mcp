@@ -2,7 +2,7 @@
 
 ## Goal
 
-Expose creativity-layer to AI coding agents as an MCP tool they can call during normal planning and verification work, without making the CLI or a repo-specific script the primary integration surface.
+Expose muse to AI coding agents as an MCP tool they can call during normal planning and verification work, without making the CLI or a repo-specific script the primary integration surface.
 
 ## Approach Options
 
@@ -19,18 +19,18 @@ Expose creativity-layer to AI coding agents as an MCP tool they can call during 
 
 Build option 2. The feature adds a `CreativeMiddlewareRunner` that accepts a goal, generic repo signals, context-provider settings, and a bounded run config. The runner returns JSON-safe planning output with finalists, operational contracts, context tags, generated candidate count, spend, stopped reason, and errors.
 
-The MCP server is a thin adapter over that runner. It exposes one tool, `creative_plan`, over stdio. Agents pass current repo/task signals into the tool instead of asking creativity-layer to crawl arbitrary repositories. This keeps trust boundaries clear and avoids hardcoding repo shape, agent identity, or task type.
+The MCP server is a thin adapter over that runner. It exposes one tool, `muse_plan`, over stdio. Agents pass current repo/task signals into the tool instead of asking muse to crawl arbitrary repositories. This keeps trust boundaries clear and avoids hardcoding repo shape, agent identity, or task type.
 
 ## Components
 
-- `creativity_layer.middleware`
+- `muse.middleware`
   Owns request and response models, default deterministic provider construction, context-provider invocation, run-config construction, and JSON-safe serialization.
 
-- `creativity_layer.mcp_server`
+- `muse.mcp_server`
   Owns MCP registration and stdio startup. It delegates all behavior to `CreativeMiddlewareRunner`.
 
 - `pyproject.toml`
-  Adds the MCP SDK dependency and a `creativity-layer-mcp` console script.
+  Adds the MCP SDK dependency and a `muse-mcp` console script.
 
 - `README.md`
   Documents MCP as the agent-facing integration path and keeps CLI examples framed as harnesses.
@@ -38,7 +38,7 @@ The MCP server is a thin adapter over that runner. It exposes one tool, `creativ
 ## Data Flow
 
 1. Agent observes the current coding task and repository state.
-2. Agent calls `creative_plan` with `goal`, optional `repo_signals`, and cheap bounded run settings.
+2. Agent calls `muse_plan` with `goal`, optional `repo_signals`, and cheap bounded run settings.
 3. MCP adapter validates the request and calls `CreativeMiddlewareRunner`.
 4. Runner builds `TaskContext`, enriches it with `ContextBundle` via `DeterministicContextProvider`, runs `CreativeEngine`, and serializes the result.
 5. Agent receives finalists with operational fields it can convert into its own plan, verification policy, or retry decision.
@@ -62,4 +62,4 @@ Tests should cover the runner directly and the MCP tool function without launchi
 
 - No placeholders remain.
 - Scope is one adapter plus one reusable runner, not the whole future middleware platform.
-- The design preserves the user requirement that creativity-layer integrate into agent workflows without becoming a CLI replacement.
+- The design preserves the user requirement that muse integrate into agent workflows without becoming a CLI replacement.

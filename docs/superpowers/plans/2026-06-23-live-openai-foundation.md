@@ -21,7 +21,7 @@ This plan implements Slice 2A only:
 - Actual token-usage and estimated-cost accounting
 - Retry, timeout, rate-limit, structured-output repair, and circuit-breaker primitives
 - Research/private trace controls
-- `creativity-layer live`
+- `muse live`
 - Environment-gated OpenAI smoke test
 
 This plan does not implement:
@@ -52,19 +52,19 @@ The same model may be assigned to economy and strong roles during early testing.
 ```text
 pyproject.toml                                  Add OpenAI SDK and httpx dependencies
 README.md                                       Document live setup, pricing, and smoke tests
-src/creativity_layer/models.py                  Live usage, pricing, privacy, and trace models
-src/creativity_layer/providers.py               Metered framing and embedding contracts
-src/creativity_layer/operation.py               Validate extended live envelopes
-src/creativity_layer/budget.py                  Record token/search metadata on spend records
-src/creativity_layer/engine.py                  Meter framing and preserve live usage/errors
-src/creativity_layer/live_config.py             Environment/programmatic live configuration
-src/creativity_layer/pricing.py                 Versioned token-pricing calculations
-src/creativity_layer/reliability.py             Retry, timeout, and circuit-breaker executor
-src/creativity_layer/openai_schemas.py           OpenAI structured-output schemas and converters
-src/creativity_layer/openai_provider.py          Responses API creative provider
-src/creativity_layer/openai_embeddings.py        OpenAI embedding adapter
-src/creativity_layer/privacy.py                 Research/private trace redaction
-src/creativity_layer/cli.py                     Add deterministic and live subcommands
+src/muse/models.py                  Live usage, pricing, privacy, and trace models
+src/muse/providers.py               Metered framing and embedding contracts
+src/muse/operation.py               Validate extended live envelopes
+src/muse/budget.py                  Record token/search metadata on spend records
+src/muse/engine.py                  Meter framing and preserve live usage/errors
+src/muse/live_config.py             Environment/programmatic live configuration
+src/muse/pricing.py                 Versioned token-pricing calculations
+src/muse/reliability.py             Retry, timeout, and circuit-breaker executor
+src/muse/openai_schemas.py           OpenAI structured-output schemas and converters
+src/muse/openai_provider.py          Responses API creative provider
+src/muse/openai_embeddings.py        OpenAI embedding adapter
+src/muse/privacy.py                 Research/private trace redaction
+src/muse/cli.py                     Add deterministic and live subcommands
 tests/test_live_config.py                        Configuration and secret handling
 tests/test_pricing.py                            Token-cost calculations
 tests/test_reliability.py                        Retry and circuit-breaker behavior
@@ -81,7 +81,7 @@ tests/test_openai_live.py                        Opt-in paid smoke test
 
 **Files:**
 - Modify: `pyproject.toml`
-- Create: `src/creativity_layer/live_config.py`
+- Create: `src/muse/live_config.py`
 - Create: `tests/test_live_config.py`
 
 - [ ] **Step 1: Write failing configuration tests**
@@ -91,7 +91,7 @@ tests/test_openai_live.py                        Opt-in paid smoke test
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from creativity_layer.live_config import LiveModelConfig, OpenAICredentials, PrivacyMode
+from muse.live_config import LiveModelConfig, OpenAICredentials, PrivacyMode
 
 
 def test_live_model_config_requires_explicit_text_models() -> None:
@@ -127,7 +127,7 @@ Run:
 python -m pytest tests/test_live_config.py -v
 ```
 
-Expected: FAIL because `creativity_layer.live_config` does not exist.
+Expected: FAIL because `muse.live_config` does not exist.
 
 - [ ] **Step 3: Add dependencies**
 
@@ -141,7 +141,7 @@ Add to `[project].dependencies`:
 - [ ] **Step 4: Implement immutable live configuration**
 
 ```python
-# src/creativity_layer/live_config.py
+# src/muse/live_config.py
 from __future__ import annotations
 
 import os
@@ -149,7 +149,7 @@ from enum import StrEnum
 
 from pydantic import Field, SecretStr
 
-from creativity_layer.models import FrozenModel, RequiredText
+from muse.models import FrozenModel, RequiredText
 
 
 class PrivacyMode(StrEnum):
@@ -204,7 +204,7 @@ Run:
 ```powershell
 python -m pip install -e ".[dev]"
 python -m pytest tests/test_live_config.py -v
-python -m ruff check src/creativity_layer/live_config.py tests/test_live_config.py
+python -m ruff check src/muse/live_config.py tests/test_live_config.py
 ```
 
 Expected: 3 tests PASS and Ruff exits 0.
@@ -212,17 +212,17 @@ Expected: 3 tests PASS and Ruff exits 0.
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add pyproject.toml src/creativity_layer/live_config.py tests/test_live_config.py
+git add pyproject.toml src/muse/live_config.py tests/test_live_config.py
 git commit -m "feat: add live OpenAI configuration"
 ```
 
 ## Task 2: Extend Usage, Pricing, and Spend Models
 
 **Files:**
-- Modify: `src/creativity_layer/models.py`
-- Modify: `src/creativity_layer/providers.py`
-- Modify: `src/creativity_layer/budget.py`
-- Create: `src/creativity_layer/pricing.py`
+- Modify: `src/muse/models.py`
+- Modify: `src/muse/providers.py`
+- Modify: `src/muse/budget.py`
+- Create: `src/muse/pricing.py`
 - Create: `tests/test_pricing.py`
 - Modify: `tests/test_budget.py`
 - Modify: `tests/test_models.py`
@@ -231,8 +231,8 @@ git commit -m "feat: add live OpenAI configuration"
 
 ```python
 # tests/test_pricing.py
-from creativity_layer.models import TokenUsage
-from creativity_layer.pricing import ModelPrice, PricingTable
+from muse.models import TokenUsage
+from muse.pricing import ModelPrice, PricingTable
 
 
 def test_pricing_table_calculates_cached_and_uncached_tokens() -> None:
@@ -340,14 +340,14 @@ estimated flag, request ID, and operation trace fields.
 - [ ] **Step 4: Implement versioned pricing**
 
 ```python
-# src/creativity_layer/pricing.py
+# src/muse/pricing.py
 from __future__ import annotations
 
 from decimal import Decimal
 
 from pydantic import Field
 
-from creativity_layer.models import CostEstimate, FrozenModel, RequiredText, TokenUsage
+from muse.models import CostEstimate, FrozenModel, RequiredText, TokenUsage
 
 
 class ModelPrice(FrozenModel):
@@ -434,17 +434,17 @@ Expected: all tests PASS.
 - [ ] **Step 7: Commit**
 
 ```powershell
-git add src/creativity_layer/models.py src/creativity_layer/providers.py src/creativity_layer/budget.py src/creativity_layer/engine.py src/creativity_layer/pricing.py tests/test_pricing.py tests/test_budget.py tests/test_models.py
+git add src/muse/models.py src/muse/providers.py src/muse/budget.py src/muse/engine.py src/muse/pricing.py tests/test_pricing.py tests/test_budget.py tests/test_models.py
 git commit -m "feat: account for live model usage"
 ```
 
 ## Task 3: Meter Framing as a First-Class Operation
 
 **Files:**
-- Modify: `src/creativity_layer/providers.py`
-- Modify: `src/creativity_layer/operation.py`
-- Modify: `src/creativity_layer/engine.py`
-- Modify: `src/creativity_layer/deterministic.py`
+- Modify: `src/muse/providers.py`
+- Modify: `src/muse/operation.py`
+- Modify: `src/muse/engine.py`
+- Modify: `src/muse/deterministic.py`
 - Create: `tests/test_metered_framing.py`
 - Modify: `tests/test_deterministic.py`
 - Modify: `tests/test_engine.py`
@@ -453,9 +453,9 @@ git commit -m "feat: account for live model usage"
 
 ```python
 # tests/test_metered_framing.py
-from creativity_layer.deterministic import DeterministicCreativeProvider
-from creativity_layer.engine import CreativeEngine
-from creativity_layer.models import RunConfig, TaskContext
+from muse.deterministic import DeterministicCreativeProvider
+from muse.engine import CreativeEngine
+from muse.models import RunConfig, TaskContext
 
 
 def test_framing_is_quoted_charged_and_traced() -> None:
@@ -600,14 +600,14 @@ Expected: all tests PASS.
 - [ ] **Step 7: Commit**
 
 ```powershell
-git add src/creativity_layer/providers.py src/creativity_layer/operation.py src/creativity_layer/engine.py src/creativity_layer/budget.py src/creativity_layer/deterministic.py tests/test_metered_framing.py tests/test_engine.py tests/test_deterministic.py
+git add src/muse/providers.py src/muse/operation.py src/muse/engine.py src/muse/budget.py src/muse/deterministic.py tests/test_metered_framing.py tests/test_engine.py tests/test_deterministic.py
 git commit -m "feat: meter task framing"
 ```
 
 ## Task 4: Add Reliability Executor and Circuit Breaker
 
 **Files:**
-- Create: `src/creativity_layer/reliability.py`
+- Create: `src/muse/reliability.py`
 - Create: `tests/test_reliability.py`
 
 - [ ] **Step 1: Write failing reliability tests**
@@ -616,7 +616,7 @@ git commit -m "feat: meter task framing"
 # tests/test_reliability.py
 from openai import APIConnectionError, RateLimitError
 
-from creativity_layer.reliability import (
+from muse.reliability import (
     CircuitBreaker,
     CircuitOpenError,
     RetryPolicy,
@@ -680,7 +680,7 @@ Expected: FAIL because reliability primitives do not exist.
 - [ ] **Step 3: Implement retry policy and circuit breaker**
 
 ```python
-# src/creativity_layer/reliability.py
+# src/muse/reliability.py
 from __future__ import annotations
 
 import random
@@ -774,28 +774,28 @@ Run:
 
 ```powershell
 python -m pytest tests/test_reliability.py -v
-python -m ruff check src/creativity_layer/reliability.py tests/test_reliability.py
+python -m ruff check src/muse/reliability.py tests/test_reliability.py
 ```
 
 Expected: all tests PASS.
 
 ```powershell
-git add src/creativity_layer/reliability.py tests/test_reliability.py
+git add src/muse/reliability.py tests/test_reliability.py
 git commit -m "feat: add live provider reliability controls"
 ```
 
 ## Task 5: Define OpenAI Structured Schemas and Converters
 
 **Files:**
-- Create: `src/creativity_layer/openai_schemas.py`
+- Create: `src/muse/openai_schemas.py`
 - Create: `tests/test_openai_schemas.py`
 
 - [ ] **Step 1: Write failing schema-conversion tests**
 
 ```python
 # tests/test_openai_schemas.py
-from creativity_layer.models import TaskContext
-from creativity_layer.openai_schemas import (
+from muse.models import TaskContext
+from muse.openai_schemas import (
     OpenAIEvaluation,
     OpenAIFrame,
     OpenAIIdea,
@@ -869,14 +869,14 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from creativity_layer.models import (
+from muse.models import (
     EvaluationScores,
     FramedTask,
     IdeaGenome,
     InspirationKind,
     TaskContext,
 )
-from creativity_layer.transforms import (
+from muse.transforms import (
     TransformationRequest,
     expected_transformation_history,
 )
@@ -990,16 +990,16 @@ Test:
 ```powershell
 python -m pytest tests/test_openai_schemas.py -v
 python -m ruff check .
-git add src/creativity_layer/openai_schemas.py tests/test_openai_schemas.py
+git add src/muse/openai_schemas.py tests/test_openai_schemas.py
 git commit -m "feat: define OpenAI structured output schemas"
 ```
 
 ## Task 6: Implement the OpenAI Creative Provider
 
 **Files:**
-- Create: `src/creativity_layer/openai_provider.py`
+- Create: `src/muse/openai_provider.py`
 - Create: `tests/test_openai_provider.py`
-- Modify: `src/creativity_layer/__init__.py`
+- Modify: `src/muse/__init__.py`
 
 - [ ] **Step 1: Write failing mocked-provider tests**
 
@@ -1188,22 +1188,22 @@ Test:
 python -m pytest tests/test_openai_provider.py -v
 python -m pytest
 python -m ruff check .
-git add src/creativity_layer/openai_provider.py src/creativity_layer/live_config.py src/creativity_layer/__init__.py tests/test_openai_provider.py
+git add src/muse/openai_provider.py src/muse/live_config.py src/muse/__init__.py tests/test_openai_provider.py
 git commit -m "feat: add OpenAI creative provider"
 ```
 
 ## Task 7: Implement the OpenAI Embedding Adapter
 
 **Files:**
-- Create: `src/creativity_layer/embeddings.py`
-- Create: `src/creativity_layer/openai_embeddings.py`
+- Create: `src/muse/embeddings.py`
+- Create: `src/muse/openai_embeddings.py`
 - Create: `tests/test_openai_embeddings.py`
 
 - [ ] **Step 1: Write failing embedding tests**
 
 ```python
 # tests/test_openai_embeddings.py
-from creativity_layer.openai_embeddings import OpenAIEmbeddingProvider
+from muse.openai_embeddings import OpenAIEmbeddingProvider
 
 
 def test_embedding_provider_preserves_input_order_and_usage() -> None:
@@ -1249,13 +1249,13 @@ Expected: FAIL because embedding contracts do not exist.
 - [ ] **Step 3: Define embedding contracts**
 
 ```python
-# src/creativity_layer/embeddings.py
+# src/muse/embeddings.py
 from typing import Protocol
 
 from pydantic import Field
 
-from creativity_layer.models import FrozenModel
-from creativity_layer.providers import MeteredResponse, OperationQuote
+from muse.models import FrozenModel
+from muse.providers import MeteredResponse, OperationQuote
 
 
 class EmbeddingBatch(FrozenModel):
@@ -1301,15 +1301,15 @@ Validate:
 ```powershell
 python -m pytest tests/test_openai_embeddings.py -v
 python -m ruff check .
-git add src/creativity_layer/embeddings.py src/creativity_layer/openai_embeddings.py tests/test_openai_embeddings.py
+git add src/muse/embeddings.py src/muse/openai_embeddings.py tests/test_openai_embeddings.py
 git commit -m "feat: add OpenAI embedding adapter"
 ```
 
 ## Task 8: Add Research and Private Trace Views
 
 **Files:**
-- Create: `src/creativity_layer/privacy.py`
-- Modify: `src/creativity_layer/tracing.py`
+- Create: `src/muse/privacy.py`
+- Modify: `src/muse/tracing.py`
 - Create: `tests/test_privacy.py`
 - Modify: `tests/test_tracing.py`
 
@@ -1317,8 +1317,8 @@ git commit -m "feat: add OpenAI embedding adapter"
 
 ```python
 # tests/test_privacy.py
-from creativity_layer.live_config import PrivacyMode
-from creativity_layer.privacy import TraceView
+from muse.live_config import PrivacyMode
+from muse.privacy import TraceView
 
 
 def test_research_trace_keeps_prompts_but_never_secrets() -> None:
@@ -1408,14 +1408,14 @@ Add tests proving:
 python -m pytest tests/test_privacy.py tests/test_tracing.py -v
 python -m pytest
 python -m ruff check .
-git add src/creativity_layer/privacy.py src/creativity_layer/tracing.py tests/test_privacy.py tests/test_tracing.py
+git add src/muse/privacy.py src/muse/tracing.py tests/test_privacy.py tests/test_tracing.py
 git commit -m "feat: add privacy-aware research traces"
 ```
 
 ## Task 9: Add the Live CLI Command
 
 **Files:**
-- Modify: `src/creativity_layer/cli.py`
+- Modify: `src/muse/cli.py`
 - Create: `tests/test_live_cli.py`
 - Modify: `README.md`
 
@@ -1423,7 +1423,7 @@ git commit -m "feat: add privacy-aware research traces"
 
 ```python
 # tests/test_live_cli.py
-from creativity_layer.cli import run_cli
+from muse.cli import run_cli
 
 
 def test_live_command_requires_openai_configuration(monkeypatch, capsys) -> None:
@@ -1468,9 +1468,9 @@ Expected: FAIL because the CLI has no `live` command.
 Support:
 
 ```powershell
-creativity-layer "offline task"
-creativity-layer deterministic "offline task"
-creativity-layer live "live task" --budget-usd 0.10
+muse "offline task"
+muse deterministic "offline task"
+muse live "live task" --budget-usd 0.10
 ```
 
 To preserve compatibility, if the first argument is not a recognized subcommand, insert
@@ -1556,7 +1556,7 @@ $env:OPENAI_PRICING_FILE = "path\to\pricing.json"
 Run:
 
 ```powershell
-creativity-layer live "Invent a low-cost coordination mechanism" `
+muse live "Invent a low-cost coordination mechanism" `
   --budget-usd 0.10 `
   --privacy private
 ```
@@ -1570,7 +1570,7 @@ Live mode performs no web search in Slice 2A.
 python -m pytest tests/test_live_cli.py tests/test_cli.py -v
 python -m pytest
 python -m ruff check .
-git add src/creativity_layer/cli.py tests/test_live_cli.py README.md
+git add src/muse/cli.py tests/test_live_cli.py README.md
 git commit -m "feat: add live OpenAI CLI mode"
 ```
 
@@ -1601,7 +1601,7 @@ import os
 
 import pytest
 
-from creativity_layer.cli import run_cli
+from muse.cli import run_cli
 
 
 pytestmark = pytest.mark.live_openai
@@ -1654,7 +1654,7 @@ occurs.
 - [ ] **Step 4: Run mocked full verification**
 
 ```powershell
-python -m pytest -m "not live_openai" --cov=creativity_layer --cov-report=term-missing
+python -m pytest -m "not live_openai" --cov=muse --cov-report=term-missing
 python -m ruff check .
 git status --short
 ```
@@ -1686,7 +1686,7 @@ git commit -m "test: add gated OpenAI live smoke test"
 - [ ] **Step 1: Run all offline tests**
 
 ```powershell
-python -m pytest -m "not live_openai" -v --cov=creativity_layer --cov-report=term-missing
+python -m pytest -m "not live_openai" -v --cov=muse --cov-report=term-missing
 ```
 
 Expected: all offline tests PASS with no project-owned warnings.
@@ -1703,11 +1703,11 @@ Expected: both commands exit 0.
 - [ ] **Step 3: Run deterministic regression smoke**
 
 ```powershell
-creativity-layer deterministic "Invent a reversible neighborhood tool-sharing rule" `
+muse deterministic "Invent a reversible neighborhood tool-sharing rule" `
   --seed-count 2 `
   --finalist-count 1 `
   --generations 1 `
-  --trace-dir $env:TEMP\creativity-layer-2a-deterministic
+  --trace-dir $env:TEMP\muse-2a-deterministic
 ```
 
 Expected: exit 0, one finalist, and a valid trace.
@@ -1757,7 +1757,7 @@ For each issue:
 - [ ] **Step 8: Final verification**
 
 ```powershell
-python -m pytest -m "not live_openai" -q -p no:asyncio --cov=creativity_layer --cov-report=term-missing
+python -m pytest -m "not live_openai" -q -p no:asyncio --cov=muse --cov-report=term-missing
 python -m ruff check .
 git status -sb
 ```

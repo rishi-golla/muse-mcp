@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-V3-B makes Creativity Layer outputs grounded in supplied task and repository context
+V3-B makes Muse outputs grounded in supplied task and repository context
 without turning the product into a CLI. The core contract is middleware-shaped:
 callers provide typed context evidence to the engine, providers use it during framing,
 generation, transformation, and evaluation, and traces record what context influenced

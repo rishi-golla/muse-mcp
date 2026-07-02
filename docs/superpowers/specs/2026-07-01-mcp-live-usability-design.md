@@ -10,7 +10,7 @@ Make the MCP integration usable in a real coding-agent workflow by letting agent
    This would make production testing feel real immediately, but it would break local agent startup when credentials, model IDs, or pricing files are absent.
 
 2. Add explicit provider selection to the middleware and MCP tool.
-   Agents can call `creative_plan` with `provider_mode: "deterministic"` or `provider_mode: "live_openai"`. This preserves the existing fast path and makes live usage explicit.
+   Agents can call `muse_plan` with `provider_mode: "deterministic"` or `provider_mode: "live_openai"`. This preserves the existing fast path and makes live usage explicit.
 
 3. Build a larger daemon with persisted configuration.
    This may be useful later, but it introduces storage and lifecycle concerns before the MCP contract is fully proven.
@@ -23,13 +23,13 @@ MCP should return structured, JSON-safe configuration errors instead of surfacin
 
 ## Components
 
-- `creativity_layer.middleware`
+- `muse.middleware`
   Adds provider mode validation, live OpenAI provider construction, pricing-file loading, and structured configuration-error output.
 
-- `creativity_layer.mcp_server`
+- `muse.mcp_server`
   Adds `provider_mode` and `privacy` tool parameters and delegates to the middleware.
 
-- `creativity_layer.mcp_smoke`
+- `muse.mcp_smoke`
   Adds a lightweight local smoke command that invokes the FastMCP server in-process. It verifies actual MCP tool registration and invocation without needing an agent host or a long-lived stdio session.
 
 - `README.md`
@@ -37,7 +37,7 @@ MCP should return structured, JSON-safe configuration errors instead of surfacin
 
 ## Data Flow
 
-1. Agent calls `creative_plan` with repo signals and optional `provider_mode`.
+1. Agent calls `muse_plan` with repo signals and optional `provider_mode`.
 2. Middleware validates the request.
 3. If mode is deterministic, the current local provider path runs.
 4. If mode is live OpenAI, middleware loads credentials, model config, pricing, retry policy, and circuit breaker from environment.

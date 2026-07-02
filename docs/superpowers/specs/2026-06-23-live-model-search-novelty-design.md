@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-Milestone 2 connects the deterministic Creativity Layer research spine to live model,
+Milestone 2 connects the deterministic Muse research spine to live model,
 embedding, and search providers. It adds source-aware inspiration, prior-art checking,
 layered originality estimation, usage-based cost accounting, and a human-calibration
 pilot.
@@ -435,9 +435,9 @@ Model names remain explicit configuration and are not embedded in core orchestra
 ### CLI
 
 ```powershell
-creativity-layer live "task description" --budget-usd 0.10
-creativity-layer compare "task description" --budgets 0.10 0.50 2.00
-creativity-layer calibrate path/to/tasks.jsonl
+muse live "task description" --budget-usd 0.10
+muse compare "task description" --budgets 0.10 0.50 2.00
+muse calibrate path/to/tasks.jsonl
 ```
 
 The deterministic offline command remains available for regression testing.
@@ -461,9 +461,9 @@ first actual batch contains 20 tasks to validate the rubric before larger spendi
 Each task compares:
 
 - Strong prompting baseline
-- Creativity Layer at `$0.10`
-- Creativity Layer at `$0.50`
-- Creativity Layer at `$2.00`
+- Muse at `$0.10`
+- Muse at `$0.50`
+- Muse at `$2.00`
 
 Outputs are anonymized and randomized. Each candidate pair records 3–5 independent
 ratings for:
@@ -553,7 +553,7 @@ Milestone 2 succeeds when:
   provider versions.
 - The 20-task rubric-validation batch shows that the originality estimate ranks human
   preferences better than chance.
-- At `$0.10`, the Creativity Layer achieves at least a 55 percent pairwise win rate
+- At `$0.10`, the Muse achieves at least a 55 percent pairwise win rate
   over strong prompting on simultaneous originality and usefulness, with confidence
   intervals reported.
 

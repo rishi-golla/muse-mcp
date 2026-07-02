@@ -17,7 +17,7 @@ that lock those instructions to the dogfood quality vocabulary.
 
 ## Design
 
-Add a shared quality-pressure block in `src/creativity_layer/openai_provider.py`
+Add a shared quality-pressure block in `src/muse/openai_provider.py`
 that names the dogfood failure modes: generic titles, generic mechanisms,
 missing required task/repo terms, missing operational fields, arbitrary stack
 choices, and unsupported context invention. Append that block to seed,

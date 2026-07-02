@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a deterministic, runnable vertical slice of the Creativity Layer that frames a task, creates structured idea genomes, applies structural transformations, tracks cost, preserves a wildcard, selects a Pareto frontier, and writes a reproducible trace.
+**Goal:** Build a deterministic, runnable vertical slice of the Muse that frames a task, creates structured idea genomes, applies structural transformations, tracks cost, preserves a wildcard, selects a Pareto frontier, and writes a reproducible trace.
 
 **Architecture:** A Python package exposes small domain modules with immutable Pydantic models and protocol-based provider boundaries. A synchronous `CreativeEngine` coordinates framing, seeding, transformation, budget accounting, population selection, and trace persistence. This milestone deliberately uses deterministic local providers so the research spine can be tested without network access or paid model calls.
 
@@ -26,16 +26,16 @@ The first milestone does not claim to implement all Phase 1 research capabilitie
 ```text
 pyproject.toml                                  Project metadata and tool configuration
 README.md                                       Local setup and deterministic demo instructions
-src/creativity_layer/__init__.py                Public package exports
-src/creativity_layer/models.py                  Immutable domain models and validation
-src/creativity_layer/providers.py               Framer, seeder, and transformer protocols
-src/creativity_layer/deterministic.py           Local deterministic provider implementations
-src/creativity_layer/budget.py                  Budget reservation and spend accounting
-src/creativity_layer/population.py              Population state, Pareto frontier, wildcard policy
-src/creativity_layer/transforms.py              Structural transformation operator definitions
-src/creativity_layer/tracing.py                 Reproducible JSON trace persistence
-src/creativity_layer/engine.py                  End-to-end orchestration
-src/creativity_layer/cli.py                     Command-line entry point
+src/muse/__init__.py                Public package exports
+src/muse/models.py                  Immutable domain models and validation
+src/muse/providers.py               Framer, seeder, and transformer protocols
+src/muse/deterministic.py           Local deterministic provider implementations
+src/muse/budget.py                  Budget reservation and spend accounting
+src/muse/population.py              Population state, Pareto frontier, wildcard policy
+src/muse/transforms.py              Structural transformation operator definitions
+src/muse/tracing.py                 Reproducible JSON trace persistence
+src/muse/engine.py                  End-to-end orchestration
+src/muse/cli.py                     Command-line entry point
 tests/test_models.py                            Domain-model behavior
 tests/test_budget.py                            Budget accounting behavior
 tests/test_population.py                        Frontier and wildcard behavior
@@ -51,7 +51,7 @@ tests/test_cli.py                               CLI behavior
 **Files:**
 - Create: `pyproject.toml`
 - Create: `README.md`
-- Create: `src/creativity_layer/__init__.py`
+- Create: `src/muse/__init__.py`
 - Create: `tests/test_package.py`
 
 - [ ] **Step 1: Write the failing package import test**
@@ -59,9 +59,9 @@ tests/test_cli.py                               CLI behavior
 ```python
 # tests/test_package.py
 def test_package_exposes_version() -> None:
-    import creativity_layer
+    import muse
 
-    assert creativity_layer.__version__ == "0.1.0"
+    assert muse.__version__ == "0.1.0"
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -72,7 +72,7 @@ Run:
 python -m pytest tests/test_package.py -v
 ```
 
-Expected: FAIL because `creativity_layer` does not exist.
+Expected: FAIL because `muse` does not exist.
 
 - [ ] **Step 3: Add project configuration**
 
@@ -83,7 +83,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "creativity-layer"
+name = "muse"
 version = "0.1.0"
 description = "Research prototype for evolutionary creative search in AI agents"
 readme = "README.md"
@@ -100,10 +100,10 @@ dev = [
 ]
 
 [project.scripts]
-creativity-layer = "creativity_layer.cli:main"
+muse = "muse.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/creativity_layer"]
+packages = ["src/muse"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"
@@ -120,8 +120,8 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 - [ ] **Step 4: Add the package entry module**
 
 ```python
-# src/creativity_layer/__init__.py
-"""Creativity Layer research prototype."""
+# src/muse/__init__.py
+"""Muse research prototype."""
 
 __version__ = "0.1.0"
 ```
@@ -129,7 +129,7 @@ __version__ = "0.1.0"
 - [ ] **Step 5: Add the initial README**
 
 ````markdown
-# Creativity Layer
+# Muse
 
 A research prototype for testing whether evolutionary creative search produces ideas
 that humans judge as simultaneously more original and useful than strong prompting.
@@ -161,16 +161,16 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```powershell
-git add pyproject.toml README.md src/creativity_layer/__init__.py tests/test_package.py
-git commit -m "build: scaffold creativity layer package"
+git add pyproject.toml README.md src/muse/__init__.py tests/test_package.py
+git commit -m "build: scaffold muse package"
 ```
 
 ### Task 2: Define the Core Domain Models
 
 **Files:**
-- Create: `src/creativity_layer/models.py`
+- Create: `src/muse/models.py`
 - Create: `tests/test_models.py`
-- Modify: `src/creativity_layer/__init__.py`
+- Modify: `src/muse/__init__.py`
 
 - [ ] **Step 1: Write failing tests for task context and idea genomes**
 
@@ -181,7 +181,7 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from creativity_layer.models import (
+from muse.models import (
     EvaluationScores,
     IdeaGenome,
     InspirationKind,
@@ -248,12 +248,12 @@ Run:
 python -m pytest tests/test_models.py -v
 ```
 
-Expected: FAIL because `creativity_layer.models` does not exist.
+Expected: FAIL because `muse.models` does not exist.
 
 - [ ] **Step 3: Implement immutable domain models**
 
 ```python
-# src/creativity_layer/models.py
+# src/muse/models.py
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -376,10 +376,10 @@ class RunResult(FrozenModel):
 - [ ] **Step 4: Export the public models**
 
 ```python
-# src/creativity_layer/__init__.py
-"""Creativity Layer research prototype."""
+# src/muse/__init__.py
+"""Muse research prototype."""
 
-from creativity_layer.models import (
+from muse.models import (
     EvaluationScores,
     FramedTask,
     IdeaGenome,
@@ -426,14 +426,14 @@ Expected: all tests PASS and Ruff exits 0.
 - [ ] **Step 7: Commit**
 
 ```powershell
-git add src/creativity_layer/models.py src/creativity_layer/__init__.py tests/test_models.py
+git add src/muse/models.py src/muse/__init__.py tests/test_models.py
 git commit -m "feat: define creativity domain models"
 ```
 
 ### Task 3: Implement Strict Budget Accounting
 
 **Files:**
-- Create: `src/creativity_layer/budget.py`
+- Create: `src/muse/budget.py`
 - Create: `tests/test_budget.py`
 
 - [ ] **Step 1: Write failing budget tests**
@@ -442,8 +442,8 @@ git commit -m "feat: define creativity domain models"
 # tests/test_budget.py
 import pytest
 
-from creativity_layer.budget import BudgetController, BudgetExceeded
-from creativity_layer.models import RunConfig
+from muse.budget import BudgetController, BudgetExceeded
+from muse.models import RunConfig
 
 
 def test_budget_reserves_finalization_capacity() -> None:
@@ -488,15 +488,15 @@ Run:
 python -m pytest tests/test_budget.py -v
 ```
 
-Expected: FAIL because `creativity_layer.budget` does not exist.
+Expected: FAIL because `muse.budget` does not exist.
 
 - [ ] **Step 3: Implement the budget controller**
 
 ```python
-# src/creativity_layer/budget.py
+# src/muse/budget.py
 from __future__ import annotations
 
-from creativity_layer.models import RunConfig, SpendRecord
+from muse.models import RunConfig, SpendRecord
 
 
 class BudgetExceeded(RuntimeError):
@@ -582,22 +582,22 @@ Expected: all tests PASS and Ruff exits 0.
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add src/creativity_layer/budget.py tests/test_budget.py
+git add src/muse/budget.py tests/test_budget.py
 git commit -m "feat: add strict run budget accounting"
 ```
 
 ### Task 4: Implement Pareto Selection and Wildcard Retention
 
 **Files:**
-- Create: `src/creativity_layer/population.py`
+- Create: `src/muse/population.py`
 - Create: `tests/test_population.py`
 
 - [ ] **Step 1: Write failing population tests**
 
 ```python
 # tests/test_population.py
-from creativity_layer.models import EvaluationScores, IdeaGenome
-from creativity_layer.population import PopulationManager
+from muse.models import EvaluationScores, IdeaGenome
+from muse.population import PopulationManager
 
 
 def candidate(
@@ -671,15 +671,15 @@ Run:
 python -m pytest tests/test_population.py -v
 ```
 
-Expected: FAIL because `creativity_layer.population` does not exist.
+Expected: FAIL because `muse.population` does not exist.
 
 - [ ] **Step 3: Implement population selection**
 
 ```python
-# src/creativity_layer/population.py
+# src/muse/population.py
 from __future__ import annotations
 
-from creativity_layer.models import IdeaGenome
+from muse.models import IdeaGenome
 
 
 def _require_scores(candidate: IdeaGenome) -> None:
@@ -794,22 +794,22 @@ Expected: all tests PASS and Ruff exits 0.
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add src/creativity_layer/population.py tests/test_population.py
+git add src/muse/population.py tests/test_population.py
 git commit -m "feat: select creative Pareto frontier"
 ```
 
 ### Task 5: Define Structural Transformation Operators
 
 **Files:**
-- Create: `src/creativity_layer/transforms.py`
+- Create: `src/muse/transforms.py`
 - Create: `tests/test_transforms.py`
 
 - [ ] **Step 1: Write failing transformation tests**
 
 ```python
 # tests/test_transforms.py
-from creativity_layer.models import IdeaGenome
-from creativity_layer.transforms import OperatorName, TransformationRequest
+from muse.models import IdeaGenome
+from muse.transforms import OperatorName, TransformationRequest
 
 
 def test_transformation_request_records_structural_intent() -> None:
@@ -864,12 +864,12 @@ Run:
 python -m pytest tests/test_transforms.py -v
 ```
 
-Expected: FAIL because `creativity_layer.transforms` does not exist.
+Expected: FAIL because `muse.transforms` does not exist.
 
 - [ ] **Step 3: Implement operator definitions**
 
 ```python
-# src/creativity_layer/transforms.py
+# src/muse/transforms.py
 from __future__ import annotations
 
 from enum import StrEnum
@@ -877,7 +877,7 @@ from uuid import UUID
 
 from pydantic import Field
 
-from creativity_layer.models import FrozenModel, IdeaGenome
+from muse.models import FrozenModel, IdeaGenome
 
 
 class OperatorName(StrEnum):
@@ -961,24 +961,24 @@ Expected: all tests PASS and Ruff exits 0.
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add src/creativity_layer/transforms.py tests/test_transforms.py
+git add src/muse/transforms.py tests/test_transforms.py
 git commit -m "feat: define structural transformation operators"
 ```
 
 ### Task 6: Define Provider Contracts and Deterministic Providers
 
 **Files:**
-- Create: `src/creativity_layer/providers.py`
-- Create: `src/creativity_layer/deterministic.py`
+- Create: `src/muse/providers.py`
+- Create: `src/muse/deterministic.py`
 - Create: `tests/test_deterministic.py`
 
 - [ ] **Step 1: Write failing deterministic-provider tests**
 
 ```python
 # tests/test_deterministic.py
-from creativity_layer.deterministic import DeterministicCreativeProvider
-from creativity_layer.models import RunConfig, TaskContext
-from creativity_layer.transforms import OperatorName, TransformationRequest
+from muse.deterministic import DeterministicCreativeProvider
+from muse.models import RunConfig, TaskContext
+from muse.transforms import OperatorName, TransformationRequest
 
 
 def test_provider_frames_and_seeds_reproducibly() -> None:
@@ -1033,14 +1033,14 @@ Expected: FAIL because the provider modules do not exist.
 - [ ] **Step 3: Define provider protocols and metered responses**
 
 ```python
-# src/creativity_layer/providers.py
+# src/muse/providers.py
 from __future__ import annotations
 
 from typing import Generic, Protocol, TypeVar
 
 from pydantic import Field
 
-from creativity_layer.models import (
+from muse.models import (
     EvaluationScores,
     FramedTask,
     FrozenModel,
@@ -1048,7 +1048,7 @@ from creativity_layer.models import (
     RunConfig,
     TaskContext,
 )
-from creativity_layer.transforms import TransformationRequest
+from muse.transforms import TransformationRequest
 
 T = TypeVar("T")
 
@@ -1091,12 +1091,12 @@ class IdeaEvaluator(Protocol):
 - [ ] **Step 4: Implement deterministic local providers**
 
 ```python
-# src/creativity_layer/deterministic.py
+# src/muse/deterministic.py
 from __future__ import annotations
 
 import hashlib
 
-from creativity_layer.models import (
+from muse.models import (
     EvaluationScores,
     FramedTask,
     IdeaGenome,
@@ -1104,8 +1104,8 @@ from creativity_layer.models import (
     RunConfig,
     TaskContext,
 )
-from creativity_layer.providers import MeteredResponse
-from creativity_layer.transforms import TransformationRequest
+from muse.providers import MeteredResponse
+from muse.transforms import TransformationRequest
 
 
 class DeterministicCreativeProvider:
@@ -1252,14 +1252,14 @@ Expected: all tests PASS and Ruff exits 0.
 - [ ] **Step 7: Commit**
 
 ```powershell
-git add src/creativity_layer/providers.py src/creativity_layer/deterministic.py tests/test_deterministic.py
+git add src/muse/providers.py src/muse/deterministic.py tests/test_deterministic.py
 git commit -m "feat: add deterministic creativity providers"
 ```
 
 ### Task 7: Persist Reproducible JSON Traces
 
 **Files:**
-- Create: `src/creativity_layer/tracing.py`
+- Create: `src/muse/tracing.py`
 - Create: `tests/test_tracing.py`
 
 - [ ] **Step 1: Write failing trace-store tests**
@@ -1269,14 +1269,14 @@ git commit -m "feat: add deterministic creativity providers"
 import json
 from uuid import uuid4
 
-from creativity_layer.models import (
+from muse.models import (
     FramedTask,
     IdeaGenome,
     RunResult,
     SpendRecord,
     TaskContext,
 )
-from creativity_layer.tracing import JsonTraceStore
+from muse.tracing import JsonTraceStore
 
 
 def test_trace_store_writes_stable_structured_json(tmp_path) -> None:
@@ -1319,17 +1319,17 @@ Run:
 python -m pytest tests/test_tracing.py -v
 ```
 
-Expected: FAIL because `creativity_layer.tracing` does not exist.
+Expected: FAIL because `muse.tracing` does not exist.
 
 - [ ] **Step 3: Implement the JSON trace store**
 
 ```python
-# src/creativity_layer/tracing.py
+# src/muse/tracing.py
 from __future__ import annotations
 
 from pathlib import Path
 
-from creativity_layer.models import RunResult
+from muse.models import RunResult
 
 
 class JsonTraceStore:
@@ -1370,24 +1370,24 @@ Expected: all tests PASS and Ruff exits 0.
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add src/creativity_layer/tracing.py tests/test_tracing.py
+git add src/muse/tracing.py tests/test_tracing.py
 git commit -m "feat: persist reproducible run traces"
 ```
 
 ### Task 8: Build the End-to-End Creative Engine
 
 **Files:**
-- Create: `src/creativity_layer/engine.py`
+- Create: `src/muse/engine.py`
 - Create: `tests/test_engine.py`
-- Modify: `src/creativity_layer/__init__.py`
+- Modify: `src/muse/__init__.py`
 
 - [ ] **Step 1: Write failing end-to-end tests**
 
 ```python
 # tests/test_engine.py
-from creativity_layer.deterministic import DeterministicCreativeProvider
-from creativity_layer.engine import CreativeEngine
-from creativity_layer.models import RunConfig, TaskContext
+from muse.deterministic import DeterministicCreativeProvider
+from muse.engine import CreativeEngine
+from muse.models import RunConfig, TaskContext
 
 
 def test_engine_runs_seed_transform_evaluate_select_loop() -> None:
@@ -1457,27 +1457,27 @@ Run:
 python -m pytest tests/test_engine.py -v
 ```
 
-Expected: FAIL because `creativity_layer.engine` does not exist.
+Expected: FAIL because `muse.engine` does not exist.
 
 - [ ] **Step 3: Implement the orchestration loop**
 
 ```python
-# src/creativity_layer/engine.py
+# src/muse/engine.py
 from __future__ import annotations
 
 from itertools import cycle
 
-from creativity_layer.budget import BudgetController
-from creativity_layer.models import (
+from muse.budget import BudgetController
+from muse.models import (
     FramedTask,
     IdeaGenome,
     RunConfig,
     RunResult,
     TaskContext,
 )
-from creativity_layer.population import PopulationManager
-from creativity_layer.providers import IdeaEvaluator, IdeaSeeder, IdeaTransformer, TaskFramer
-from creativity_layer.transforms import OperatorName, TransformationRequest
+from muse.population import PopulationManager
+from muse.providers import IdeaEvaluator, IdeaSeeder, IdeaTransformer, TaskFramer
+from muse.transforms import OperatorName, TransformationRequest
 
 
 class CreativeEngine:
@@ -1586,11 +1586,11 @@ class CreativeEngine:
 - [ ] **Step 4: Export the engine**
 
 ```python
-# src/creativity_layer/__init__.py
-"""Creativity Layer research prototype."""
+# src/muse/__init__.py
+"""Muse research prototype."""
 
-from creativity_layer.engine import CreativeEngine
-from creativity_layer.models import (
+from muse.engine import CreativeEngine
+from muse.models import (
     EvaluationScores,
     FramedTask,
     IdeaGenome,
@@ -1638,14 +1638,14 @@ Expected: all tests PASS and Ruff exits 0.
 - [ ] **Step 7: Commit**
 
 ```powershell
-git add src/creativity_layer/engine.py src/creativity_layer/__init__.py tests/test_engine.py
+git add src/muse/engine.py src/muse/__init__.py tests/test_engine.py
 git commit -m "feat: orchestrate deterministic creative search"
 ```
 
 ### Task 9: Add a Runnable CLI and Trace Output
 
 **Files:**
-- Create: `src/creativity_layer/cli.py`
+- Create: `src/muse/cli.py`
 - Create: `tests/test_cli.py`
 - Modify: `README.md`
 
@@ -1655,7 +1655,7 @@ git commit -m "feat: orchestrate deterministic creative search"
 # tests/test_cli.py
 import json
 
-from creativity_layer.cli import run_cli
+from muse.cli import run_cli
 
 
 def test_cli_runs_research_spine_and_writes_trace(tmp_path, capsys) -> None:
@@ -1691,12 +1691,12 @@ Run:
 python -m pytest tests/test_cli.py -v
 ```
 
-Expected: FAIL because `creativity_layer.cli` does not exist.
+Expected: FAIL because `muse.cli` does not exist.
 
 - [ ] **Step 3: Implement the CLI**
 
 ```python
-# src/creativity_layer/cli.py
+# src/muse/cli.py
 from __future__ import annotations
 
 import argparse
@@ -1704,16 +1704,16 @@ import json
 from pathlib import Path
 from typing import Sequence
 
-from creativity_layer.deterministic import DeterministicCreativeProvider
-from creativity_layer.engine import CreativeEngine
-from creativity_layer.models import RunConfig, TaskContext
-from creativity_layer.tracing import JsonTraceStore
+from muse.deterministic import DeterministicCreativeProvider
+from muse.engine import CreativeEngine
+from muse.models import RunConfig, TaskContext
+from muse.tracing import JsonTraceStore
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="creativity-layer",
-        description="Run the deterministic Creativity Layer research spine.",
+        prog="muse",
+        description="Run the deterministic Muse research spine.",
     )
     parser.add_argument("goal")
     parser.add_argument("--trace-dir", type=Path, default=Path(".traces"))
@@ -1789,7 +1789,7 @@ Append:
 ## Deterministic research-spine demo
 
 ```powershell
-creativity-layer "Invent a calmer way for distributed teams to make decisions" `
+muse "Invent a calmer way for distributed teams to make decisions" `
   --seed-count 4 `
   --finalist-count 3 `
   --generations 1 `
@@ -1816,7 +1816,7 @@ Expected: PASS.
 Run:
 
 ```powershell
-creativity-layer "Invent a calmer way for distributed teams to make decisions" --seed-count 3 --finalist-count 2 --generations 1 --trace-dir .traces
+muse "Invent a calmer way for distributed teams to make decisions" --seed-count 3 --finalist-count 2 --generations 1 --trace-dir .traces
 ```
 
 Expected: JSON output with `finalist_count` equal to `2`, `stopped_reason` equal to `generation_limit`, and a valid trace path.
@@ -1826,7 +1826,7 @@ Expected: JSON output with `finalist_count` equal to `2`, `stopped_reason` equal
 Run:
 
 ```powershell
-python -m pytest --cov=creativity_layer --cov-report=term-missing
+python -m pytest --cov=muse --cov-report=term-missing
 python -m ruff check .
 ```
 
@@ -1835,7 +1835,7 @@ Expected: all tests PASS, coverage is reported, and Ruff exits 0.
 - [ ] **Step 8: Commit**
 
 ```powershell
-git add src/creativity_layer/cli.py tests/test_cli.py README.md
+git add src/muse/cli.py tests/test_cli.py README.md
 git commit -m "feat: add deterministic research CLI"
 ```
 
@@ -1860,7 +1860,7 @@ Expected: clean working tree and one focused commit for each completed task.
 Run:
 
 ```powershell
-python -m pytest -v --cov=creativity_layer --cov-report=term-missing
+python -m pytest -v --cov=muse --cov-report=term-missing
 ```
 
 Expected: all tests PASS with no warnings or errors.
@@ -1880,7 +1880,7 @@ Expected: Ruff exits 0.
 Run:
 
 ```powershell
-creativity-layer "Invent a novel system for sharing scarce neighborhood tools" --seed-count 4 --finalist-count 3 --generations 1 --trace-dir .traces
+muse "Invent a novel system for sharing scarce neighborhood tools" --seed-count 4 --finalist-count 3 --generations 1 --trace-dir .traces
 ```
 
 Expected:
@@ -1907,7 +1907,7 @@ Use `superpowers:requesting-code-review` with:
 
 - Base SHA: the design-and-plan branch point
 - Head SHA: current milestone head
-- Requirements: this plan and `docs/superpowers/specs/2026-06-22-creativity-layer-design.md`
+- Requirements: this plan and `docs/superpowers/specs/2026-06-22-muse-design.md`
 - Review focus: budget correctness, immutable model boundaries, ancestry/provenance integrity, wildcard retention, deterministic reproducibility, and whether any provider-specific logic leaked into the engine
 
 - [ ] **Step 7: Fix every Critical or Important review issue using TDD**
@@ -1926,7 +1926,7 @@ For each issue:
 Run:
 
 ```powershell
-python -m pytest -v --cov=creativity_layer --cov-report=term-missing
+python -m pytest -v --cov=muse --cov-report=term-missing
 python -m ruff check .
 git status --short
 ```

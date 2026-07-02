@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from creativity_layer.cli import run_cli
+from muse.cli import run_cli
 
 
 def test_compare_cli_writes_baseline_and_search_aware_traces(
@@ -153,6 +153,6 @@ def test_compare_cli_reports_invalid_model_input_as_argparse_error(
 
     assert exc_info.value.code == 2
     assert captured.out == ""
-    assert "usage: creativity-layer" in captured.err
+    assert "usage: muse" in captured.err
     assert "error: finalist_count cannot exceed seed_count" in captured.err
     assert "Traceback" not in captured.err

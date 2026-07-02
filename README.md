@@ -1,10 +1,10 @@
-# Creativity Layer
+# Muse
 
 A research prototype for testing whether evolutionary creative search produces ideas
 that humans judge as simultaneously more original and useful than strong prompting.
 
-Creativity-layer is open-source middleware for AI coding agents. The preferred
-integration surface is MCP: agents call `creative_plan` during planning,
+Muse is open-source middleware for AI coding agents. The preferred
+integration surface is MCP: agents call `muse_plan` during planning,
 debugging, and verification instead of replacing their normal coding workflow.
 
 ## Open-source quickstart
@@ -18,7 +18,7 @@ python -m pip install -e ".[dev]"
 Run the no-key deterministic MCP smoke path:
 
 ```powershell
-creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" `
+muse-mcp-smoke "Design a retry strategy for AI coding agents" `
   --provider-mode deterministic `
   --repo-language Python `
   --effort quick
@@ -27,7 +27,7 @@ creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" `
 Run the dogfood quality harness:
 
 ```powershell
-creativity-layer-dogfood-quality `
+muse-dogfood-quality `
   --provider-mode deterministic `
   --case agent-retry-python `
   --variant search-off `
@@ -55,7 +55,7 @@ python -m ruff check .
 ## Deterministic research-spine demo
 
 ```powershell
-creativity-layer "Invent a calmer way for distributed teams to make decisions" `
+muse "Invent a calmer way for distributed teams to make decisions" `
   --seed-count 4 `
   --finalist-count 3 `
   --generations 1 `
@@ -79,7 +79,7 @@ unmetered, deliberately stranding that capacity for future metered framing.
 ## Compare mode
 
 ```powershell
-creativity-layer compare "Invent a calmer way for distributed teams to make decisions" `
+muse compare "Invent a calmer way for distributed teams to make decisions" `
   --seed-count 4 `
   --finalist-count 2 `
   --generations 0 `
@@ -95,7 +95,7 @@ models.
 ## Calibration review packets
 
 ```powershell
-python -m creativity_layer.cli review-packet --trace <trace.json> --output-dir .review-packets --shuffle-seed 17
+python -m muse.cli review-packet --trace <trace.json> --output-dir .review-packets --shuffle-seed 17
 ```
 
 Review packets are anonymized and randomized artifacts for human review. Rating
@@ -116,7 +116,7 @@ $env:OPENAI_PRICING_FILE = "path\to\pricing.json"
 Run:
 
 ```powershell
-creativity-layer live "Invent a low-cost coordination mechanism" `
+muse live "Invent a low-cost coordination mechanism" `
   --budget-usd 0.10 `
   --privacy private
 ```
@@ -136,7 +136,7 @@ Normal tests do not call Exa, Brave, or OpenAI web search. Live search adapter
 smoke tests are opt-in and require explicit approval plus provider credentials:
 
 ```powershell
-$env:CREATIVITY_LAYER_LIVE_SEARCH_APPROVED = "1"
+$env:MUSE_LIVE_SEARCH_APPROVED = "1"
 $env:EXA_API_KEY = "<exa-api-key>"
 $env:BRAVE_SEARCH_API_KEY = "<brave-search-api-key>"
 $env:OPENAI_API_KEY = "<openai-api-key>"
@@ -153,7 +153,7 @@ The CLI `--context-file` flag is only a local harness for exercising that same
 middleware-shaped path:
 
 ```powershell
-creativity-layer live "Design a debugging workflow for flaky CI" `
+muse live "Design a debugging workflow for flaky CI" `
   --context-file .\context.json `
   --budget-usd 0.25 `
   --privacy private
@@ -191,16 +191,16 @@ For when to call the tool during normal coding in another repo, see
 ```json
 {
   "mcpServers": {
-    "creativity-layer": {
-      "command": "creativity-layer-mcp",
+    "muse": {
+      "command": "muse-mcp",
       "args": []
     }
   }
 }
 ```
 
-The server exposes `creative_plan`. Agents should pass repo facts they already
-observed instead of asking creativity-layer to crawl the repository:
+The server exposes `muse_plan`. Agents should pass repo facts they already
+observed instead of asking muse to crawl the repository:
 
 ```json
 {
@@ -243,24 +243,24 @@ Set runtime defaults in the agent host environment when you want every omitted
 tool field to use the same posture:
 
 ```powershell
-$env:CREATIVITY_LAYER_PROVIDER_MODE = "live_openai"
-$env:CREATIVITY_LAYER_EFFORT = "quick"
-$env:CREATIVITY_LAYER_PRIVACY = "research"
-$env:CREATIVITY_LAYER_BUDGET_USD = "0.25"
-$env:CREATIVITY_LAYER_SEARCH_MODE = "off"
-$env:CREATIVITY_LAYER_SEARCH_PROVIDER = "auto"
-$env:CREATIVITY_LAYER_SEARCH_STRICT = "false"
+$env:MUSE_PROVIDER_MODE = "live_openai"
+$env:MUSE_EFFORT = "quick"
+$env:MUSE_PRIVACY = "research"
+$env:MUSE_BUDGET_USD = "0.25"
+$env:MUSE_SEARCH_MODE = "off"
+$env:MUSE_SEARCH_PROVIDER = "auto"
+$env:MUSE_SEARCH_STRICT = "false"
 ```
 
 The deterministic test provider exists for no-network CI, protocol checks, and
 transport smoke tests. Use it explicitly with `--provider-mode deterministic`
-or `CREATIVITY_LAYER_PROVIDER_MODE=deterministic`; do not treat deterministic
+or `MUSE_PROVIDER_MODE=deterministic`; do not treat deterministic
 output as product-quality creative planning.
 
 To smoke-test the actual MCP tool registration without an agent host:
 
 ```powershell
-creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" `
+muse-mcp-smoke "Design a retry strategy for AI coding agents" `
   --provider-mode deterministic `
   --search-mode off `
   --repo-language Python `
@@ -280,7 +280,7 @@ cases and to catch weak output before it reaches an agent workflow.
 Cheap deterministic run:
 
 ```powershell
-creativity-layer-dogfood-quality `
+muse-dogfood-quality `
   --provider-mode deterministic `
   --case agent-retry-python `
   --variant search-off `
@@ -290,7 +290,7 @@ creativity-layer-dogfood-quality `
 CI-style quality gate:
 
 ```powershell
-creativity-layer-dogfood-quality `
+muse-dogfood-quality `
   --provider-mode deterministic `
   --case agent-retry-python `
   --variant search-off `
@@ -369,25 +369,25 @@ requested search cannot run:
 For environment-level defaults, use:
 
 ```powershell
-$env:CREATIVITY_LAYER_SEARCH_MODE = "light"
-$env:CREATIVITY_LAYER_SEARCH_PROVIDER = "auto"
-$env:CREATIVITY_LAYER_SEARCH_STRICT = "false"
-$env:CREATIVITY_LAYER_LIVE_SEARCH_APPROVED = "1"
+$env:MUSE_SEARCH_MODE = "light"
+$env:MUSE_SEARCH_PROVIDER = "auto"
+$env:MUSE_SEARCH_STRICT = "false"
+$env:MUSE_LIVE_SEARCH_APPROVED = "1"
 ```
 
-`CREATIVITY_LAYER_LIVE_SEARCH_APPROVED=1` is required before live search
+`MUSE_LIVE_SEARCH_APPROVED=1` is required before live search
 providers may be used. Without approval or provider configuration, the result
 still returns finalists when possible and includes `search_context` metadata
 with the skipped reason. Strict search changes that behavior: if
-`search_strict` or `CREATIVITY_LAYER_SEARCH_STRICT=true` is set and requested
+`search_strict` or `MUSE_SEARCH_STRICT=true` is set and requested
 search is unavailable, the MCP result returns `configuration_error` and no
-finalists. This is opt-in search; creativity-layer still does not crawl
+finalists. This is opt-in search; muse still does not crawl
 repositories, and agents should pass observed repo signals.
 
 The smoke command exposes the same policy controls:
 
 ```powershell
-creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" `
+muse-mcp-smoke "Design a retry strategy for AI coding agents" `
   --provider-mode live_openai `
   --search-mode light `
   --search-provider auto `
@@ -404,7 +404,7 @@ facts into `RepoSignals`, then uses `DeterministicContextProvider` to build a
 `ContextBundle`:
 
 ```powershell
-creativity-layer "Design a debugging workflow for flaky CI" `
+muse "Design a debugging workflow for flaky CI" `
   --repo-signals-file .\repo-signals.json `
   --trace-dir .traces
 ```

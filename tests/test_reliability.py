@@ -16,7 +16,7 @@ from openai import (
     UnprocessableEntityError,
 )
 
-from creativity_layer.reliability import (
+from muse.reliability import (
     CircuitBreaker,
     CircuitOpenError,
     RetryPolicy,

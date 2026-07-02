@@ -17,7 +17,7 @@ choose a different finalist.
 ## Design
 
 Add a pure `quality_action_policy` helper in
-`src/creativity_layer/quality_warnings.py`. The helper accepts the current
+`src/muse/quality_warnings.py`. The helper accepts the current
 warning names and effort level, then returns a JSON-safe policy object:
 
 - `status`: `clear`, `review`, or `needs_retry`.

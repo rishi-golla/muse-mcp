@@ -4,9 +4,9 @@ from pathlib import Path
 import pytest
 from pydantic import SecretStr
 
-import creativity_layer.cli as cli_module
-from creativity_layer.cli import run_cli
-from creativity_layer.models import (
+import muse.cli as cli_module
+from muse.cli import run_cli
+from muse.models import (
     EvaluationScores,
     FramedTask,
     IdeaGenome,
@@ -14,9 +14,9 @@ from creativity_layer.models import (
     TaskContext,
     TokenUsage,
 )
-from creativity_layer.pricing import ModelPrice
-from creativity_layer.providers import MeteredResponse, OperationQuote
-from creativity_layer.transforms import (
+from muse.pricing import ModelPrice
+from muse.providers import MeteredResponse, OperationQuote
+from muse.transforms import (
     TransformationRequest,
     expected_transformation_history,
 )

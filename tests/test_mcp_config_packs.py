@@ -16,12 +16,12 @@ def test_codex_config_pack_is_valid_toml_and_scopes_tool() -> None:
     config = tomllib.loads(
         _read_text(CONFIG_ROOT / "codex" / "config.toml"),
     )
-    server = config["mcp_servers"]["creativity-layer"]
+    server = config["mcp_servers"]["muse"]
 
-    assert server["command"] == "creativity-layer-mcp"
+    assert server["command"] == "muse-mcp"
     assert server["args"] == []
     assert server["enabled"] is True
-    assert server["enabled_tools"] == ["creative_plan"]
+    assert server["enabled_tools"] == ["muse_plan"]
     assert server["tool_timeout_sec"] >= 60
 
 
@@ -29,9 +29,9 @@ def test_claude_code_config_pack_is_valid_mcp_json() -> None:
     config = json.loads(
         _read_text(CONFIG_ROOT / "claude-code" / ".mcp.json"),
     )
-    server = config["mcpServers"]["creativity-layer"]
+    server = config["mcpServers"]["muse"]
 
-    assert server["command"] == "creativity-layer-mcp"
+    assert server["command"] == "muse-mcp"
     assert server["args"] == []
     assert "OPENAI_API_KEY" in server["env"]
     assert server["env"]["OPENAI_API_KEY"] == "${OPENAI_API_KEY}"
@@ -46,7 +46,7 @@ def test_codex_optional_env_example_is_valid_when_uncommented() -> None:
         if line.startswith("# [mcp_servers.") or line.startswith("# OPENAI_")
     )
     config = tomllib.loads(uncommented)
-    env = config["mcp_servers"]["creativity-layer"]["env"]
+    env = config["mcp_servers"]["muse"]["env"]
 
     assert env["OPENAI_API_KEY"] == "${OPENAI_API_KEY}"
     assert env["OPENAI_PRICING_FILE"] == "${OPENAI_PRICING_FILE}"
@@ -56,9 +56,9 @@ def test_generic_mcp_json_pack_is_valid_and_provider_env_free() -> None:
     config = json.loads(
         _read_text(CONFIG_ROOT / "generic-mcp" / "mcp.json"),
     )
-    server = config["mcpServers"]["creativity-layer"]
+    server = config["mcpServers"]["muse"]
 
-    assert server["command"] == "creativity-layer-mcp"
+    assert server["command"] == "muse-mcp"
     assert server["args"] == []
     assert "env" not in server
 
@@ -70,10 +70,10 @@ def test_docs_describe_live_first_provider_posture() -> None:
     combined = "\n".join((readme, guide, playbook)).casefold()
 
     assert "live-first" in combined
-    assert "creativity_layer_provider_mode" in combined
-    assert "creativity_layer_effort" in combined
-    assert "creativity_layer_privacy" in combined
-    assert "creativity_layer_budget_usd" in combined
+    assert "muse_provider_mode" in combined
+    assert "muse_effort" in combined
+    assert "muse_privacy" in combined
+    assert "muse_budget_usd" in combined
     assert "deterministic test provider" in combined
     assert "--provider-mode deterministic" in combined
 
@@ -85,15 +85,15 @@ def test_docs_describe_opt_in_search_context() -> None:
     combined = "\n".join((readme, guide, playbook)).casefold()
 
     assert "search_mode" in combined
-    assert "creativity_layer_search_mode" in combined
+    assert "muse_search_mode" in combined
     assert "search_provider" in combined
-    assert "creativity_layer_search_provider" in combined
+    assert "muse_search_provider" in combined
     assert "search_strict" in combined
-    assert "creativity_layer_search_strict" in combined
+    assert "muse_search_strict" in combined
     assert "--search-provider" in combined
     assert "--search-strict" in combined
     assert "strict search" in combined
-    assert "creativity_layer_live_search_approved" in combined
+    assert "muse_live_search_approved" in combined
     assert "default is `off`" in combined
     assert "opt-in search" in combined
     assert "--search-mode" in combined
@@ -127,9 +127,9 @@ def test_agent_host_guide_links_config_packs_and_smoke_workflow() -> None:
     assert "config-packs/claude-code/.mcp.json" in guide
     assert "config-packs/generic-mcp/mcp.json" in guide
     assert "docs/integrations/agent-dogfood-playbook.md" in guide
-    assert "creativity-layer-mcp-smoke" in guide
+    assert "muse-mcp-smoke" in guide
     assert '"provider_mode": "live_openai"' in guide
-    assert "creative_plan" in guide
+    assert "muse_plan" in guide
 
 
 def test_readme_links_agent_host_guide() -> None:
@@ -148,7 +148,7 @@ def test_agent_dogfood_playbook_describes_coding_loop_usage() -> None:
     assert "before-edit" in playbook
     assert "after-failure" in playbook
     assert "after-fix" in playbook
-    assert "creative_plan" in playbook
+    assert "muse_plan" in playbook
     assert "repo_signals" in playbook
 
 
@@ -159,7 +159,7 @@ def test_docs_describe_v3l_dogfood_quality_suite() -> None:
 
     assert "v3-l" in combined
     assert "last v3 validation slice" in combined
-    assert "creativity-layer-dogfood-quality" in combined
+    assert "muse-dogfood-quality" in combined
     assert "--fail-on-gates" in combined
     assert "search-off" in combined
     assert "search-light" in combined

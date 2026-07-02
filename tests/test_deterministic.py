@@ -1,8 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from creativity_layer.deterministic import DeterministicCreativeProvider
-from creativity_layer.models import (
+from muse.deterministic import DeterministicCreativeProvider
+from muse.models import (
     ContextBundle,
     ContextSnippet,
     FramedTask,
@@ -10,8 +10,8 @@ from creativity_layer.models import (
     RunConfig,
     TaskContext,
 )
-from creativity_layer.providers import OperationQuote
-from creativity_layer.transforms import OperatorName, TransformationRequest
+from muse.providers import OperationQuote
+from muse.transforms import OperatorName, TransformationRequest
 
 
 @pytest.mark.parametrize("calls", [0, -1, True])

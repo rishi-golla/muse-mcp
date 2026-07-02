@@ -4,7 +4,7 @@
 
 **Goal:** Add advisory quality warning fields to middleware/MCP creative plan responses.
 
-**Architecture:** Extract reusable pure quality gate helpers into `src/creativity_layer/quality_warnings.py`. Reuse them from dogfood quality checks and middleware serialization so agent hosts see the same warning vocabulary without invoking the dogfood CLI.
+**Architecture:** Extract reusable pure quality gate helpers into `src/muse/quality_warnings.py`. Reuse them from dogfood quality checks and middleware serialization so agent hosts see the same warning vocabulary without invoking the dogfood CLI.
 
 **Tech Stack:** Python 3.12+, Pydantic, pytest, Ruff
 
@@ -46,7 +46,7 @@ Expected: one docs commit.
 Create `tests/test_quality_warnings.py` with tests for:
 
 ```python
-from creativity_layer.quality_warnings import (
+from muse.quality_warnings import (
     finalist_quality_warnings,
     summarize_quality_warnings,
 )
@@ -122,13 +122,13 @@ Run:
 python -m pytest tests\test_quality_warnings.py tests\test_dogfood_quality.py::test_quality_gates_flag_generic_deterministic_output -q
 ```
 
-Expected: FAIL because `creativity_layer.quality_warnings` does not exist.
+Expected: FAIL because `muse.quality_warnings` does not exist.
 
 ### Task 3: Implement Shared Quality Warnings
 
 **Files:**
-- Create: `src/creativity_layer/quality_warnings.py`
-- Modify: `src/creativity_layer/dogfood_quality.py`
+- Create: `src/muse/quality_warnings.py`
+- Modify: `src/muse/dogfood_quality.py`
 
 - [ ] **Step 1: Add implementation**
 
@@ -141,7 +141,7 @@ Run:
 
 ```powershell
 python -m pytest tests\test_quality_warnings.py tests\test_dogfood_quality.py -q
-python -m ruff check src\creativity_layer\quality_warnings.py src\creativity_layer\dogfood_quality.py tests\test_quality_warnings.py tests\test_dogfood_quality.py
+python -m ruff check src\muse\quality_warnings.py src\muse\dogfood_quality.py tests\test_quality_warnings.py tests\test_dogfood_quality.py
 ```
 
 Expected: tests pass and Ruff is clean.
@@ -151,7 +151,7 @@ Expected: tests pass and Ruff is clean.
 Run:
 
 ```powershell
-git add src\creativity_layer\quality_warnings.py src\creativity_layer\dogfood_quality.py tests\test_quality_warnings.py tests\test_dogfood_quality.py
+git add src\muse\quality_warnings.py src\muse\dogfood_quality.py tests\test_quality_warnings.py tests\test_dogfood_quality.py
 git commit -m "feat: extract shared quality warnings"
 ```
 
@@ -160,7 +160,7 @@ Expected: one implementation commit.
 ### Task 4: Surface Warnings In Middleware And MCP
 
 **Files:**
-- Modify: `src/creativity_layer/middleware.py`
+- Modify: `src/muse/middleware.py`
 - Modify: `tests/test_middleware.py`
 - Modify: `tests/test_mcp_server.py`
 
@@ -195,7 +195,7 @@ Run:
 
 ```powershell
 python -m pytest tests\test_middleware.py tests\test_mcp_server.py -q
-python -m ruff check src\creativity_layer\middleware.py tests\test_middleware.py tests\test_mcp_server.py
+python -m ruff check src\muse\middleware.py tests\test_middleware.py tests\test_mcp_server.py
 ```
 
 Expected: tests pass and Ruff is clean.
@@ -205,7 +205,7 @@ Expected: tests pass and Ruff is clean.
 Run:
 
 ```powershell
-git add src\creativity_layer\middleware.py tests\test_middleware.py tests\test_mcp_server.py
+git add src\muse\middleware.py tests\test_middleware.py tests\test_mcp_server.py
 git commit -m "feat: surface quality warnings in mcp responses"
 ```
 
@@ -245,7 +245,7 @@ Run:
 ```powershell
 python -m pytest -q
 python -m ruff check .
-creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" --provider-mode deterministic --repo-language Python
+muse-mcp-smoke "Design a retry strategy for AI coding agents" --provider-mode deterministic --repo-language Python
 ```
 
 Expected: tests pass, Ruff is clean, and smoke returns JSON with quality warning

@@ -13,7 +13,7 @@
 ## Task 1: Search Policy and Query Metadata
 
 **Files:**
-- Modify: `src/creativity_layer/search_context.py`
+- Modify: `src/muse/search_context.py`
 - Modify: `tests/test_search_context.py`
 
 - [ ] Write failing tests for `SearchProviderPolicy`, query planning from stack/failure signals, deep prior-art/analogy queries, provider policy metadata, and strict skipped result metadata.
@@ -25,12 +25,12 @@
 ## Task 2: Runtime Defaults and Middleware Strict Behavior
 
 **Files:**
-- Modify: `src/creativity_layer/runtime_defaults.py`
-- Modify: `src/creativity_layer/middleware.py`
+- Modify: `src/muse/runtime_defaults.py`
+- Modify: `src/muse/middleware.py`
 - Modify: `tests/test_runtime_defaults.py`
 - Modify: `tests/test_middleware.py`
 
-- [ ] Write failing tests for `CREATIVITY_LAYER_SEARCH_PROVIDER`, `CREATIVITY_LAYER_SEARCH_STRICT`, explicit override behavior, config serialization, and strict search short-circuit.
+- [ ] Write failing tests for `MUSE_SEARCH_PROVIDER`, `MUSE_SEARCH_STRICT`, explicit override behavior, config serialization, and strict search short-circuit.
 - [ ] Run `python -m pytest tests/test_runtime_defaults.py tests/test_middleware.py -q` and confirm RED.
 - [ ] Add runtime defaults and middleware request fields.
 - [ ] Make strict search failures return top-level `configuration_error` with `search_context` metadata.
@@ -40,8 +40,8 @@
 ## Task 3: MCP and Smoke Forwarding
 
 **Files:**
-- Modify: `src/creativity_layer/mcp_server.py`
-- Modify: `src/creativity_layer/mcp_smoke.py`
+- Modify: `src/muse/mcp_server.py`
+- Modify: `src/muse/mcp_smoke.py`
 - Modify: `tests/test_mcp_server.py`
 - Modify: `tests/test_mcp_smoke.py`
 

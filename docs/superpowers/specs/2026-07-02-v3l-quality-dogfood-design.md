@@ -6,7 +6,7 @@ V3-L adds a repeatable dogfood quality suite for the real MCP planning path. The
 
 ## Recommended Approach
 
-Use a repo-owned prompt suite that calls the in-process FastMCP `creative_plan` tool with realistic coding-agent tasks and observed `repo_signals`. The suite should run cheap deterministic checks in CI and optionally support live OpenAI runs when the caller provides live configuration.
+Use a repo-owned prompt suite that calls the in-process FastMCP `muse_plan` tool with realistic coding-agent tasks and observed `repo_signals`. The suite should run cheap deterministic checks in CI and optionally support live OpenAI runs when the caller provides live configuration.
 
 This is better than adding a separate API or building a broad benchmark runner now. It keeps the product direction aligned with MCP middleware, gives us regression data for search modes, and avoids pretending deterministic fixture output is product-quality.
 
@@ -16,7 +16,7 @@ The suite will include:
 
 - Built-in prompt cases for AI-agent retry strategy, TypeScript monorepo flaky CI, arbitrary repo planning middleware, and interactive portfolio planning.
 - Search variants for `off`, `light`, and `deep`, with configurable `search_provider` and `search_strict`.
-- MCP-path execution through `build_mcp_server().call_tool("creative_plan", ...)`.
+- MCP-path execution through `build_mcp_server().call_tool("muse_plan", ...)`.
 - Structured report fields for cost, latency, generated/finalist counts, search metadata, errors, and quality gates.
 - Quality gates for generic output, missing operational contract fields, missing repo-signal terms, unavailable requested search, and configuration/provider errors.
 - A smoke CLI for local dogfood runs, with `--json`, `--provider-mode`, `--effort`, `--budget-usd`, `--search-provider`, `--search-strict`, `--fail-on-gates`, and case/variant filters.
@@ -27,7 +27,7 @@ The suite will include:
 - No stored evaluation database.
 - No automatic repo crawling.
 - No mandatory live provider spend in tests.
-- No change to the `creative_plan` MCP contract.
+- No change to the `muse_plan` MCP contract.
 
 ## Architecture
 

@@ -9,13 +9,13 @@ from dataclasses import dataclass
 import pytest
 from pydantic import SecretStr
 
-from creativity_layer.exa_search import ExaSearchProvider
-from creativity_layer.live_search_config import (
+from muse.exa_search import ExaSearchProvider
+from muse.live_search_config import (
     ExaSearchCredentials,
     LiveSearchRuntime,
     SearchProviderError,
 )
-from creativity_layer.search import SearchPurpose, SearchQuery
+from muse.search import SearchPurpose, SearchQuery
 
 
 class FakeExaClient:

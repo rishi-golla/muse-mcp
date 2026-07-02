@@ -4,7 +4,7 @@
 
 V4-C makes quality gate feedback visible in the normal middleware/MCP response.
 Right now, quality gates are available through the dogfood CLI, but an agent
-calling `creative_plan` during normal coding only receives finalists. The agent
+calling `muse_plan` during normal coding only receives finalists. The agent
 can therefore miss obvious warning signs such as generic titles, generic
 mechanisms, or missing operational fields unless a separate dogfood run is
 performed.

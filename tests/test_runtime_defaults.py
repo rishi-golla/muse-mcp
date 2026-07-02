@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from creativity_layer.runtime_defaults import RuntimeDefaults
+from muse.runtime_defaults import RuntimeDefaults
 
 
 def test_runtime_defaults_are_live_first_when_environment_is_absent() -> None:
@@ -17,13 +17,13 @@ def test_runtime_defaults_are_live_first_when_environment_is_absent() -> None:
 def test_runtime_defaults_read_environment_overrides() -> None:
     defaults = RuntimeDefaults.from_environment(
         {
-            "CREATIVITY_LAYER_PROVIDER_MODE": "deterministic",
-            "CREATIVITY_LAYER_EFFORT": "standard",
-            "CREATIVITY_LAYER_PRIVACY": "private",
-            "CREATIVITY_LAYER_BUDGET_USD": "0.25",
-            "CREATIVITY_LAYER_SEARCH_MODE": "light",
-            "CREATIVITY_LAYER_SEARCH_PROVIDER": "brave",
-            "CREATIVITY_LAYER_SEARCH_STRICT": "true",
+            "MUSE_PROVIDER_MODE": "deterministic",
+            "MUSE_EFFORT": "standard",
+            "MUSE_PRIVACY": "private",
+            "MUSE_BUDGET_USD": "0.25",
+            "MUSE_SEARCH_MODE": "light",
+            "MUSE_SEARCH_PROVIDER": "brave",
+            "MUSE_SEARCH_STRICT": "true",
         }
     )
 
@@ -39,10 +39,10 @@ def test_runtime_defaults_read_environment_overrides() -> None:
 def test_runtime_defaults_ignore_blank_environment_values() -> None:
     defaults = RuntimeDefaults.from_environment(
         {
-            "CREATIVITY_LAYER_PROVIDER_MODE": " ",
-            "CREATIVITY_LAYER_EFFORT": "",
-            "CREATIVITY_LAYER_PRIVACY": "\t",
-            "CREATIVITY_LAYER_BUDGET_USD": "",
+            "MUSE_PROVIDER_MODE": " ",
+            "MUSE_EFFORT": "",
+            "MUSE_PRIVACY": "\t",
+            "MUSE_BUDGET_USD": "",
         }
     )
 
@@ -53,15 +53,15 @@ def test_runtime_defaults_ignore_blank_environment_values() -> None:
 
 
 def test_runtime_defaults_reject_invalid_budget() -> None:
-    with pytest.raises(ValueError, match="CREATIVITY_LAYER_BUDGET_USD"):
-        RuntimeDefaults.from_environment({"CREATIVITY_LAYER_BUDGET_USD": "not-money"})
+    with pytest.raises(ValueError, match="MUSE_BUDGET_USD"):
+        RuntimeDefaults.from_environment({"MUSE_BUDGET_USD": "not-money"})
 
 
 def test_runtime_defaults_explicit_budget_overrides_invalid_environment() -> None:
     defaults = RuntimeDefaults.resolve(
         provider_mode="deterministic",
         budget_usd=0.2,
-        environ={"CREATIVITY_LAYER_BUDGET_USD": "not-money"},
+        environ={"MUSE_BUDGET_USD": "not-money"},
     )
 
     assert defaults.provider_mode == "deterministic"
@@ -71,7 +71,7 @@ def test_runtime_defaults_explicit_budget_overrides_invalid_environment() -> Non
 def test_runtime_defaults_explicit_search_mode_overrides_environment() -> None:
     defaults = RuntimeDefaults.resolve(
         search_mode="deep",
-        environ={"CREATIVITY_LAYER_SEARCH_MODE": "light"},
+        environ={"MUSE_SEARCH_MODE": "light"},
     )
 
     assert defaults.search_mode == "deep"
@@ -82,8 +82,8 @@ def test_runtime_defaults_explicit_search_policy_overrides_environment() -> None
         search_provider="exa",
         search_strict=False,
         environ={
-            "CREATIVITY_LAYER_SEARCH_PROVIDER": "brave",
-            "CREATIVITY_LAYER_SEARCH_STRICT": "true",
+            "MUSE_SEARCH_PROVIDER": "brave",
+            "MUSE_SEARCH_STRICT": "true",
         },
     )
 
@@ -92,5 +92,5 @@ def test_runtime_defaults_explicit_search_policy_overrides_environment() -> None
 
 
 def test_runtime_defaults_reject_invalid_search_strict() -> None:
-    with pytest.raises(ValueError, match="CREATIVITY_LAYER_SEARCH_STRICT"):
-        RuntimeDefaults.from_environment({"CREATIVITY_LAYER_SEARCH_STRICT": "maybe"})
+    with pytest.raises(ValueError, match="MUSE_SEARCH_STRICT"):
+        RuntimeDefaults.from_environment({"MUSE_SEARCH_STRICT": "maybe"})

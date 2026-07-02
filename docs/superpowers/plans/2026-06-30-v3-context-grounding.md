@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add middleware-shaped typed context grounding so Creativity Layer can consume repo/task evidence without making CLI files the core product interface.
+**Goal:** Add middleware-shaped typed context grounding so Muse can consume repo/task evidence without making CLI files the core product interface.
 
 **Architecture:** Add `ContextSnippet` and `ContextBundle` to domain models, carry the bundle through `TaskContext` and `FramedTask`, and make providers consume it through existing protocol signatures. CLI `--context-file` only parses JSON into the same typed API used by direct Python callers.
 
@@ -12,11 +12,11 @@
 
 ## File Map
 
-- `src/creativity_layer/models.py`: context evidence models and fields on task/frame.
-- `src/creativity_layer/deterministic.py`: context-aware deterministic outputs and scoring.
-- `src/creativity_layer/openai_provider.py`: prompt pressure and request payload checks.
-- `src/creativity_layer/cli.py`: edge-only `--context-file` parser for deterministic, compare, and live.
-- `src/creativity_layer/privacy.py`: private trace hashing for context evidence.
+- `src/muse/models.py`: context evidence models and fields on task/frame.
+- `src/muse/deterministic.py`: context-aware deterministic outputs and scoring.
+- `src/muse/openai_provider.py`: prompt pressure and request payload checks.
+- `src/muse/cli.py`: edge-only `--context-file` parser for deterministic, compare, and live.
+- `src/muse/privacy.py`: private trace hashing for context evidence.
 - `README.md`: context file harness documentation.
 - `tests/test_models.py`: model validation and legacy defaults.
 - `tests/test_deterministic.py`: direct API context behavior.
@@ -27,7 +27,7 @@
 ## Task 1: Context Models
 
 **Files:**
-- Modify: `src/creativity_layer/models.py`
+- Modify: `src/muse/models.py`
 - Modify: `tests/test_models.py`
 
 - [ ] **Step 1: Write failing model tests**
@@ -35,7 +35,7 @@
 Add tests asserting:
 
 ```python
-from creativity_layer.models import ContextBundle, ContextSnippet, FramedTask
+from muse.models import ContextBundle, ContextSnippet, FramedTask
 
 
 def test_context_bundle_preserves_repo_evidence() -> None:
@@ -111,14 +111,14 @@ Run the same focused tests and expect PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src/creativity_layer/models.py tests/test_models.py
+git add src/muse/models.py tests/test_models.py
 git commit -m "feat: add context grounding models"
 ```
 
 ## Task 2: Direct API Context Behavior
 
 **Files:**
-- Modify: `src/creativity_layer/deterministic.py`
+- Modify: `src/muse/deterministic.py`
 - Modify: `tests/test_deterministic.py`
 
 - [ ] **Step 1: Write failing direct API tests**
@@ -167,14 +167,14 @@ Run focused deterministic tests and expect PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src/creativity_layer/deterministic.py tests/test_deterministic.py
+git add src/muse/deterministic.py tests/test_deterministic.py
 git commit -m "feat: ground deterministic ideas in context"
 ```
 
 ## Task 3: OpenAI Context Payload and Pressure
 
 **Files:**
-- Modify: `src/creativity_layer/openai_provider.py`
+- Modify: `src/muse/openai_provider.py`
 - Modify: `tests/test_openai_provider.py`
 
 - [ ] **Step 1: Write failing provider tests**
@@ -204,14 +204,14 @@ Run focused OpenAI provider tests and expect PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src/creativity_layer/openai_provider.py tests/test_openai_provider.py
+git add src/muse/openai_provider.py tests/test_openai_provider.py
 git commit -m "feat: add context-aware OpenAI prompt pressure"
 ```
 
 ## Task 4: CLI JSON Harness
 
 **Files:**
-- Modify: `src/creativity_layer/cli.py`
+- Modify: `src/muse/cli.py`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_live_cli.py`
 - Modify: `tests/test_compare_cli.py`
@@ -260,14 +260,14 @@ Run focused CLI tests and expect PASS.
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add src/creativity_layer/cli.py tests/test_cli.py tests/test_live_cli.py tests/test_compare_cli.py README.md
+git add src/muse/cli.py tests/test_cli.py tests/test_live_cli.py tests/test_compare_cli.py README.md
 git commit -m "feat: add context file CLI harness"
 ```
 
 ## Task 5: Trace Privacy
 
 **Files:**
-- Modify: `src/creativity_layer/privacy.py`
+- Modify: `src/muse/privacy.py`
 - Modify: `tests/test_privacy.py`
 - Modify: `tests/test_tracing.py`
 
@@ -293,7 +293,7 @@ Run focused privacy/tracing tests and expect PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src/creativity_layer/privacy.py tests/test_privacy.py tests/test_tracing.py
+git add src/muse/privacy.py tests/test_privacy.py tests/test_tracing.py
 git commit -m "feat: protect context in private traces"
 ```
 
@@ -305,7 +305,7 @@ git commit -m "feat: protect context in private traces"
 - [ ] **Step 1: Run full offline tests**
 
 ```powershell
-python -m pytest -m "not live_openai" -q --cov=creativity_layer --cov-report=term-missing -p no:cacheprovider --basetemp=.pytest-tmp-v3b-final
+python -m pytest -m "not live_openai" -q --cov=muse --cov-report=term-missing -p no:cacheprovider --basetemp=.pytest-tmp-v3b-final
 ```
 
 Expected: all offline tests pass, live smoke tests skipped/deselected.

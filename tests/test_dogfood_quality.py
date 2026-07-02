@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from creativity_layer.dogfood_quality import (
+from muse.dogfood_quality import (
     DEFAULT_DOGFOOD_CASES,
     DEFAULT_SEARCH_VARIANTS,
     SearchVariant,
@@ -78,7 +78,7 @@ def test_quality_gates_flag_requested_search_that_was_not_used() -> None:
 
 
 def test_dogfood_suite_invokes_mcp_and_returns_json_safe_report(monkeypatch) -> None:
-    monkeypatch.setenv("CREATIVITY_LAYER_PROVIDER_MODE", "deterministic")
+    monkeypatch.setenv("MUSE_PROVIDER_MODE", "deterministic")
 
     report = run_dogfood_quality_suite(
         provider_mode="deterministic",

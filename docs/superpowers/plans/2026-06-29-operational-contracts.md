@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add structured operational contracts and stricter workflow-fit scoring so creativity-layer outputs are consumable by future agent middleware.
+**Goal:** Add structured operational contracts and stricter workflow-fit scoring so muse outputs are consumable by future agent middleware.
 
 **Architecture:** Extend the domain idea model with backward-compatible contract fields, require those fields in live OpenAI idea schemas, and extend evaluation scores with operational dimensions. Keep provider boundaries intact: generation produces contracts, evaluation scores them, and population selection ranks them.
 
@@ -13,11 +13,11 @@
 ## File Map
 
 ```text
-src/creativity_layer/models.py             Add contract fields and score dimensions
-src/creativity_layer/openai_schemas.py     Require/convert contract fields for live ideas and evaluations
-src/creativity_layer/openai_provider.py    Strengthen generation/evaluation instructions
-src/creativity_layer/deterministic.py      Populate contract fields in fixture ideas and deterministic scores
-src/creativity_layer/population.py         Rank by operational dimensions
+src/muse/models.py             Add contract fields and score dimensions
+src/muse/openai_schemas.py     Require/convert contract fields for live ideas and evaluations
+src/muse/openai_provider.py    Strengthen generation/evaluation instructions
+src/muse/deterministic.py      Populate contract fields in fixture ideas and deterministic scores
+src/muse/population.py         Rank by operational dimensions
 tests/test_models.py                       Backward compatibility and validation coverage
 tests/test_openai_schemas.py               Required live schema fields and conversion coverage
 tests/test_openai_provider.py              Prompt pressure coverage
@@ -37,7 +37,7 @@ tests/test_final_review.py                 Bad-example regression coverage
 ## Task 1: Domain Model Contract
 
 **Files:**
-- Modify: `src/creativity_layer/models.py`
+- Modify: `src/muse/models.py`
 - Modify: `tests/test_models.py`
 
 - [ ] **Step 1: Write failing model tests**
@@ -88,7 +88,7 @@ Expected: FAIL because fields do not exist.
 
 - [ ] **Step 3: Implement model fields**
 
-In `src/creativity_layer/models.py`, update:
+In `src/muse/models.py`, update:
 
 ```python
 class EvaluationScores(FrozenModel):
@@ -118,15 +118,15 @@ Add to `IdeaGenome` after `distinguishing_features`:
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_models.py -q -p no:cacheprovider --basetemp=.pytest-tmp-task1-green
 .\.venv\Scripts\python.exe -m ruff check .
-git add src/creativity_layer/models.py tests/test_models.py
+git add src/muse/models.py tests/test_models.py
 git commit -m "feat: add operational contract fields"
 ```
 
 ## Task 2: Live Schema and Prompt Pressure
 
 **Files:**
-- Modify: `src/creativity_layer/openai_schemas.py`
-- Modify: `src/creativity_layer/openai_provider.py`
+- Modify: `src/muse/openai_schemas.py`
+- Modify: `src/muse/openai_provider.py`
 - Modify: `tests/test_openai_schemas.py`
 - Modify: `tests/test_openai_provider.py`
 
@@ -183,7 +183,7 @@ def test_openai_generation_prompts_require_operational_contracts() -> None:
     assert "agent_workflow" in transform_instruction
 ```
 
-Import `DEVELOPER_INSTRUCTIONS` from `creativity_layer.openai_provider`.
+Import `DEVELOPER_INSTRUCTIONS` from `muse.openai_provider`.
 
 - [ ] **Step 3: Run RED**
 
@@ -211,15 +211,15 @@ In `OpenAIEvaluation`, add:
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_openai_schemas.py tests/test_openai_provider.py -q -p no:cacheprovider --basetemp=.pytest-tmp-task2-green
 .\.venv\Scripts\python.exe -m ruff check .
-git add src/creativity_layer/openai_schemas.py src/creativity_layer/openai_provider.py tests/test_openai_schemas.py tests/test_openai_provider.py
+git add src/muse/openai_schemas.py src/muse/openai_provider.py tests/test_openai_schemas.py tests/test_openai_provider.py
 git commit -m "feat: require operational live outputs"
 ```
 
 ## Task 3: Deterministic Provider and Population Ranking
 
 **Files:**
-- Modify: `src/creativity_layer/deterministic.py`
-- Modify: `src/creativity_layer/population.py`
+- Modify: `src/muse/deterministic.py`
+- Modify: `src/muse/population.py`
 - Modify: `tests/test_deterministic.py`
 - Modify: `tests/test_population.py`
 
@@ -302,7 +302,7 @@ Update population ranking to include these dimensions in `_dominates()` and `_ba
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_deterministic.py tests/test_population.py -q -p no:cacheprovider --basetemp=.pytest-tmp-task3-green
 .\.venv\Scripts\python.exe -m ruff check .
-git add src/creativity_layer/deterministic.py src/creativity_layer/population.py tests/test_deterministic.py tests/test_population.py
+git add src/muse/deterministic.py src/muse/population.py tests/test_deterministic.py tests/test_population.py
 git commit -m "feat: rank operational ideas"
 ```
 
@@ -340,7 +340,7 @@ def test_typescript_monorepo_contract_mentions_repo_specific_signals() -> None:
         assert expected in source
 ```
 
-Import `DEVELOPER_INSTRUCTIONS` from `creativity_layer.openai_provider`.
+Import `DEVELOPER_INSTRUCTIONS` from `muse.openai_provider`.
 
 - [ ] **Step 2: Run GREEN and commit**
 
@@ -370,7 +370,7 @@ ideas as planning artifacts instead of prose-only briefs.
 - [ ] **Step 2: Run final checks**
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -q --cov=creativity_layer --cov-report=term-missing -p no:cacheprovider --basetemp=.pytest-tmp-v3a-final
+.\.venv\Scripts\python.exe -m pytest -q --cov=muse --cov-report=term-missing -p no:cacheprovider --basetemp=.pytest-tmp-v3a-final
 .\.venv\Scripts\python.exe -m ruff check .
 git diff --check origin/main...HEAD
 ```

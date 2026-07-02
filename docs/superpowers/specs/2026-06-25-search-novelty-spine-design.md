@@ -3,7 +3,7 @@
 ## 1. Purpose
 
 Slice 2B-A adds the provider-neutral search, inspiration, provenance, and novelty
-spine for the Creativity Layer without requiring live search providers. The slice
+spine for the Muse without requiring live search providers. The slice
 uses deterministic or mocked search adapters first so branch isolation, source
 handling, novelty math, anti-copying behavior, traces, and the `compare` CLI can be
 tested without network cost or provider flakiness.
@@ -255,7 +255,7 @@ override system, developer, or orchestration instructions.
 2B-A adds:
 
 ```powershell
-creativity-layer compare "task description" --budget-usd 0.10 --trace-dir .traces
+muse compare "task description" --budget-usd 0.10 --trace-dir .traces
 ```
 
 Initial `compare` behavior:

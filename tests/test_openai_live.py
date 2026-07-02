@@ -2,14 +2,14 @@ import os
 
 import pytest
 
-from creativity_layer.cli import run_cli
+from muse.cli import run_cli
 
 pytestmark = pytest.mark.live_openai
 
 
 def test_live_openai_smoke(tmp_path) -> None:
     required = (
-        "CREATIVITY_LAYER_RUN_PAID_OPENAI_TEST",
+        "MUSE_RUN_PAID_OPENAI_TEST",
         "OPENAI_API_KEY",
         "OPENAI_ECONOMY_MODEL",
         "OPENAI_STRONG_MODEL",
@@ -17,7 +17,7 @@ def test_live_openai_smoke(tmp_path) -> None:
     )
     if any(not os.getenv(name) for name in required):
         pytest.skip("live OpenAI environment is not configured")
-    if os.getenv("CREATIVITY_LAYER_RUN_PAID_OPENAI_TEST") != "1":
+    if os.getenv("MUSE_RUN_PAID_OPENAI_TEST") != "1":
         pytest.skip("paid live OpenAI test is not explicitly approved")
 
     exit_code = run_cli(

@@ -4,8 +4,8 @@ from uuid import uuid4
 
 import pytest
 
-from creativity_layer.live_config import PrivacyMode
-from creativity_layer.models import (
+from muse.live_config import PrivacyMode
+from muse.models import (
     ContextBundle,
     ContextSnippet,
     FramedTask,
@@ -19,8 +19,8 @@ from creativity_layer.models import (
     TaskContext,
     compute_reproducibility_fingerprint,
 )
-from creativity_layer.privacy import TraceView
-from creativity_layer.tracing import JsonTraceStore
+from muse.privacy import TraceView
+from muse.tracing import JsonTraceStore
 
 
 def run_result() -> RunResult:

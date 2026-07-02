@@ -12,13 +12,13 @@ generation, returns it top-level, and mirrors it into `agent_guidance`.
 1. Add RED tests for the pure suggestion helper.
    - File: `tests/test_quality_warnings.py`
    - Verify clear policies produce `None`.
-   - Verify retry policies produce a `creative_plan` suggestion with escalated
+   - Verify retry policies produce a `muse_plan` suggestion with escalated
      effort and no raw `repo_signals`.
    - Command:
      `python -m pytest tests\test_quality_warnings.py -q`
 
 2. Implement the pure helper.
-   - File: `src/creativity_layer/quality_warnings.py`
+   - File: `src/muse/quality_warnings.py`
    - Add `build_suggested_next_call(...)`.
    - Add small internal mapping from warning names to repo-signal requests.
    - Command:
@@ -34,7 +34,7 @@ generation, returns it top-level, and mirrors it into `agent_guidance`.
      `python -m pytest tests\test_middleware.py tests\test_mcp_server.py -q`
 
 4. Wire middleware serialization.
-   - File: `src/creativity_layer/middleware.py`
+   - File: `src/muse/middleware.py`
    - Import `build_suggested_next_call`.
    - Compute the suggestion from request metadata and action policy.
    - Add `suggested_next_call` to normal and configuration-error payloads.
@@ -53,4 +53,4 @@ generation, returns it top-level, and mirrors it into `agent_guidance`.
    - Commands:
      `python -m pytest -q`
      `python -m ruff check .`
-     `creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" --provider-mode deterministic --repo-language Python`
+     `muse-mcp-smoke "Design a retry strategy for AI coding agents" --provider-mode deterministic --repo-language Python`

@@ -3,8 +3,8 @@ from uuid import UUID
 
 import pytest
 
-from creativity_layer.models import EvaluationScores, IdeaGenome
-from creativity_layer.population import PopulationManager
+from muse.models import EvaluationScores, IdeaGenome
+from muse.population import PopulationManager
 
 
 def candidate(

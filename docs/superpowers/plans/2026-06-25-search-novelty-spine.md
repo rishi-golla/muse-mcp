@@ -6,7 +6,7 @@
 
 **Architecture:** Add provider-neutral search contracts, deterministic mocked search providers, a stable search cache, source abstraction models, novelty scoring, and a search-aware orchestration layer that preserves independent branch isolation. Keep live Exa, Brave, OpenAI web search, and paid OpenAI calls out of this slice; every new behavior must be testable offline through deterministic fixtures.
 
-**Tech Stack:** Python 3.12+, Pydantic 2.x, pytest, Ruff, existing Creativity Layer providers/budget/trace models
+**Tech Stack:** Python 3.12+, Pydantic 2.x, pytest, Ruff, existing Muse providers/budget/trace models
 
 ---
 
@@ -36,14 +36,14 @@ This plan does not implement:
 ## File Map
 
 ```text
-src/creativity_layer/search.py              Search models, search provider protocol, deterministic provider
-src/creativity_layer/search_cache.py        Stable cache keys, in-memory cache, cache hit metadata
-src/creativity_layer/inspiration.py         Source abstraction and safe principle extraction
-src/creativity_layer/novelty.py             Novelty dimensions, source-risk scoring, copying classification
-src/creativity_layer/search_pipeline.py     No-network search-aware orchestration wrapper
-src/creativity_layer/models.py              Add likely-copying enum value for source relationship
-src/creativity_layer/privacy.py             Extend private trace hashing/redaction for source snippets
-src/creativity_layer/cli.py                 Add `compare` command
+src/muse/search.py              Search models, search provider protocol, deterministic provider
+src/muse/search_cache.py        Stable cache keys, in-memory cache, cache hit metadata
+src/muse/inspiration.py         Source abstraction and safe principle extraction
+src/muse/novelty.py             Novelty dimensions, source-risk scoring, copying classification
+src/muse/search_pipeline.py     No-network search-aware orchestration wrapper
+src/muse/models.py              Add likely-copying enum value for source relationship
+src/muse/privacy.py             Extend private trace hashing/redaction for source snippets
+src/muse/cli.py                 Add `compare` command
 README.md                                  Document no-network compare mode
 tests/test_search.py                       Search contract and deterministic provider tests
 tests/test_search_cache.py                 Cache key and hit/miss tests
@@ -57,7 +57,7 @@ tests/test_privacy.py                      Source-text privacy additions
 ## Task 1: Search Models and Deterministic Provider
 
 **Files:**
-- Create: `src/creativity_layer/search.py`
+- Create: `src/muse/search.py`
 - Create: `tests/test_search.py`
 
 - [ ] **Step 1: Write failing search contract tests**
@@ -69,7 +69,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from creativity_layer.search import (
+from muse.search import (
     DeterministicSearchProvider,
     SearchPurpose,
     SearchQuery,
@@ -153,12 +153,12 @@ Run:
 python -m pytest tests/test_search.py -v -p no:cacheprovider --basetemp=.pytest-tmp-task1-red
 ```
 
-Expected: FAIL because `creativity_layer.search` does not exist.
+Expected: FAIL because `muse.search` does not exist.
 
 - [ ] **Step 3: Implement search models and deterministic provider**
 
 ```python
-# src/creativity_layer/search.py
+# src/muse/search.py
 from __future__ import annotations
 
 import hashlib
@@ -170,8 +170,8 @@ from typing import Protocol
 
 from pydantic import Field, HttpUrl, computed_field, model_validator
 
-from creativity_layer.models import FrozenModel, OperationTrace, RequiredText
-from creativity_layer.providers import MeteredResponse, OperationQuote
+from muse.models import FrozenModel, OperationTrace, RequiredText
+from muse.providers import MeteredResponse, OperationQuote
 
 
 class SearchPurpose(StrEnum):
@@ -299,14 +299,14 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src/creativity_layer/search.py tests/test_search.py
+git add src/muse/search.py tests/test_search.py
 git commit -m "feat: add provider-neutral search contracts"
 ```
 
 ## Task 2: Search Cache
 
 **Files:**
-- Create: `src/creativity_layer/search_cache.py`
+- Create: `src/muse/search_cache.py`
 - Create: `tests/test_search_cache.py`
 
 - [ ] **Step 1: Write failing cache tests**
@@ -315,8 +315,8 @@ git commit -m "feat: add provider-neutral search contracts"
 # tests/test_search_cache.py
 from datetime import UTC, datetime
 
-from creativity_layer.search import SearchPurpose, SearchQuery, SearchResult
-from creativity_layer.search_cache import SearchCache, SearchCacheKey
+from muse.search import SearchPurpose, SearchQuery, SearchResult
+from muse.search_cache import SearchCache, SearchCacheKey
 
 
 def query(text: str = "Reversible team decisions") -> SearchQuery:
@@ -373,12 +373,12 @@ def test_cache_records_hits_with_original_and_hit_times() -> None:
 python -m pytest tests/test_search_cache.py -v -p no:cacheprovider --basetemp=.pytest-tmp-task2-red
 ```
 
-Expected: FAIL because `creativity_layer.search_cache` does not exist.
+Expected: FAIL because `muse.search_cache` does not exist.
 
 - [ ] **Step 3: Implement cache**
 
 ```python
-# src/creativity_layer/search_cache.py
+# src/muse/search_cache.py
 from __future__ import annotations
 
 import hashlib
@@ -386,8 +386,8 @@ import json
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from creativity_layer.models import FrozenModel, RequiredText
-from creativity_layer.search import SearchQuery, SearchResult
+from muse.models import FrozenModel, RequiredText
+from muse.search import SearchQuery, SearchResult
 
 
 class SearchCacheKey(FrozenModel):
@@ -451,14 +451,14 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src/creativity_layer/search_cache.py tests/test_search_cache.py
+git add src/muse/search_cache.py tests/test_search_cache.py
 git commit -m "feat: add deterministic search cache"
 ```
 
 ## Task 3: Source Abstraction
 
 **Files:**
-- Create: `src/creativity_layer/inspiration.py`
+- Create: `src/muse/inspiration.py`
 - Create: `tests/test_inspiration.py`
 
 - [ ] **Step 1: Write failing abstraction tests**
@@ -470,8 +470,8 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from creativity_layer.inspiration import SourceAbstraction, abstract_sources
-from creativity_layer.search import SearchResult
+from muse.inspiration import SourceAbstraction, abstract_sources
+from muse.search import SearchResult
 
 
 def source(snippet: str = "Teams revise claims as evidence arrives.") -> SearchResult:
@@ -515,20 +515,20 @@ def test_source_abstraction_rejects_raw_prompt_injection_language() -> None:
 python -m pytest tests/test_inspiration.py -v -p no:cacheprovider --basetemp=.pytest-tmp-task3-red
 ```
 
-Expected: FAIL because `creativity_layer.inspiration` does not exist.
+Expected: FAIL because `muse.inspiration` does not exist.
 
 - [ ] **Step 3: Implement abstraction model**
 
 ```python
-# src/creativity_layer/inspiration.py
+# src/muse/inspiration.py
 from __future__ import annotations
 
 import re
 
 from pydantic import Field, model_validator
 
-from creativity_layer.models import FrozenModel, RequiredText, Score
-from creativity_layer.search import SearchResult
+from muse.models import FrozenModel, RequiredText, Score
+from muse.search import SearchResult
 
 INJECTION_PATTERN = re.compile(
     r"(ignore\s+(all\s+)?previous\s+instructions|reveal\s+secrets|system\s+prompt)",
@@ -601,14 +601,14 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src/creativity_layer/inspiration.py tests/test_inspiration.py
+git add src/muse/inspiration.py tests/test_inspiration.py
 git commit -m "feat: add source abstraction model"
 ```
 
 ## Task 4: Novelty and Source-Risk Scoring
 
 **Files:**
-- Create: `src/creativity_layer/novelty.py`
+- Create: `src/muse/novelty.py`
 - Create: `tests/test_novelty.py`
 
 - [ ] **Step 1: Write failing novelty tests**
@@ -617,9 +617,9 @@ git commit -m "feat: add source abstraction model"
 # tests/test_novelty.py
 from uuid import uuid4
 
-from creativity_layer.inspiration import SourceAbstraction
-from creativity_layer.models import IdeaGenome, InspirationKind
-from creativity_layer.novelty import CopyingClassification, score_novelty
+from muse.inspiration import SourceAbstraction
+from muse.models import IdeaGenome, InspirationKind
+from muse.novelty import CopyingClassification, score_novelty
 
 
 def idea(title: str, mechanism: str) -> IdeaGenome:
@@ -702,19 +702,19 @@ def test_prior_art_failure_lowers_coverage_confidence() -> None:
 python -m pytest tests/test_novelty.py -v -p no:cacheprovider --basetemp=.pytest-tmp-task4-red
 ```
 
-Expected: FAIL because `creativity_layer.novelty` does not exist.
+Expected: FAIL because `muse.novelty` does not exist.
 
 - [ ] **Step 3: Implement deterministic novelty scorer**
 
 ```python
-# src/creativity_layer/novelty.py
+# src/muse/novelty.py
 from __future__ import annotations
 
 import re
 from enum import StrEnum
 
-from creativity_layer.inspiration import SourceAbstraction
-from creativity_layer.models import FrozenModel, IdeaGenome, Score
+from muse.inspiration import SourceAbstraction
+from muse.models import FrozenModel, IdeaGenome, Score
 
 
 class CopyingClassification(StrEnum):
@@ -827,25 +827,25 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src/creativity_layer/novelty.py tests/test_novelty.py
+git add src/muse/novelty.py tests/test_novelty.py
 git commit -m "feat: add provisional novelty scoring"
 ```
 
 ## Task 5: Search-Aware Pipeline and Branch Isolation
 
 **Files:**
-- Create: `src/creativity_layer/search_pipeline.py`
-- Modify: `src/creativity_layer/models.py`
+- Create: `src/muse/search_pipeline.py`
+- Modify: `src/muse/models.py`
 - Create: `tests/test_search_pipeline.py`
 
 - [ ] **Step 1: Write failing pipeline tests**
 
 ```python
 # tests/test_search_pipeline.py
-from creativity_layer.deterministic import DeterministicCreativeProvider
-from creativity_layer.models import RunConfig, TaskContext
-from creativity_layer.search import DeterministicSearchProvider
-from creativity_layer.search_pipeline import SearchAwareEngine
+from muse.deterministic import DeterministicCreativeProvider
+from muse.models import RunConfig, TaskContext
+from muse.search import DeterministicSearchProvider
+from muse.search_pipeline import SearchAwareEngine
 
 
 def test_search_aware_run_keeps_at_least_half_branches_independent() -> None:
@@ -892,21 +892,21 @@ def test_independent_candidates_have_no_source_inheritance() -> None:
 python -m pytest tests/test_search_pipeline.py -v -p no:cacheprovider --basetemp=.pytest-tmp-task5-red
 ```
 
-Expected: FAIL because `creativity_layer.search_pipeline` does not exist.
+Expected: FAIL because `muse.search_pipeline` does not exist.
 
 - [ ] **Step 3: Implement search-aware wrapper**
 
 ```python
-# src/creativity_layer/search_pipeline.py
+# src/muse/search_pipeline.py
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from creativity_layer.engine import CreativeEngine
-from creativity_layer.inspiration import abstract_sources
-from creativity_layer.models import IdeaGenome, InspirationKind, RunConfig, RunResult, TaskContext
-from creativity_layer.providers import IdeaEvaluator, IdeaSeeder, IdeaTransformer, TaskFramer
-from creativity_layer.search import SearchProvider, SearchPurpose, SearchQuery
+from muse.engine import CreativeEngine
+from muse.inspiration import abstract_sources
+from muse.models import IdeaGenome, InspirationKind, RunConfig, RunResult, TaskContext
+from muse.providers import IdeaEvaluator, IdeaSeeder, IdeaTransformer, TaskFramer
+from muse.search import SearchProvider, SearchPurpose, SearchQuery
 
 
 @dataclass(frozen=True)
@@ -994,15 +994,15 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src/creativity_layer/search_pipeline.py tests/test_search_pipeline.py
+git add src/muse/search_pipeline.py tests/test_search_pipeline.py
 git commit -m "feat: add search-aware branch isolation"
 ```
 
 ## Task 6: Prior-Art Check and Anti-Copying
 
 **Files:**
-- Modify: `src/creativity_layer/search_pipeline.py`
-- Modify: `src/creativity_layer/models.py`
+- Modify: `src/muse/search_pipeline.py`
+- Modify: `src/muse/models.py`
 - Create or modify: `tests/test_search_pipeline.py`
 
 - [ ] **Step 1: Write failing anti-copying pipeline test**
@@ -1011,7 +1011,7 @@ git commit -m "feat: add search-aware branch isolation"
 # Add to tests/test_search_pipeline.py
 from datetime import UTC, datetime
 
-from creativity_layer.search import SearchResult
+from muse.search import SearchResult
 
 
 def test_likely_copying_finalist_is_not_returned_when_rejection_enabled() -> None:
@@ -1054,8 +1054,8 @@ Expected: FAIL because `SearchAwareEngine` does not accept `reject_likely_copyin
 - [ ] **Step 3: Implement finalist prior-art filtering**
 
 ```python
-# Update src/creativity_layer/search_pipeline.py
-from creativity_layer.novelty import CopyingClassification, score_novelty
+# Update src/muse/search_pipeline.py
+from muse.novelty import CopyingClassification, score_novelty
 
 # Add dataclass field:
 reject_likely_copying: bool = False
@@ -1086,7 +1086,7 @@ return _rebuild_result(
 )
 ```
 
-Also extend `InspirationKind` in `src/creativity_layer/models.py`:
+Also extend `InspirationKind` in `src/muse/models.py`:
 
 ```python
 class InspirationKind(StrEnum):
@@ -1108,14 +1108,14 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src/creativity_layer/search_pipeline.py src/creativity_layer/models.py tests/test_search_pipeline.py
+git add src/muse/search_pipeline.py src/muse/models.py tests/test_search_pipeline.py
 git commit -m "feat: add mocked prior-art copying checks"
 ```
 
 ## Task 7: Compare CLI
 
 **Files:**
-- Modify: `src/creativity_layer/cli.py`
+- Modify: `src/muse/cli.py`
 - Create: `tests/test_compare_cli.py`
 - Modify: `README.md`
 
@@ -1125,7 +1125,7 @@ git commit -m "feat: add mocked prior-art copying checks"
 # tests/test_compare_cli.py
 import json
 
-from creativity_layer.cli import run_cli
+from muse.cli import run_cli
 
 
 def test_compare_cli_runs_no_network_and_writes_two_traces(tmp_path, capsys) -> None:
@@ -1161,7 +1161,7 @@ Expected: FAIL because the CLI does not recognize `compare`.
 
 - [ ] **Step 3: Implement compare CLI**
 
-Add `compare` to `COMMANDS` and parser in `src/creativity_layer/cli.py`:
+Add `compare` to `COMMANDS` and parser in `src/muse/cli.py`:
 
 ```python
 COMMANDS = frozenset({"deterministic", "live", "compare"})
@@ -1183,8 +1183,8 @@ compare.add_argument("--budget-usd", type=float, default=0.10)
 Add:
 
 ```python
-from creativity_layer.search import DeterministicSearchProvider
-from creativity_layer.search_pipeline import SearchAwareEngine
+from muse.search import DeterministicSearchProvider
+from muse.search_pipeline import SearchAwareEngine
 ```
 
 Add `_run_compare`:
@@ -1262,7 +1262,7 @@ Add to `README.md`:
 `compare` runs a deterministic baseline and a no-network search-aware pipeline:
 
 ```powershell
-creativity-layer compare "Invent a reversible team decision process" `
+muse compare "Invent a reversible team decision process" `
   --budget-usd 0.10 `
   --trace-dir .traces
 ```
@@ -1282,14 +1282,14 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add src/creativity_layer/cli.py tests/test_compare_cli.py README.md
+git add src/muse/cli.py tests/test_compare_cli.py README.md
 git commit -m "feat: add no-network compare CLI"
 ```
 
 ## Task 8: Privacy, Trace, and No-Network Final Review
 
 **Files:**
-- Modify: `src/creativity_layer/privacy.py`
+- Modify: `src/muse/privacy.py`
 - Modify: `tests/test_privacy.py`
 - Modify: `tests/test_tracing.py`
 - Modify: `tests/test_final_review.py`
@@ -1298,8 +1298,8 @@ git commit -m "feat: add no-network compare CLI"
 
 ```python
 # Add to tests/test_privacy.py
-from creativity_layer.live_config import PrivacyMode
-from creativity_layer.privacy import TraceView
+from muse.live_config import PrivacyMode
+from muse.privacy import TraceView
 
 
 def test_private_trace_hashes_source_snippets_and_excerpts() -> None:
@@ -1325,7 +1325,7 @@ def test_private_trace_hashes_source_snippets_and_excerpts() -> None:
 ```python
 # Add to tests/test_final_review.py
 def test_compare_mode_does_not_reference_live_search_adapters() -> None:
-    import creativity_layer.cli as cli
+    import muse.cli as cli
 
     assert "Exa" not in cli.__dict__
     assert "Brave" not in cli.__dict__
@@ -1341,7 +1341,7 @@ Expected: privacy test fails because source snippet keys are not private text ke
 
 - [ ] **Step 3: Extend privacy keys**
 
-Add to `PRIVATE_TEXT_KEYS` in `src/creativity_layer/privacy.py`:
+Add to `PRIVATE_TEXT_KEYS` in `src/muse/privacy.py`:
 
 ```python
 "boundedexcerpt",
@@ -1360,7 +1360,7 @@ Expected: PASS.
 - [ ] **Step 5: Run full verification**
 
 ```powershell
-python -m pytest -m "not live_openai" -q --cov=creativity_layer --cov-report=term-missing -p no:cacheprovider --basetemp=.pytest-tmp-2b-final
+python -m pytest -m "not live_openai" -q --cov=muse --cov-report=term-missing -p no:cacheprovider --basetemp=.pytest-tmp-2b-final
 python -m ruff check .
 ```
 
@@ -1369,7 +1369,7 @@ Expected: all offline tests pass, live OpenAI test deselected, Ruff passes.
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add src/creativity_layer/privacy.py tests/test_privacy.py tests/test_tracing.py tests/test_final_review.py
+git add src/muse/privacy.py tests/test_privacy.py tests/test_tracing.py tests/test_final_review.py
 git commit -m "test: verify search privacy and no-network compare"
 ```
 
@@ -1377,7 +1377,7 @@ git commit -m "test: verify search privacy and no-network compare"
 
 Before opening a PR:
 
-- [ ] `python -m pytest -m "not live_openai" -q --cov=creativity_layer --cov-report=term-missing -p no:cacheprovider --basetemp=.pytest-tmp-2b-final`
+- [ ] `python -m pytest -m "not live_openai" -q --cov=muse --cov-report=term-missing -p no:cacheprovider --basetemp=.pytest-tmp-2b-final`
 - [ ] `python -m ruff check .`
 - [ ] `git diff --check main...HEAD`
 - [ ] Code review confirms:

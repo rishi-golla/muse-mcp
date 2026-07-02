@@ -42,7 +42,7 @@ Expected: one docs commit.
 
 - [ ] **Step 1: Add the failing tests**
 
-Add tests that import `DOGFOOD_QUALITY_PROMPT_BLOCK` from `creativity_layer.openai_provider` and assert:
+Add tests that import `DOGFOOD_QUALITY_PROMPT_BLOCK` from `muse.openai_provider` and assert:
 
 ```python
 def test_dogfood_quality_prompt_block_names_quality_gates() -> None:
@@ -78,7 +78,7 @@ Expected: FAIL because `DOGFOOD_QUALITY_PROMPT_BLOCK` is not defined.
 ### Task 3: Implement Shared Live Quality Pressure
 
 **Files:**
-- Modify: `src/creativity_layer/openai_provider.py`
+- Modify: `src/muse/openai_provider.py`
 - Modify: `tests/test_openai_provider.py`
 
 - [ ] **Step 1: Add the minimal implementation**
@@ -100,7 +100,7 @@ Expected: PASS.
 Run:
 
 ```powershell
-git add src\creativity_layer\openai_provider.py tests\test_openai_provider.py
+git add src\muse\openai_provider.py tests\test_openai_provider.py
 git commit -m "feat: align live prompts with dogfood quality gates"
 ```
 
@@ -184,7 +184,7 @@ Expected: all checks pass.
 Run:
 
 ```powershell
-creativity-layer-dogfood-quality --provider-mode deterministic --case agent-retry-python --variant search-off --json
+muse-dogfood-quality --provider-mode deterministic --case agent-retry-python --variant search-off --json
 ```
 
 Expected: command returns JSON report. Deterministic quality gates may fail because deterministic mode is fixture-like.

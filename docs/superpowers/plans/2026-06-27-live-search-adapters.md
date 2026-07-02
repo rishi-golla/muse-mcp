@@ -13,11 +13,11 @@
 ## File Map
 
 ```text
-src/creativity_layer/live_search_config.py       Search credentials, runtime config, adapter errors
-src/creativity_layer/exa_search.py               Exa SearchProvider adapter
-src/creativity_layer/brave_search.py             Brave SearchProvider adapter
-src/creativity_layer/openai_web_search.py        OpenAI web-search SearchProvider adapter
-src/creativity_layer/search.py                   Optional usage metadata extension only if tests require it
+src/muse/live_search_config.py       Search credentials, runtime config, adapter errors
+src/muse/exa_search.py               Exa SearchProvider adapter
+src/muse/brave_search.py             Brave SearchProvider adapter
+src/muse/openai_web_search.py        OpenAI web-search SearchProvider adapter
+src/muse/search.py                   Optional usage metadata extension only if tests require it
 pyproject.toml                                   Add live_search pytest marker
 README.md                                       Document live search setup and no-network defaults
 tests/test_live_search_config.py                 Config/error tests
@@ -41,7 +41,7 @@ tests/test_final_review.py                       No-network and secret-safety re
 ## Task 1: Live Search Config and Error Boundary
 
 **Files:**
-- Create: `src/creativity_layer/live_search_config.py`
+- Create: `src/muse/live_search_config.py`
 - Create: `tests/test_live_search_config.py`
 - Modify: `pyproject.toml`
 
@@ -52,7 +52,7 @@ tests/test_final_review.py                       No-network and secret-safety re
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from creativity_layer.live_search_config import (
+from muse.live_search_config import (
     BraveSearchCredentials,
     ExaSearchCredentials,
     LiveSearchRuntime,
@@ -108,12 +108,12 @@ def test_search_provider_error_redacts_secret_values() -> None:
 .\.venv\Scripts\python.exe -m pytest tests/test_live_search_config.py -v -p no:cacheprovider --basetemp=.pytest-tmp-task1-red
 ```
 
-Expected: FAIL because `creativity_layer.live_search_config` does not exist.
+Expected: FAIL because `muse.live_search_config` does not exist.
 
 - [ ] **Step 3: Implement config/error module and marker**
 
 ```python
-# src/creativity_layer/live_search_config.py
+# src/muse/live_search_config.py
 from __future__ import annotations
 
 import os
@@ -121,8 +121,8 @@ from dataclasses import dataclass
 
 from pydantic import Field, SecretStr
 
-from creativity_layer.models import FrozenModel, RequiredText
-from creativity_layer.privacy import REDACTED
+from muse.models import FrozenModel, RequiredText
+from muse.privacy import REDACTED
 
 
 class ExaSearchCredentials(FrozenModel):
@@ -193,14 +193,14 @@ markers = [
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_live_search_config.py -v -p no:cacheprovider --basetemp=.pytest-tmp-task1-green
 .\.venv\Scripts\python.exe -m ruff check .
-git add src/creativity_layer/live_search_config.py tests/test_live_search_config.py pyproject.toml
+git add src/muse/live_search_config.py tests/test_live_search_config.py pyproject.toml
 git commit -m "feat: add live search configuration"
 ```
 
 ## Task 2: Exa Search Adapter
 
 **Files:**
-- Create: `src/creativity_layer/exa_search.py`
+- Create: `src/muse/exa_search.py`
 - Create: `tests/test_exa_search.py`
 
 - [ ] **Step 1: Write failing Exa adapter tests**
@@ -209,9 +209,9 @@ git commit -m "feat: add live search configuration"
 # tests/test_exa_search.py
 from pydantic import SecretStr
 
-from creativity_layer.exa_search import ExaSearchProvider
-from creativity_layer.live_search_config import ExaSearchCredentials, LiveSearchRuntime
-from creativity_layer.search import SearchPurpose, SearchQuery
+from muse.exa_search import ExaSearchProvider
+from muse.live_search_config import ExaSearchCredentials, LiveSearchRuntime
+from muse.search import SearchPurpose, SearchQuery
 
 
 class FakeExaClient:
@@ -277,7 +277,7 @@ def test_exa_search_skips_malformed_results() -> None:
 .\.venv\Scripts\python.exe -m pytest tests/test_exa_search.py -v -p no:cacheprovider --basetemp=.pytest-tmp-task2-red
 ```
 
-Expected: FAIL because `creativity_layer.exa_search` does not exist.
+Expected: FAIL because `muse.exa_search` does not exist.
 
 - [ ] **Step 3: Implement Exa adapter**
 
@@ -301,14 +301,14 @@ Normalize dict-like results and object-like results by reading `title`, `url`,
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_exa_search.py tests/test_live_search_config.py -v -p no:cacheprovider --basetemp=.pytest-tmp-task2-green
 .\.venv\Scripts\python.exe -m ruff check .
-git add src/creativity_layer/exa_search.py tests/test_exa_search.py
+git add src/muse/exa_search.py tests/test_exa_search.py
 git commit -m "feat: add Exa search adapter"
 ```
 
 ## Task 3: Brave Search Adapter
 
 **Files:**
-- Create: `src/creativity_layer/brave_search.py`
+- Create: `src/muse/brave_search.py`
 - Create: `tests/test_brave_search.py`
 
 - [ ] **Step 1: Write failing Brave tests**
@@ -317,9 +317,9 @@ git commit -m "feat: add Exa search adapter"
 # tests/test_brave_search.py
 from pydantic import SecretStr
 
-from creativity_layer.brave_search import BraveSearchProvider
-from creativity_layer.live_search_config import BraveSearchCredentials, LiveSearchRuntime
-from creativity_layer.search import SearchPurpose, SearchQuery
+from muse.brave_search import BraveSearchProvider
+from muse.live_search_config import BraveSearchCredentials, LiveSearchRuntime
+from muse.search import SearchPurpose, SearchQuery
 
 
 class FakeResponse:
@@ -402,23 +402,23 @@ validated `SearchResult` values and sanitize errors with `SearchProviderError`.
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_brave_search.py tests/test_live_search_config.py -v -p no:cacheprovider --basetemp=.pytest-tmp-task3-green
 .\.venv\Scripts\python.exe -m ruff check .
-git add src/creativity_layer/brave_search.py tests/test_brave_search.py
+git add src/muse/brave_search.py tests/test_brave_search.py
 git commit -m "feat: add Brave search adapter"
 ```
 
 ## Task 4: OpenAI Web Search Adapter
 
 **Files:**
-- Create: `src/creativity_layer/openai_web_search.py`
+- Create: `src/muse/openai_web_search.py`
 - Create: `tests/test_openai_web_search.py`
 
 - [ ] **Step 1: Write failing OpenAI web-search tests**
 
 ```python
 # tests/test_openai_web_search.py
-from creativity_layer.live_search_config import OpenAIWebSearchConfig, LiveSearchRuntime
-from creativity_layer.openai_web_search import OpenAIWebSearchProvider
-from creativity_layer.search import SearchPurpose, SearchQuery
+from muse.live_search_config import OpenAIWebSearchConfig, LiveSearchRuntime
+from muse.openai_web_search import OpenAIWebSearchProvider
+from muse.search import SearchPurpose, SearchQuery
 
 
 class FakeResponses:
@@ -496,7 +496,7 @@ Extract `url_citation` annotations from dict-like or object-like responses. Buil
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_openai_web_search.py tests/test_live_search_config.py -v -p no:cacheprovider --basetemp=.pytest-tmp-task4-green
 .\.venv\Scripts\python.exe -m ruff check .
-git add src/creativity_layer/openai_web_search.py tests/test_openai_web_search.py
+git add src/muse/openai_web_search.py tests/test_openai_web_search.py
 git commit -m "feat: add OpenAI web search adapter"
 ```
 
@@ -516,22 +516,22 @@ import os
 import pytest
 from openai import OpenAI
 
-from creativity_layer.brave_search import BraveSearchProvider
-from creativity_layer.exa_search import ExaSearchProvider
-from creativity_layer.live_search_config import (
+from muse.brave_search import BraveSearchProvider
+from muse.exa_search import ExaSearchProvider
+from muse.live_search_config import (
     BraveSearchCredentials,
     ExaSearchCredentials,
     LiveSearchRuntime,
     OpenAIWebSearchConfig,
 )
-from creativity_layer.openai_web_search import OpenAIWebSearchProvider
-from creativity_layer.search import SearchPurpose, SearchQuery
+from muse.openai_web_search import OpenAIWebSearchProvider
+from muse.search import SearchPurpose, SearchQuery
 
 pytestmark = pytest.mark.live_search
 
 
 def _approved() -> bool:
-    return os.getenv("CREATIVITY_LAYER_LIVE_SEARCH_APPROVED") == "1"
+    return os.getenv("MUSE_LIVE_SEARCH_APPROVED") == "1"
 
 
 def test_live_exa_search_smoke() -> None:
@@ -591,7 +591,7 @@ Normal test runs do not call Exa, Brave, or OpenAI web search. Live search adapt
 smoke tests are opt-in:
 
 ```powershell
-$env:CREATIVITY_LAYER_LIVE_SEARCH_APPROVED = "1"
+$env:MUSE_LIVE_SEARCH_APPROVED = "1"
 $env:EXA_API_KEY = "<exa-api-key>"
 $env:BRAVE_SEARCH_API_KEY = "<brave-search-api-key>"
 $env:OPENAI_API_KEY = "<openai-api-key>"
@@ -618,7 +618,7 @@ git commit -m "test: add live search smoke coverage"
 Run before PR:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -m "not live_openai and not live_search" -q --cov=creativity_layer --cov-report=term-missing -p no:cacheprovider --basetemp=.pytest-tmp-2bb-final
+.\.venv\Scripts\python.exe -m pytest -m "not live_openai and not live_search" -q --cov=muse --cov-report=term-missing -p no:cacheprovider --basetemp=.pytest-tmp-2bb-final
 .\.venv\Scripts\python.exe -m ruff check .
 git diff --check origin/main...HEAD
 ```

@@ -1,8 +1,8 @@
 import pytest
 
-from creativity_layer.inspiration import SourceAbstraction
-from creativity_layer.models import IdeaGenome
-from creativity_layer.novelty import CopyingClassification, score_novelty
+from muse.inspiration import SourceAbstraction
+from muse.models import IdeaGenome
+from muse.novelty import CopyingClassification, score_novelty
 
 
 def idea(

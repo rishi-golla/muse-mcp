@@ -4,7 +4,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-from creativity_layer.agent_loop_proof import (
+from muse.agent_loop_proof import (
     create_sample_retry_repo,
     run_agent_loop_proof,
     run_verification,
@@ -58,8 +58,8 @@ def test_agent_loop_proof_console_script_and_docs_are_registered() -> None:
     proof_doc = Path("docs/integrations/agent-loop-proof.md")
     readme = Path("README.md").read_text(encoding="utf-8")
 
-    assert pyproject["project"]["scripts"]["creativity-layer-agent-proof"] == (
-        "creativity_layer.agent_loop_proof:main"
+    assert pyproject["project"]["scripts"]["muse-agent-proof"] == (
+        "muse.agent_loop_proof:main"
     )
     assert proof_doc.exists()
 
@@ -67,5 +67,5 @@ def test_agent_loop_proof_console_script_and_docs_are_registered() -> None:
     assert "mcp" in proof_text
     assert "deterministic" in proof_text
     assert "bounded repair" in proof_text
-    assert "creativity-layer-agent-proof" in proof_text
+    assert "muse-agent-proof" in proof_text
     assert "docs/integrations/agent-loop-proof.md" in readme

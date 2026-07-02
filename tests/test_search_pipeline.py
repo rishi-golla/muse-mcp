@@ -5,18 +5,18 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from creativity_layer.deterministic import DeterministicCreativeProvider
-from creativity_layer.engine import CreativeEngine
-from creativity_layer.models import InspirationKind, RunConfig, RunResult, TaskContext
-from creativity_layer.providers import OperationQuote
-from creativity_layer.search import (
+from muse.deterministic import DeterministicCreativeProvider
+from muse.engine import CreativeEngine
+from muse.models import InspirationKind, RunConfig, RunResult, TaskContext
+from muse.providers import OperationQuote
+from muse.search import (
     MeteredSearchUsage,
     SearchProviderResponse,
     SearchPurpose,
     SearchQuery,
     SearchResult,
 )
-from creativity_layer.search_pipeline import SearchAwareEngine
+from muse.search_pipeline import SearchAwareEngine
 
 
 class RecordingSearchProvider:

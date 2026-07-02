@@ -13,9 +13,9 @@
 ## File Map
 
 ```text
-src/creativity_layer/calibration_packets.py       Packet models, builder, JSON writer
-src/creativity_layer/cli.py                       review-packet command
-src/creativity_layer/__init__.py                  optional public exports
+src/muse/calibration_packets.py       Packet models, builder, JSON writer
+src/muse/cli.py                       review-packet command
+src/muse/__init__.py                  optional public exports
 tests/test_calibration_packets.py                 Unit tests for packet contract and writer
 tests/test_review_packet_cli.py                   CLI tests
 tests/test_final_review.py                        Hidden-field regression
@@ -34,7 +34,7 @@ README.md                                        Review packet command docs
 ## Task 1: Packet Models and Builder
 
 **Files:**
-- Create: `src/creativity_layer/calibration_packets.py`
+- Create: `src/muse/calibration_packets.py`
 - Create: `tests/test_calibration_packets.py`
 
 - [ ] **Step 1: Write failing packet model and builder tests**
@@ -42,7 +42,7 @@ README.md                                        Review packet command docs
 Add tests that construct a `RunResult` with scored finalists and assert:
 
 ```python
-from creativity_layer.calibration_packets import build_review_packet
+from muse.calibration_packets import build_review_packet
 
 packet = build_review_packet(run_result(), shuffle_seed=17)
 assert packet.packet_version == "review-packet-v1"
@@ -60,7 +60,7 @@ provider name, `branch_cost_usd`, `branch_latency_ms`, or `operation_trace`.
 .\.venv\Scripts\python.exe -m pytest tests/test_calibration_packets.py -v -p no:cacheprovider --basetemp=.pytest-tmp-task1-red
 ```
 
-Expected: FAIL because `creativity_layer.calibration_packets` does not exist.
+Expected: FAIL because `muse.calibration_packets` does not exist.
 
 - [ ] **Step 3: Implement packet models and builder**
 
@@ -130,14 +130,14 @@ Use `random.Random(seed_material).shuffle()` where `seed_material` combines
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_calibration_packets.py -v -p no:cacheprovider --basetemp=.pytest-tmp-task1-green
 .\.venv\Scripts\python.exe -m ruff check .
-git add src/creativity_layer/calibration_packets.py tests/test_calibration_packets.py
+git add src/muse/calibration_packets.py tests/test_calibration_packets.py
 git commit -m "feat: add calibration review packet models"
 ```
 
 ## Task 2: Stable Packet Writer
 
 **Files:**
-- Modify: `src/creativity_layer/calibration_packets.py`
+- Modify: `src/muse/calibration_packets.py`
 - Modify: `tests/test_calibration_packets.py`
 
 - [ ] **Step 1: Write failing writer tests**
@@ -145,7 +145,7 @@ git commit -m "feat: add calibration review packet models"
 Add tests for:
 
 ```python
-from creativity_layer.calibration_packets import ReviewPacketStore
+from muse.calibration_packets import ReviewPacketStore
 
 path = ReviewPacketStore(tmp_path).save(packet)
 assert path.name == f"{packet.packet_id}.review-packet.json"
@@ -173,14 +173,14 @@ Add `ReviewPacketStore(root: Path).save(packet: ReviewPacket) -> Path`. Follow t
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_calibration_packets.py -v -p no:cacheprovider --basetemp=.pytest-tmp-task2-green
 .\.venv\Scripts\python.exe -m ruff check .
-git add src/creativity_layer/calibration_packets.py tests/test_calibration_packets.py
+git add src/muse/calibration_packets.py tests/test_calibration_packets.py
 git commit -m "feat: add review packet artifact store"
 ```
 
 ## Task 3: Review Packet CLI
 
 **Files:**
-- Modify: `src/creativity_layer/cli.py`
+- Modify: `src/muse/cli.py`
 - Create: `tests/test_review_packet_cli.py`
 
 - [ ] **Step 1: Write failing CLI tests**
@@ -232,14 +232,14 @@ Validation and JSON parse errors return `2`; write errors return `1`.
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_review_packet_cli.py tests/test_calibration_packets.py -v -p no:cacheprovider --basetemp=.pytest-tmp-task3-green
 .\.venv\Scripts\python.exe -m ruff check .
-git add src/creativity_layer/cli.py tests/test_review_packet_cli.py
+git add src/muse/cli.py tests/test_review_packet_cli.py
 git commit -m "feat: add review packet CLI"
 ```
 
 ## Task 4: Docs, Exports, and Final Review Regressions
 
 **Files:**
-- Modify: `src/creativity_layer/__init__.py`
+- Modify: `src/muse/__init__.py`
 - Modify: `tests/test_final_review.py`
 - Modify: `README.md`
 
@@ -248,7 +248,7 @@ git commit -m "feat: add review packet CLI"
 Add tests that:
 
 ```python
-from creativity_layer import ReviewPacket
+from muse import ReviewPacket
 assert ReviewPacket.__name__ == "ReviewPacket"
 ```
 
@@ -280,7 +280,7 @@ that rating ingestion and calibration fitting are later 2C slices.
 .\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp=.pytest-tmp-2ca-final
 .\.venv\Scripts\python.exe -m ruff check .
 git diff --check
-git add src/creativity_layer/__init__.py tests/test_final_review.py README.md
+git add src/muse/__init__.py tests/test_final_review.py README.md
 git commit -m "test: add review packet final checks"
 ```
 
@@ -289,7 +289,7 @@ git commit -m "test: add review packet final checks"
 Run before PR:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -q --cov=creativity_layer --cov-report=term-missing -p no:cacheprovider --basetemp=.pytest-tmp-2ca-final-coverage
+.\.venv\Scripts\python.exe -m pytest -q --cov=muse --cov-report=term-missing -p no:cacheprovider --basetemp=.pytest-tmp-2ca-final-coverage
 .\.venv\Scripts\python.exe -m ruff check .
 git diff --check origin/main...HEAD
 ```

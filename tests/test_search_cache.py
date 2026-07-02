@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from creativity_layer.search import SearchPurpose, SearchQuery, SearchResult
-from creativity_layer.search_cache import SearchCache, SearchCacheKey
+from muse.search import SearchPurpose, SearchQuery, SearchResult
+from muse.search_cache import SearchCache, SearchCacheKey
 
 
 def _query(

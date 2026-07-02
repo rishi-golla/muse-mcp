@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make the MCP integration practical for real coding-agent dogfooding by adding cheap effort presets, explicit agent guidance in MCP results, and a short playbook for using creativity-layer during normal coding in a separate repository.
+Make the MCP integration practical for real coding-agent dogfooding by adding cheap effort presets, explicit agent guidance in MCP results, and a short playbook for using muse during normal coding in a separate repository.
 
 ## Current Problem
 
@@ -37,9 +37,9 @@ Update the MCP smoke runner with `--effort`, and add a dogfood playbook that exp
 
 ## Files
 
-- `src/creativity_layer/middleware.py`: effort presets, resolved defaults, `agent_guidance` serialization.
-- `src/creativity_layer/mcp_server.py`: expose `effort` in the MCP tool signature and description.
-- `src/creativity_layer/mcp_smoke.py`: add `--effort`.
+- `src/muse/middleware.py`: effort presets, resolved defaults, `agent_guidance` serialization.
+- `src/muse/mcp_server.py`: expose `effort` in the MCP tool signature and description.
+- `src/muse/mcp_smoke.py`: add `--effort`.
 - `tests/test_middleware.py`: effort defaults, override behavior, guidance contract.
 - `tests/test_mcp_server.py`: MCP signature behavior and guidance presence.
 - `tests/test_mcp_smoke.py`: smoke runner passes effort.

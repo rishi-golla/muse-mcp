@@ -3,14 +3,14 @@ from decimal import Decimal
 
 import pytest
 
-from creativity_layer.budget import (
+from muse.budget import (
     BudgetController,
     BudgetExceeded,
     BudgetReservation,
 )
-from creativity_layer.engine import CreativeEngine
-from creativity_layer.models import OperationTrace, RunConfig, RunError, TokenUsage
-from creativity_layer.providers import MeteredResponse, OperationQuote
+from muse.engine import CreativeEngine
+from muse.models import OperationTrace, RunConfig, RunError, TokenUsage
+from muse.providers import MeteredResponse, OperationQuote
 
 
 def test_budget_reserves_finalization_capacity() -> None:

@@ -4,21 +4,21 @@ from decimal import Decimal
 
 from pytest import MonkeyPatch
 
-import creativity_layer.engine as engine_module
-from creativity_layer import CreativeEngine as ExportedCreativeEngine
-from creativity_layer.budget import BudgetController
-from creativity_layer.deterministic import DeterministicCreativeProvider
-from creativity_layer.engine import CreativeEngine
-from creativity_layer.models import (
+import muse.engine as engine_module
+from muse import CreativeEngine as ExportedCreativeEngine
+from muse.budget import BudgetController
+from muse.deterministic import DeterministicCreativeProvider
+from muse.engine import CreativeEngine
+from muse.models import (
     EvaluationScores,
     FramedTask,
     IdeaGenome,
     RunConfig,
     TaskContext,
 )
-from creativity_layer.population import PopulationManager
-from creativity_layer.providers import MeteredResponse, OperationQuote
-from creativity_layer.transforms import TransformationRequest
+from muse.population import PopulationManager
+from muse.providers import MeteredResponse, OperationQuote
+from muse.transforms import TransformationRequest
 
 
 class CountingProvider(DeterministicCreativeProvider):

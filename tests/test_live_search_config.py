@@ -1,7 +1,7 @@
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from creativity_layer.live_search_config import (
+from muse.live_search_config import (
     BraveSearchCredentials,
     ExaSearchCredentials,
     LiveSearchRuntime,

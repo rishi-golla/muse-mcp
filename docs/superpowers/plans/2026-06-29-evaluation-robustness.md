@@ -13,10 +13,10 @@
 ## File Map
 
 ```text
-src/creativity_layer/openai_schemas.py       Add explicit score field descriptions
-src/creativity_layer/openai_provider.py      Repair parse ValidationError and improve repair prompt
-src/creativity_layer/engine.py               Preserve unevaluated candidates and prefer scored finalists
-src/creativity_layer/cli.py                  Add generated/unevaluated summary fields
+src/muse/openai_schemas.py       Add explicit score field descriptions
+src/muse/openai_provider.py      Repair parse ValidationError and improve repair prompt
+src/muse/engine.py               Preserve unevaluated candidates and prefer scored finalists
+src/muse/cli.py                  Add generated/unevaluated summary fields
 tests/test_openai_provider.py                Provider repair regression for 0-10 scores
 tests/test_engine.py                         Partial evaluation failure regressions
 tests/test_cli.py                            Summary regressions for unevaluated candidates
@@ -35,8 +35,8 @@ tests/test_final_review.py                   Final regression for live evaluatio
 ## Task 1: OpenAI Evaluation Repair
 
 **Files:**
-- Modify: `src/creativity_layer/openai_schemas.py`
-- Modify: `src/creativity_layer/openai_provider.py`
+- Modify: `src/muse/openai_schemas.py`
+- Modify: `src/muse/openai_provider.py`
 - Modify: `tests/test_openai_provider.py`
 
 - [ ] **Step 1: Write failing provider repair test**
@@ -96,7 +96,7 @@ Expected: FAIL because `_execute_parse()` `ValidationError`s are treated as imme
 
 - [ ] **Step 3: Add score descriptions**
 
-In `src/creativity_layer/openai_schemas.py`, change `OpenAIEvaluation` fields to:
+In `src/muse/openai_schemas.py`, change `OpenAIEvaluation` fields to:
 
 ```python
 class OpenAIEvaluation(OpenAIOutputModel):
@@ -111,7 +111,7 @@ Also import `Field` from `pydantic`.
 
 - [ ] **Step 4: Repair parse `ValidationError`s**
 
-In `src/creativity_layer/openai_provider.py`, update `_call_structured()` so `ValidationError` raised by `_execute_parse()` is handled like parsed-domain validation failures:
+In `src/muse/openai_provider.py`, update `_call_structured()` so `ValidationError` raised by `_execute_parse()` is handled like parsed-domain validation failures:
 
 ```python
             try:
@@ -151,14 +151,14 @@ Change `_repair_request_input()` signature to accept `error: ValueError | Valida
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_openai_provider.py -q -p no:cacheprovider --basetemp=.pytest-tmp-task1-green
 .\.venv\Scripts\python.exe -m ruff check .
-git add src/creativity_layer/openai_schemas.py src/creativity_layer/openai_provider.py tests/test_openai_provider.py
+git add src/muse/openai_schemas.py src/muse/openai_provider.py tests/test_openai_provider.py
 git commit -m "fix: repair invalid OpenAI evaluation scale"
 ```
 
 ## Task 2: Preserve Unevaluated Candidates
 
 **Files:**
-- Modify: `src/creativity_layer/engine.py`
+- Modify: `src/muse/engine.py`
 - Modify: `tests/test_engine.py`
 
 - [ ] **Step 1: Replace seed-batch hiding regression**
@@ -284,14 +284,14 @@ In `_result()`, select scored candidates first and use all candidates only when 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_engine.py -q -p no:cacheprovider --basetemp=.pytest-tmp-task2-green
 .\.venv\Scripts\python.exe -m ruff check .
-git add src/creativity_layer/engine.py tests/test_engine.py
+git add src/muse/engine.py tests/test_engine.py
 git commit -m "fix: preserve unevaluated candidates"
 ```
 
 ## Task 3: Safe Evaluation Diagnostics
 
 **Files:**
-- Modify: `src/creativity_layer/engine.py`
+- Modify: `src/muse/engine.py`
 - Modify: `tests/test_engine.py`
 - Modify: `tests/test_final_review.py`
 
@@ -340,7 +340,7 @@ Expected: FAIL because the engine records a generic provider error.
 
 - [ ] **Step 3: Add diagnostic classifier**
 
-In `src/creativity_layer/engine.py`, add:
+In `src/muse/engine.py`, add:
 
 ```python
 def _evaluation_error_details(error: Exception) -> tuple[str, str]:
@@ -380,21 +380,21 @@ def test_evaluation_scale_errors_are_safe_and_actionable() -> None:
     assert "request_json" not in source
 ```
 
-Import `creativity_layer.engine as engine_module` if missing.
+Import `muse.engine as engine_module` if missing.
 
 - [ ] **Step 5: Run GREEN and commit**
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_engine.py::test_engine_records_safe_evaluation_scale_diagnostic tests/test_final_review.py::test_evaluation_scale_errors_are_safe_and_actionable -q -p no:cacheprovider --basetemp=.pytest-tmp-task3-green
 .\.venv\Scripts\python.exe -m ruff check .
-git add src/creativity_layer/engine.py tests/test_engine.py tests/test_final_review.py
+git add src/muse/engine.py tests/test_engine.py tests/test_final_review.py
 git commit -m "fix: classify evaluation scale failures"
 ```
 
 ## Task 4: CLI Partial Result Summary
 
 **Files:**
-- Modify: `src/creativity_layer/cli.py`
+- Modify: `src/muse/cli.py`
 - Modify: `tests/test_cli.py`
 
 - [ ] **Step 1: Write failing CLI summary test**
@@ -463,7 +463,7 @@ Add to summary JSON:
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_cli.py -q -p no:cacheprovider --basetemp=.pytest-tmp-task4-green
 .\.venv\Scripts\python.exe -m ruff check .
-git add src/creativity_layer/cli.py tests/test_cli.py
+git add src/muse/cli.py tests/test_cli.py
 git commit -m "feat: summarize unevaluated candidates"
 ```
 
@@ -484,7 +484,7 @@ smoke tests can distinguish generation failures from evaluation failures.
 - [ ] **Step 2: Run final checks**
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -q --cov=creativity_layer --cov-report=term-missing -p no:cacheprovider --basetemp=.pytest-tmp-2da-final
+.\.venv\Scripts\python.exe -m pytest -q --cov=muse --cov-report=term-missing -p no:cacheprovider --basetemp=.pytest-tmp-2da-final
 .\.venv\Scripts\python.exe -m ruff check .
 git diff --check origin/main...HEAD
 ```

@@ -4,7 +4,7 @@ This proof is a deterministic local harness for validating the middleware-shaped
 
 1. Create a tiny external Python repo with a failing pytest check.
 2. Capture repo signals from that repo, including files, changed files, test command, CI-style failure text, language, and framework.
-3. Call the `creative_plan` MCP tool through the in-process FastMCP server.
+3. Call the `muse_plan` MCP tool through the in-process FastMCP server.
 4. Consume the selected operational plan fields.
 5. Apply one bounded repair to `retry_policy.py`.
 6. Rerun the same verification command and report whether it passed.
@@ -14,7 +14,7 @@ It is not the product interface. The preferred integration surface remains MCP f
 ## Run
 
 ```powershell
-creativity-layer-agent-proof --workspace .agent-proof-tmp
+muse-agent-proof --workspace .agent-proof-tmp
 ```
 
 The command prints JSON. A successful proof includes:
@@ -30,10 +30,10 @@ The command prints JSON. A successful proof includes:
 
 ## What This Proves
 
-The proof validates that an agent can use creativity-layer as a planning middleware instead of a replacement CLI:
+The proof validates that an agent can use muse as a planning middleware instead of a replacement CLI:
 
 - The agent owns repo observation.
-- creativity-layer receives repo facts as generic signals.
+- muse receives repo facts as generic signals.
 - MCP returns JSON-safe operational planning fields.
 - The agent chooses and applies a bounded repair.
 - Verification is still performed by the agent with the repo's own test command.

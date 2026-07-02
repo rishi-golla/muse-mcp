@@ -6,13 +6,13 @@ import json
 import pytest
 from pydantic import SecretStr
 
-from creativity_layer.brave_search import BraveSearchProvider
-from creativity_layer.live_search_config import (
+from muse.brave_search import BraveSearchProvider
+from muse.live_search_config import (
     BraveSearchCredentials,
     LiveSearchRuntime,
     SearchProviderError,
 )
-from creativity_layer.search import SearchPurpose, SearchQuery
+from muse.search import SearchPurpose, SearchQuery
 
 
 class FakeResponse:

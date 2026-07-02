@@ -9,7 +9,7 @@ implementations while keeping normal tests deterministic and no-network.
 
 This slice tests a narrower claim than full live search integration:
 
-> The Creativity Layer can call live search providers through the existing search
+> The Muse can call live search providers through the existing search
 > contract, normalize their results into safe internal models, meter usage
 > conservatively, and verify the adapters through mocked tests plus opt-in live smoke
 > tests.
@@ -57,7 +57,7 @@ accepted. Purpose-specific routing belongs in a later slice.
 
 ## 4. Configuration
 
-Add `src/creativity_layer/live_search_config.py` for live-search credentials and
+Add `src/muse/live_search_config.py` for live-search credentials and
 provider-specific runtime settings. Keep search credentials separate from
 `live_config.py` so model credentials and search credentials can evolve independently.
 

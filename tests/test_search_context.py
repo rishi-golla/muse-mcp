@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from pydantic import PrivateAttr
 
-from creativity_layer.context_provider import RepoSignals
-from creativity_layer.models import TaskContext
-from creativity_layer.search import (
+from muse.context_provider import RepoSignals
+from muse.models import TaskContext
+from muse.search import (
     DeterministicSearchProvider,
     SearchProviderResponse,
     SearchQuery,
 )
-from creativity_layer.search_context import (
+from muse.search_context import (
     SearchContextMode,
     SearchContextResolver,
     SearchProviderPolicy,
@@ -66,7 +66,7 @@ def test_search_context_reports_missing_provider_after_approval() -> None:
     result = SearchContextResolver(
         provider=None,
         approval_required=True,
-        environ={"CREATIVITY_LAYER_LIVE_SEARCH_APPROVED": "1"},
+        environ={"MUSE_LIVE_SEARCH_APPROVED": "1"},
     ).resolve(
         mode=SearchContextMode.LIGHT,
         task=TaskContext(goal="reversible team decisions"),
