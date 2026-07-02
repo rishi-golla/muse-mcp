@@ -11,6 +11,7 @@ class RuntimeDefaults:
     effort: str = "quick"
     privacy: str = "research"
     budget_usd: float | None = None
+    search_mode: str = "off"
 
     @classmethod
     def from_environment(
@@ -27,6 +28,7 @@ class RuntimeDefaults:
             effort=_env_text(values, "CREATIVITY_LAYER_EFFORT", "quick"),
             privacy=_env_text(values, "CREATIVITY_LAYER_PRIVACY", "research"),
             budget_usd=_env_float(values, "CREATIVITY_LAYER_BUDGET_USD"),
+            search_mode=_env_text(values, "CREATIVITY_LAYER_SEARCH_MODE", "off"),
         )
 
     @classmethod
@@ -37,6 +39,7 @@ class RuntimeDefaults:
         effort: str | None = None,
         privacy: str | None = None,
         budget_usd: float | None = None,
+        search_mode: str | None = None,
         environ: Mapping[str, str] | None = None,
     ) -> RuntimeDefaults:
         values = os.environ if environ is None else environ
@@ -52,6 +55,8 @@ class RuntimeDefaults:
             budget_usd=budget_usd
             if budget_usd is not None
             else _env_float(values, "CREATIVITY_LAYER_BUDGET_USD"),
+            search_mode=search_mode
+            or _env_text(values, "CREATIVITY_LAYER_SEARCH_MODE", "off"),
         )
 
 

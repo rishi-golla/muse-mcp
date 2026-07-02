@@ -78,6 +78,20 @@ def test_docs_describe_live_first_provider_posture() -> None:
     assert "--provider-mode deterministic" in combined
 
 
+def test_docs_describe_opt_in_search_context() -> None:
+    readme = _read_text(ROOT / "README.md")
+    guide = _read_text(ROOT / "docs" / "integrations" / "mcp-agent-hosts.md")
+    playbook = _read_text(ROOT / "docs" / "integrations" / "agent-dogfood-playbook.md")
+    combined = "\n".join((readme, guide, playbook)).casefold()
+
+    assert "search_mode" in combined
+    assert "creativity_layer_search_mode" in combined
+    assert "creativity_layer_live_search_approved" in combined
+    assert "default is `off`" in combined
+    assert "opt-in search" in combined
+    assert "--search-mode" in combined
+
+
 def test_config_packs_do_not_contain_real_secrets() -> None:
     docs_to_scan = [
         ROOT / "README.md",

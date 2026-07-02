@@ -144,6 +144,7 @@ $env:CREATIVITY_LAYER_PROVIDER_MODE = "live_openai"
 $env:CREATIVITY_LAYER_EFFORT = "quick"
 $env:CREATIVITY_LAYER_PRIVACY = "research"
 $env:CREATIVITY_LAYER_BUDGET_USD = "0.25"
+$env:CREATIVITY_LAYER_SEARCH_MODE = "off"
 ```
 
 The deterministic test provider is only for no-network CI, protocol checks, and
@@ -155,6 +156,45 @@ $env:CREATIVITY_LAYER_PROVIDER_MODE = "deterministic"
 
 Do not use deterministic output to judge product quality; it is intentionally
 repeatable and cheap.
+
+## Opt-in Search Context
+
+The default is `off` for search context. `effort: "standard"` and
+`effort: "deep"` do not automatically call search providers. Agents can request
+opt-in search with `search_mode`:
+
+```json
+{
+  "goal": "Design a debugging workflow for flaky CI",
+  "provider_mode": "live_openai",
+  "effort": "standard",
+  "search_mode": "light",
+  "budget_usd": 0.25
+}
+```
+
+Use `search_mode: "deep"` only when broader bounded context is worth the extra
+latency and possible provider spend. For smoke tests:
+
+```powershell
+creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" `
+  --provider-mode deterministic `
+  --search-mode off `
+  --repo-language Python
+```
+
+For environment-level defaults:
+
+```powershell
+$env:CREATIVITY_LAYER_SEARCH_MODE = "light"
+$env:CREATIVITY_LAYER_LIVE_SEARCH_APPROVED = "1"
+```
+
+`CREATIVITY_LAYER_LIVE_SEARCH_APPROVED=1` is required before live search
+providers may be used. If approval or provider configuration is missing,
+`creative_plan` returns `search_context` metadata explaining the skipped reason
+and still runs planning when possible. The MCP server still does not crawl repos;
+agents must pass observed repo facts through `repo_signals`.
 
 ## Live OpenAI
 

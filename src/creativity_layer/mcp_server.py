@@ -24,6 +24,7 @@ def creative_plan(
     max_calls: int = 20,
     max_context_snippets: int = 8,
     effort: str | None = None,
+    search_mode: str | None = None,
 ) -> dict[str, Any]:
     """Generate an operational creative plan for an agent's current task.
 
@@ -36,6 +37,7 @@ def creative_plan(
             privacy=privacy,
             budget_usd=budget_usd,
             effort=effort,
+            search_mode=search_mode,
         )
     except ValueError as error:
         return configuration_error_result(
@@ -49,6 +51,7 @@ def creative_plan(
         "provider_mode": defaults.provider_mode,
         "privacy": defaults.privacy,
         "effort": defaults.effort,
+        "search_mode": defaults.search_mode,
         "repo_signals": repo_signals or {},
         "max_calls": max_calls,
         "max_context_snippets": max_context_snippets,

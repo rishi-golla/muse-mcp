@@ -22,12 +22,29 @@ $env:CREATIVITY_LAYER_PROVIDER_MODE = "live_openai"
 $env:CREATIVITY_LAYER_EFFORT = "quick"
 $env:CREATIVITY_LAYER_PRIVACY = "research"
 $env:CREATIVITY_LAYER_BUDGET_USD = "0.25"
+$env:CREATIVITY_LAYER_SEARCH_MODE = "off"
 ```
 
 The deterministic test provider is only for no-network CI, smoke tests, and
 protocol checks. Use `--provider-mode deterministic` or
 `CREATIVITY_LAYER_PROVIDER_MODE=deterministic` when you need that mode, but do
 not judge creative quality from it.
+
+## Opt-in Search Context
+
+Search context is off by default. Use `search_mode: "light"` when a task would
+benefit from bounded outside context, and `search_mode: "deep"` only before
+important planning decisions where the extra latency and possible provider cost
+are justified. This is opt-in search, not repo crawling.
+
+```powershell
+$env:CREATIVITY_LAYER_SEARCH_MODE = "off"
+$env:CREATIVITY_LAYER_LIVE_SEARCH_APPROVED = "1"
+```
+
+`CREATIVITY_LAYER_LIVE_SEARCH_APPROVED=1` is required before live search
+providers may be used. Without approval, the tool reports the skipped reason in
+`search_context` and continues with the repo signals the agent supplied.
 
 ## before-edit
 
