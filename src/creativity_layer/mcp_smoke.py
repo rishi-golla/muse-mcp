@@ -19,6 +19,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--privacy")
     parser.add_argument("--effort", choices=("quick", "standard", "deep"))
     parser.add_argument("--search-mode", choices=("off", "light", "deep"))
+    parser.add_argument(
+        "--search-provider",
+        choices=("auto", "deterministic", "exa", "brave"),
+    )
+    parser.add_argument(
+        "--search-strict",
+        dest="search_strict",
+        action="store_true",
+        default=None,
+    )
+    parser.add_argument(
+        "--no-search-strict",
+        dest="search_strict",
+        action="store_false",
+    )
     parser.add_argument("--budget-usd", type=float)
     parser.add_argument("--seed-count", type=int)
     parser.add_argument("--finalist-count", type=int)
@@ -61,6 +76,8 @@ def run_smoke(argv: Sequence[str] | None = None) -> int:
         ("privacy", args.privacy),
         ("effort", args.effort),
         ("search_mode", args.search_mode),
+        ("search_provider", args.search_provider),
+        ("search_strict", args.search_strict),
     ):
         if value is not None:
             arguments[key] = value

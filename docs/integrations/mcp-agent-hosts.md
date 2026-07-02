@@ -145,6 +145,8 @@ $env:CREATIVITY_LAYER_EFFORT = "quick"
 $env:CREATIVITY_LAYER_PRIVACY = "research"
 $env:CREATIVITY_LAYER_BUDGET_USD = "0.25"
 $env:CREATIVITY_LAYER_SEARCH_MODE = "off"
+$env:CREATIVITY_LAYER_SEARCH_PROVIDER = "auto"
+$env:CREATIVITY_LAYER_SEARCH_STRICT = "false"
 ```
 
 The deterministic test provider is only for no-network CI, protocol checks, and
@@ -161,7 +163,9 @@ repeatable and cheap.
 
 The default is `off` for search context. `effort: "standard"` and
 `effort: "deep"` do not automatically call search providers. Agents can request
-opt-in search with `search_mode`:
+opt-in search with `search_mode`. Use `search_provider` to select `auto`,
+`deterministic`, `exa`, or `brave`; use `search_strict` only when the agent
+should fail closed if requested search cannot run:
 
 ```json
 {
@@ -169,6 +173,8 @@ opt-in search with `search_mode`:
   "provider_mode": "live_openai",
   "effort": "standard",
   "search_mode": "light",
+  "search_provider": "auto",
+  "search_strict": false,
   "budget_usd": 0.25
 }
 ```
@@ -180,6 +186,7 @@ latency and possible provider spend. For smoke tests:
 creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" `
   --provider-mode deterministic `
   --search-mode off `
+  --search-provider deterministic `
   --repo-language Python
 ```
 
@@ -187,14 +194,19 @@ For environment-level defaults:
 
 ```powershell
 $env:CREATIVITY_LAYER_SEARCH_MODE = "light"
+$env:CREATIVITY_LAYER_SEARCH_PROVIDER = "auto"
+$env:CREATIVITY_LAYER_SEARCH_STRICT = "false"
 $env:CREATIVITY_LAYER_LIVE_SEARCH_APPROVED = "1"
 ```
 
 `CREATIVITY_LAYER_LIVE_SEARCH_APPROVED=1` is required before live search
 providers may be used. If approval or provider configuration is missing,
 `creative_plan` returns `search_context` metadata explaining the skipped reason
-and still runs planning when possible. The MCP server still does not crawl repos;
-agents must pass observed repo facts through `repo_signals`.
+and still runs planning when possible. Strict search changes that behavior: if
+`search_strict` or `CREATIVITY_LAYER_SEARCH_STRICT=true` is set and requested
+search is unavailable, `creative_plan` returns `configuration_error` with no
+finalists. The MCP server still does not crawl repos; agents must pass observed
+repo facts through `repo_signals`.
 
 ## Live OpenAI
 

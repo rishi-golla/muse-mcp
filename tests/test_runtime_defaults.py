@@ -22,6 +22,8 @@ def test_runtime_defaults_read_environment_overrides() -> None:
             "CREATIVITY_LAYER_PRIVACY": "private",
             "CREATIVITY_LAYER_BUDGET_USD": "0.25",
             "CREATIVITY_LAYER_SEARCH_MODE": "light",
+            "CREATIVITY_LAYER_SEARCH_PROVIDER": "brave",
+            "CREATIVITY_LAYER_SEARCH_STRICT": "true",
         }
     )
 
@@ -30,6 +32,8 @@ def test_runtime_defaults_read_environment_overrides() -> None:
     assert defaults.privacy == "private"
     assert defaults.budget_usd == 0.25
     assert defaults.search_mode == "light"
+    assert defaults.search_provider == "brave"
+    assert defaults.search_strict is True
 
 
 def test_runtime_defaults_ignore_blank_environment_values() -> None:
@@ -71,3 +75,22 @@ def test_runtime_defaults_explicit_search_mode_overrides_environment() -> None:
     )
 
     assert defaults.search_mode == "deep"
+
+
+def test_runtime_defaults_explicit_search_policy_overrides_environment() -> None:
+    defaults = RuntimeDefaults.resolve(
+        search_provider="exa",
+        search_strict=False,
+        environ={
+            "CREATIVITY_LAYER_SEARCH_PROVIDER": "brave",
+            "CREATIVITY_LAYER_SEARCH_STRICT": "true",
+        },
+    )
+
+    assert defaults.search_provider == "exa"
+    assert defaults.search_strict is False
+
+
+def test_runtime_defaults_reject_invalid_search_strict() -> None:
+    with pytest.raises(ValueError, match="CREATIVITY_LAYER_SEARCH_STRICT"):
+        RuntimeDefaults.from_environment({"CREATIVITY_LAYER_SEARCH_STRICT": "maybe"})

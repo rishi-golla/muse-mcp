@@ -174,6 +174,32 @@ def test_mcp_smoke_forwards_explicit_search_mode(capsys, monkeypatch) -> None:
     assert payload["search_context"]["mode"] == "off"
 
 
+def test_mcp_smoke_forwards_explicit_search_policy(capsys, monkeypatch) -> None:
+    monkeypatch.setenv("CREATIVITY_LAYER_LIVE_SEARCH_APPROVED", "1")
+
+    exit_code = run_smoke(
+        [
+            "reversible team decisions",
+            "--provider-mode",
+            "deterministic",
+            "--search-mode",
+            "light",
+            "--search-provider",
+            "deterministic",
+            "--search-strict",
+            "--repo-language",
+            "Python",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["config"]["search_provider"] == "deterministic"
+    assert payload["config"]["search_strict"] is True
+    assert payload["search_context"]["strict"] is True
+    assert payload["search_context"]["used"] is True
+
+
 def test_package_exposes_mcp_smoke_console_script() -> None:
     pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
 

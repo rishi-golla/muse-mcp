@@ -23,6 +23,8 @@ $env:CREATIVITY_LAYER_EFFORT = "quick"
 $env:CREATIVITY_LAYER_PRIVACY = "research"
 $env:CREATIVITY_LAYER_BUDGET_USD = "0.25"
 $env:CREATIVITY_LAYER_SEARCH_MODE = "off"
+$env:CREATIVITY_LAYER_SEARCH_PROVIDER = "auto"
+$env:CREATIVITY_LAYER_SEARCH_STRICT = "false"
 ```
 
 The deterministic test provider is only for no-network CI, smoke tests, and
@@ -35,16 +37,22 @@ not judge creative quality from it.
 Search context is off by default. Use `search_mode: "light"` when a task would
 benefit from bounded outside context, and `search_mode: "deep"` only before
 important planning decisions where the extra latency and possible provider cost
-are justified. This is opt-in search, not repo crawling.
+are justified. Use `search_provider` to choose `auto`, `deterministic`, `exa`,
+or `brave`. Use strict search only when the agent should fail closed instead of
+continuing without search context. This is opt-in search, not repo crawling.
 
 ```powershell
 $env:CREATIVITY_LAYER_SEARCH_MODE = "off"
+$env:CREATIVITY_LAYER_SEARCH_PROVIDER = "auto"
+$env:CREATIVITY_LAYER_SEARCH_STRICT = "false"
 $env:CREATIVITY_LAYER_LIVE_SEARCH_APPROVED = "1"
 ```
 
 `CREATIVITY_LAYER_LIVE_SEARCH_APPROVED=1` is required before live search
 providers may be used. Without approval, the tool reports the skipped reason in
-`search_context` and continues with the repo signals the agent supplied.
+`search_context` and continues with the repo signals the agent supplied. If
+`search_strict` or `CREATIVITY_LAYER_SEARCH_STRICT=true` is set, missing search
+returns `configuration_error` and no finalists.
 
 ## before-edit
 

@@ -86,6 +86,13 @@ def test_docs_describe_opt_in_search_context() -> None:
 
     assert "search_mode" in combined
     assert "creativity_layer_search_mode" in combined
+    assert "search_provider" in combined
+    assert "creativity_layer_search_provider" in combined
+    assert "search_strict" in combined
+    assert "creativity_layer_search_strict" in combined
+    assert "--search-provider" in combined
+    assert "--search-strict" in combined
+    assert "strict search" in combined
     assert "creativity_layer_live_search_approved" in combined
     assert "default is `off`" in combined
     assert "opt-in search" in combined
