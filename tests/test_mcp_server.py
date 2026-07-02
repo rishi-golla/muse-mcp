@@ -131,6 +131,26 @@ def test_creative_plan_tool_forwards_explicit_search_mode(monkeypatch) -> None:
     assert result["search_context"]["mode"] == "off"
 
 
+def test_creative_plan_tool_forwards_explicit_search_policy(monkeypatch) -> None:
+    monkeypatch.setenv("CREATIVITY_LAYER_LIVE_SEARCH_APPROVED", "1")
+
+    result = creative_plan(
+        goal="reversible team decisions",
+        search_mode="light",
+        search_provider="deterministic",
+        search_strict=True,
+        repo_signals={"detected_languages": ("Python",)},
+        provider_mode="deterministic",
+    )
+
+    assert result["config"]["search_mode"] == "light"
+    assert result["config"]["search_provider"] == "deterministic"
+    assert result["config"]["search_strict"] is True
+    assert result["search_context"]["provider_policy"] == "deterministic"
+    assert result["search_context"]["strict"] is True
+    assert result["search_context"]["used"] is True
+
+
 def test_creative_plan_tool_uses_approved_search_context(monkeypatch) -> None:
     monkeypatch.setenv("CREATIVITY_LAYER_LIVE_SEARCH_APPROVED", "1")
 
