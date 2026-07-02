@@ -27,6 +27,7 @@ from creativity_layer.pricing import PricingTable
 from creativity_layer.providers import IdeaEvaluator, IdeaSeeder, IdeaTransformer, TaskFramer
 from creativity_layer.quality_warnings import (
     finalist_quality_warnings,
+    quality_action_policy,
     summarize_quality_warnings,
 )
 from creativity_layer.reliability import CircuitBreaker, RetryPolicy
@@ -236,6 +237,10 @@ def _serialize_result(
             for warning in finalist_warnings
         }
     )
+    action_policy = quality_action_policy(
+        quality_warnings,
+        effort=request.effort.value,
+    )
     return {
         "run_id": str(result.run_id),
         "provider_mode": request.provider_mode.value,
@@ -259,11 +264,15 @@ def _serialize_result(
             "search_strict": request.search_strict,
         },
         "search_context": search_context.model_dump(mode="json"),
-        "agent_guidance": _agent_guidance(request.effort),
+        "agent_guidance": _agent_guidance(
+            request.effort,
+            quality_action_policy=action_policy,
+        ),
         "spend_usd": spend_total,
         "errors": [error.model_dump(mode="json") for error in result.errors],
         "quality_warnings": quality_warnings,
         "quality_summary": quality_summary,
+        "quality_action_policy": action_policy,
         "finalists": finalists,
     }
 
@@ -544,7 +553,10 @@ def _configuration_error_result(
             "search_strict": search_strict,
         },
         "search_context": metadata.model_dump(mode="json"),
-        "agent_guidance": _agent_guidance(effort),
+        "agent_guidance": _agent_guidance(
+            effort,
+            quality_action_policy=_empty_quality_action_policy(effort),
+        ),
         "spend_usd": 0.0,
         "errors": [
             {
@@ -557,15 +569,22 @@ def _configuration_error_result(
         ],
         "quality_warnings": [],
         "quality_summary": _empty_quality_summary(),
+        "quality_action_policy": _empty_quality_action_policy(effort),
         "finalists": [],
     }
 
 
-def _agent_guidance(effort: EffortPreset) -> dict[str, Any]:
+def _agent_guidance(
+    effort: EffortPreset,
+    *,
+    quality_action_policy: dict[str, object] | None = None,
+) -> dict[str, Any]:
     return {
         "intended_use": "planning_middleware",
         "effort": effort.value,
         "verification_required": True,
+        "quality_action_policy": quality_action_policy
+        or _empty_quality_action_policy(effort),
         "recommended_agent_loop": [
             "observe_repo_state",
             "call_creative_plan_with_current_repo_signals",
@@ -617,3 +636,7 @@ def _serialize_finalist(
 
 def _empty_quality_summary() -> dict[str, object]:
     return summarize_quality_warnings(())
+
+
+def _empty_quality_action_policy(effort: EffortPreset) -> dict[str, object]:
+    return quality_action_policy((), effort=effort.value)

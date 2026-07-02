@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from creativity_layer.quality_warnings import (
     finalist_quality_warnings,
+    quality_action_policy,
     summarize_quality_warnings,
 )
 
@@ -63,3 +64,33 @@ def test_summarize_quality_warnings_counts_unique_finalists() -> None:
         "finalist_warning_count": 2,
         "warnings": {"generic_mechanism": 1, "generic_title": 2},
     }
+
+
+def test_quality_action_policy_is_clear_without_warnings() -> None:
+    policy = quality_action_policy((), effort="quick")
+
+    assert policy == {
+        "status": "clear",
+        "escalate_effort_to": None,
+        "recommended_actions": [],
+        "warning_actions": {},
+    }
+
+
+def test_quality_action_policy_recommends_retry_for_missing_operational_detail() -> None:
+    policy = quality_action_policy(
+        ("generic_title", "missing_required_terms"),
+        effort="quick",
+    )
+
+    assert policy["status"] == "needs_retry"
+    assert policy["escalate_effort_to"] == "standard"
+    assert "supply more repo signals" in policy["recommended_actions"]
+    assert "missing_required_terms" in policy["warning_actions"]
+
+
+def test_quality_action_policy_stops_effort_escalation_at_deep() -> None:
+    policy = quality_action_policy(("generic_mechanism",), effort="deep")
+
+    assert policy["status"] == "review"
+    assert policy["escalate_effort_to"] is None

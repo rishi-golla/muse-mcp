@@ -70,6 +70,30 @@ def test_runner_returns_quality_warnings_for_generic_finalists() -> None:
     assert result["quality_summary"]["warnings"]["generic_title"] == 1
 
 
+def test_runner_returns_quality_action_policy_for_warning_results() -> None:
+    result = CreativeMiddlewareRunner.deterministic().run(
+        CreativePlanRequest(
+            goal="Design a better retry strategy for AI coding agents after failed tests",
+            repo_signals={
+                "ci_logs": ("pytest failed after retry loop change",),
+                "detected_languages": ("Python",),
+                "detected_frameworks": ("pytest",),
+            },
+            seed_count=2,
+            finalist_count=1,
+            max_generations=0,
+            budget_usd=0.20,
+        )
+    )
+
+    policy = result["quality_action_policy"]
+
+    assert policy["status"] == "needs_retry"
+    assert policy["escalate_effort_to"] == "standard"
+    assert "supply more repo signals" in policy["recommended_actions"]
+    assert policy == result["agent_guidance"]["quality_action_policy"]
+
+
 def test_runner_uses_cheap_agent_defaults() -> None:
     request = CreativePlanRequest(goal="Design a planning hook for arbitrary repos")
 
@@ -293,6 +317,26 @@ def test_configuration_error_includes_empty_quality_warning_fields() -> None:
         "finalist_warning_count": 0,
         "warnings": {},
     }
+
+
+def test_configuration_error_includes_clear_quality_action_policy() -> None:
+    result = run_creative_plan(
+        {
+            "goal": "Design a retry strategy for AI coding agents",
+            "provider_mode": "bogus",
+        }
+    )
+
+    assert result["stopped_reason"] == "configuration_error"
+    assert result["quality_action_policy"] == {
+        "status": "clear",
+        "escalate_effort_to": None,
+        "recommended_actions": [],
+        "warning_actions": {},
+    }
+    assert result["quality_action_policy"] == (
+        result["agent_guidance"]["quality_action_policy"]
+    )
 
 
 def test_invalid_search_mode_error_preserves_response_shape() -> None:
