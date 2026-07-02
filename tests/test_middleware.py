@@ -192,6 +192,28 @@ def test_runner_strict_search_returns_configuration_error_when_unavailable() -> 
     assert "search provider" in result["errors"][0]["message"]
 
 
+def test_direct_runner_respects_explicit_search_provider_policy(monkeypatch) -> None:
+    monkeypatch.setenv("CREATIVITY_LAYER_LIVE_SEARCH_APPROVED", "1")
+
+    result = CreativeMiddlewareRunner.deterministic().run(
+        CreativePlanRequest(
+            goal="reversible team decisions",
+            search_mode="light",
+            search_provider="exa",
+            search_strict=True,
+            seed_count=2,
+            finalist_count=1,
+            max_generations=0,
+            budget_usd=0.20,
+        )
+    )
+
+    assert result["stopped_reason"] == "configuration_error"
+    assert result["config"]["search_provider"] == "exa"
+    assert result["search_context"]["provider_policy"] == "exa"
+    assert result["search_context"]["strict"] is True
+
+
 def test_live_openai_mode_returns_structured_configuration_error(
     monkeypatch,
 ) -> None:

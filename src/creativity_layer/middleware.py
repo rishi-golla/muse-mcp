@@ -117,7 +117,7 @@ class CreativeMiddlewareRunner:
         self._transformer = transformer
         self._evaluator = evaluator
         self._context_provider = context_provider
-        self._search_context_resolver = search_context_resolver or SearchContextResolver()
+        self._search_context_resolver = search_context_resolver
 
     @classmethod
     def deterministic(
@@ -132,11 +132,7 @@ class CreativeMiddlewareRunner:
             transformer=creative_provider,
             evaluator=creative_provider,
             context_provider=DeterministicContextProvider(),
-            search_context_resolver=search_context_resolver
-            or SearchContextResolver(
-                provider=DeterministicSearchProvider(),
-                provider_policy=SearchProviderPolicy.DETERMINISTIC,
-            ),
+            search_context_resolver=search_context_resolver,
         )
 
     @classmethod
@@ -156,16 +152,16 @@ class CreativeMiddlewareRunner:
             transformer=creative_provider,
             evaluator=creative_provider,
             context_provider=DeterministicContextProvider(),
-            search_context_resolver=search_context_resolver
-            or _build_search_context_resolver_from_environment(
-                SearchProviderPolicy.AUTO,
-            ),
+            search_context_resolver=search_context_resolver,
         )
 
     def run(self, request: CreativePlanRequest | Mapping[str, object]) -> dict[str, Any]:
         parsed_request = CreativePlanRequest.model_validate(request)
         repo_signals = RepoSignals.model_validate(parsed_request.repo_signals)
-        search_context = self._search_context_resolver.resolve(
+        search_context_resolver = self._search_context_resolver or (
+            _search_context_resolver_for_request(parsed_request)
+        )
+        search_context = search_context_resolver.resolve(
             mode=parsed_request.search_mode,
             task=TaskContext(goal=parsed_request.goal),
             repo_signals=repo_signals,
@@ -308,19 +304,20 @@ def configuration_error_result(
 
 def _runner_for_request(request: CreativePlanRequest) -> CreativeMiddlewareRunner:
     if request.provider_mode is ProviderMode.DETERMINISTIC:
-        return CreativeMiddlewareRunner.deterministic(
-            search_context_resolver=_deterministic_search_context_resolver(
-                request.search_provider,
-            )
-        )
+        return CreativeMiddlewareRunner.deterministic()
     if request.provider_mode is ProviderMode.LIVE_OPENAI:
         return CreativeMiddlewareRunner.live_openai(
             privacy=request.privacy,
-            search_context_resolver=_build_search_context_resolver_from_environment(
-                request.search_provider,
-            ),
         )
     raise ConfigurationError(f"unsupported provider mode: {request.provider_mode}")
+
+
+def _search_context_resolver_for_request(
+    request: CreativePlanRequest,
+) -> SearchContextResolver:
+    if request.provider_mode is ProviderMode.DETERMINISTIC:
+        return _deterministic_search_context_resolver(request.search_provider)
+    return _build_search_context_resolver_from_environment(request.search_provider)
 
 
 def _deterministic_search_context_resolver(
