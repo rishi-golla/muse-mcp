@@ -5,12 +5,12 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from creativity_layer.calibration_packets import (
+from muse.calibration_packets import (
     ReviewPacket,
     ReviewPacketStore,
     build_review_packet,
 )
-from creativity_layer.models import (
+from muse.models import (
     EvaluationScores,
     FramedTask,
     IdeaGenome,

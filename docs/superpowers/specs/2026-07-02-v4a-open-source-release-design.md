@@ -2,7 +2,7 @@
 
 ## Goal
 
-Prepare creativity-layer for a credible public open-source release. This slice should make the repository understandable, installable, and safe to evaluate by someone who is not already part of the project.
+Prepare muse for a credible public open-source release. This slice should make the repository understandable, installable, and safe to evaluate by someone who is not already part of the project.
 
 ## Recommended Approach
 
@@ -50,8 +50,8 @@ Tests should prove:
 README should make the first-run path copy-pasteable:
 
 1. `python -m pip install -e ".[dev]"`
-2. `creativity-layer-mcp-smoke ... --provider-mode deterministic`
-3. `creativity-layer-dogfood-quality ... --provider-mode deterministic`
+2. `muse-mcp-smoke ... --provider-mode deterministic`
+3. `muse-dogfood-quality ... --provider-mode deterministic`
 4. optional live env setup using `.env.example` and `openai-pricing.example.json`
 
 The docs should preserve the product positioning: open-source middleware for AI coding agents, not a CLI replacement.

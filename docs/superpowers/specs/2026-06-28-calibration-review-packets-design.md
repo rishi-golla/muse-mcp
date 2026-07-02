@@ -85,7 +85,7 @@ The default seed is `0` to make CLI output reproducible unless the caller explic
 Command:
 
 ```powershell
-python -m creativity_layer.cli review-packet --trace <trace.json> --output-dir <dir> --shuffle-seed 17
+python -m muse.cli review-packet --trace <trace.json> --output-dir <dir> --shuffle-seed 17
 ```
 
 For multiple traces, pass `--trace` multiple times. The CLI writes one packet per trace as

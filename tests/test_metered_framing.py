@@ -4,17 +4,17 @@ import json
 
 import pytest
 
-from creativity_layer.budget import BudgetController, BudgetExceeded
-from creativity_layer.deterministic import DeterministicCreativeProvider
-from creativity_layer.engine import CreativeEngine
-from creativity_layer.models import (
+from muse.budget import BudgetController, BudgetExceeded
+from muse.deterministic import DeterministicCreativeProvider
+from muse.engine import CreativeEngine
+from muse.models import (
     FramedTask,
     OperationTrace,
     RunConfig,
     TaskContext,
     TokenUsage,
 )
-from creativity_layer.providers import MeteredResponse, OperationQuote
+from muse.providers import MeteredResponse, OperationQuote
 
 
 def _engine(provider: DeterministicCreativeProvider) -> CreativeEngine:

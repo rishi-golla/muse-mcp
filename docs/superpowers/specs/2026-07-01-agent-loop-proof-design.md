@@ -2,7 +2,7 @@
 
 ## Goal
 
-Prove that a coding-agent-style workflow can call the `creative_plan` MCP tool, feed it repo signals, consume the operational contract, make one bounded code change, and verify that change in a separate sample repository.
+Prove that a coding-agent-style workflow can call the `muse_plan` MCP tool, feed it repo signals, consume the operational contract, make one bounded code change, and verify that change in a separate sample repository.
 
 ## Current Problem
 
@@ -12,11 +12,11 @@ Manual smoke commands are useful, but they still leave a gap between "tool retur
 
 ## Selected Design
 
-Add a deterministic proof harness that creates a tiny external Python sample repo in a temp directory, observes a failing pytest command, calls the in-process FastMCP `creative_plan` tool with repo signals from that sample repo, applies one constrained repair, and reruns the same verification command.
+Add a deterministic proof harness that creates a tiny external Python sample repo in a temp directory, observes a failing pytest command, calls the in-process FastMCP `muse_plan` tool with repo signals from that sample repo, applies one constrained repair, and reruns the same verification command.
 
 The proof returns a structured result rather than only printing text. It includes the sample repo path, initial and final verification results, the MCP result summary, the repo signals sent to MCP, the selected finalist operational fields, and whether the proof passed.
 
-The harness should call `build_mcp_server().call_tool("creative_plan", ...)` so tests exercise the MCP boundary rather than a direct Python shortcut.
+The harness should call `build_mcp_server().call_tool("muse_plan", ...)` so tests exercise the MCP boundary rather than a direct Python shortcut.
 
 ## Boundaries
 
@@ -28,11 +28,11 @@ The harness should call `build_mcp_server().call_tool("creative_plan", ...)` so 
 
 ## Files
 
-- `src/creativity_layer/agent_loop_proof.py`: sample repo creator, verification runner, MCP caller, bounded repair, and structured proof result.
+- `src/muse/agent_loop_proof.py`: sample repo creator, verification runner, MCP caller, bounded repair, and structured proof result.
 - `tests/test_agent_loop_proof.py`: tests the failing sample, MCP call path, bounded repair, and proof output.
 - `docs/integrations/agent-loop-proof.md`: explains how to run and interpret the proof.
 - `README.md`: links the MCP integration section to the proof doc.
-- `pyproject.toml`: optionally registers `creativity-layer-agent-proof` as a proof-only console script.
+- `pyproject.toml`: optionally registers `muse-agent-proof` as a proof-only console script.
 
 ## Validation
 

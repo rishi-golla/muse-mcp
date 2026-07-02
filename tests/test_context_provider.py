@@ -3,13 +3,13 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from creativity_layer.context_provider import (
+from muse.context_provider import (
     ContextRequest,
     DeterministicContextProvider,
     RepoSignals,
     build_task_context,
 )
-from creativity_layer.models import ContextBundle, ContextSnippet, TaskContext
+from muse.models import ContextBundle, ContextSnippet, TaskContext
 
 
 def test_repo_signals_validate_bounded_nonblank_evidence() -> None:

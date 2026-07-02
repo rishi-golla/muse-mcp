@@ -8,8 +8,8 @@ import pytest
 from openai import APITimeoutError, AuthenticationError, RateLimitError
 from pydantic import ValidationError
 
-from creativity_layer.live_config import LiveModelConfig
-from creativity_layer.models import (
+from muse.live_config import LiveModelConfig
+from muse.models import (
     ContextBundle,
     ContextSnippet,
     FramedTask,
@@ -17,20 +17,20 @@ from creativity_layer.models import (
     RunConfig,
     TaskContext,
 )
-from creativity_layer.openai_provider import (
+from muse.openai_provider import (
     DEVELOPER_INSTRUCTIONS,
     DOGFOOD_QUALITY_PROMPT_BLOCK,
     OpenAICreativeProvider,
 )
-from creativity_layer.openai_schemas import (
+from muse.openai_schemas import (
     OpenAIEvaluation,
     OpenAIFrame,
     OpenAIIdea,
     OpenAISeedBatch,
 )
-from creativity_layer.pricing import ModelPrice, PricingTable
-from creativity_layer.reliability import CircuitBreaker, RetryPolicy
-from creativity_layer.transforms import OperatorName, TransformationRequest
+from muse.pricing import ModelPrice, PricingTable
+from muse.reliability import CircuitBreaker, RetryPolicy
+from muse.transforms import OperatorName, TransformationRequest
 
 
 @dataclass

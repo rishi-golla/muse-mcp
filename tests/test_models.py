@@ -6,7 +6,7 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from creativity_layer.models import (
+from muse.models import (
     ContextBundle,
     ContextSnippet,
     CostEstimate,

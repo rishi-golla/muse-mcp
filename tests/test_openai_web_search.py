@@ -6,13 +6,13 @@ from dataclasses import dataclass
 
 import pytest
 
-from creativity_layer.live_search_config import (
+from muse.live_search_config import (
     LiveSearchRuntime,
     OpenAIWebSearchConfig,
     SearchProviderError,
 )
-from creativity_layer.openai_web_search import OpenAIWebSearchProvider
-from creativity_layer.search import SearchPurpose, SearchQuery
+from muse.openai_web_search import OpenAIWebSearchProvider
+from muse.search import SearchPurpose, SearchQuery
 
 
 class FakeResponses:

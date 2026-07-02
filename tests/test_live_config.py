@@ -1,7 +1,7 @@
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from creativity_layer.live_config import LiveModelConfig, OpenAICredentials, PrivacyMode
+from muse.live_config import LiveModelConfig, OpenAICredentials, PrivacyMode
 
 
 def test_credentials_from_environment_strips_api_key(monkeypatch) -> None:

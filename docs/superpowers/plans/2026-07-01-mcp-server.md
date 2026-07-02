@@ -4,7 +4,7 @@
 
 **Goal:** Add a transport-neutral middleware runner and expose it through an MCP stdio server for agent workflow integration.
 
-**Architecture:** `CreativeMiddlewareRunner` owns the stable request/result contract and engine orchestration. `mcp_server.py` only registers a `creative_plan` tool and delegates to the runner.
+**Architecture:** `CreativeMiddlewareRunner` owns the stable request/result contract and engine orchestration. `mcp_server.py` only registers a `muse_plan` tool and delegates to the runner.
 
 **Tech Stack:** Python 3.12, Pydantic v2, existing `CreativeEngine`, official `mcp` Python SDK, pytest, Ruff.
 
@@ -12,23 +12,23 @@
 
 ## File Map
 
-- Create `src/creativity_layer/middleware.py`: request/result models, runner defaults, JSON-safe finalist serialization.
-- Create `src/creativity_layer/mcp_server.py`: MCP server factory, pure tool function, console entry point.
+- Create `src/muse/middleware.py`: request/result models, runner defaults, JSON-safe finalist serialization.
+- Create `src/muse/mcp_server.py`: MCP server factory, pure tool function, console entry point.
 - Create `tests/test_middleware.py`: runner behavior and JSON contract tests.
 - Create `tests/test_mcp_server.py`: MCP adapter behavior and default-runner wiring tests.
-- Modify `pyproject.toml`: add `mcp` dependency and `creativity-layer-mcp` script.
+- Modify `pyproject.toml`: add `mcp` dependency and `muse-mcp` script.
 - Modify `README.md`: document MCP integration for agents.
 
 ## Task 1: Middleware Runner Contract
 
 **Files:**
 - Create: `tests/test_middleware.py`
-- Create: `src/creativity_layer/middleware.py`
+- Create: `src/muse/middleware.py`
 
 - [ ] **Step 1: Write failing tests**
 
 ```python
-from creativity_layer.middleware import CreativePlanRequest, CreativeMiddlewareRunner
+from muse.middleware import CreativePlanRequest, CreativeMiddlewareRunner
 
 
 def test_runner_returns_json_safe_operational_plan_from_repo_signals():
@@ -62,7 +62,7 @@ def test_runner_returns_json_safe_operational_plan_from_repo_signals():
 - [ ] **Step 2: Verify RED**
 
 Run: `python -m pytest tests/test_middleware.py -q`
-Expected: FAIL because `creativity_layer.middleware` does not exist.
+Expected: FAIL because `muse.middleware` does not exist.
 
 - [ ] **Step 3: Implement minimal runner**
 
@@ -78,7 +78,7 @@ Expected: PASS.
 Run:
 
 ```powershell
-git add src\creativity_layer\middleware.py tests\test_middleware.py
+git add src\muse\middleware.py tests\test_middleware.py
 git commit -m "feat: add middleware runner"
 ```
 
@@ -86,17 +86,17 @@ git commit -m "feat: add middleware runner"
 
 **Files:**
 - Create: `tests/test_mcp_server.py`
-- Create: `src/creativity_layer/mcp_server.py`
+- Create: `src/muse/mcp_server.py`
 - Modify: `pyproject.toml`
 
 - [ ] **Step 1: Write failing tests**
 
 ```python
-from creativity_layer.mcp_server import build_mcp_server, creative_plan
+from muse.mcp_server import build_mcp_server, muse_plan
 
 
-def test_creative_plan_tool_delegates_to_middleware_runner():
-    result = creative_plan(
+def test_muse_plan_tool_delegates_to_middleware_runner():
+    result = muse_plan(
         goal="Design a backend middleware planning hook for arbitrary repos",
         repo_signals={"detected_languages": ("Python",)},
         seed_count=2,
@@ -119,11 +119,11 @@ def test_build_mcp_server_returns_named_server():
 - [ ] **Step 2: Verify RED**
 
 Run: `python -m pytest tests/test_mcp_server.py -q`
-Expected: FAIL because `creativity_layer.mcp_server` does not exist.
+Expected: FAIL because `muse.mcp_server` does not exist.
 
 - [ ] **Step 3: Implement adapter**
 
-Add the `mcp` dependency, register `creative_plan`, expose `build_mcp_server()`, and add `main()` for stdio startup.
+Add the `mcp` dependency, register `muse_plan`, expose `build_mcp_server()`, and add `main()` for stdio startup.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -135,8 +135,8 @@ Expected: PASS.
 Run:
 
 ```powershell
-git add pyproject.toml src\creativity_layer\mcp_server.py tests\test_mcp_server.py
-git commit -m "feat: expose creativity layer mcp server"
+git add pyproject.toml src\muse\mcp_server.py tests\test_mcp_server.py
+git commit -m "feat: expose muse mcp server"
 ```
 
 ## Task 3: Agent-Facing Documentation
@@ -146,7 +146,7 @@ git commit -m "feat: expose creativity layer mcp server"
 
 - [ ] **Step 1: Write doc expectation test**
 
-Add an assertion in `tests/test_package.py` or `tests/test_mcp_server.py` that `pyproject.toml` contains `creativity-layer-mcp`.
+Add an assertion in `tests/test_package.py` or `tests/test_mcp_server.py` that `pyproject.toml` contains `muse-mcp`.
 
 - [ ] **Step 2: Verify RED**
 
@@ -154,7 +154,7 @@ Run the targeted test and confirm it fails before docs/script metadata are compl
 
 - [ ] **Step 3: Update README**
 
-Document `creativity-layer-mcp`, a generic MCP config snippet, and an example `creative_plan` payload with repo signals.
+Document `muse-mcp`, a generic MCP config snippet, and an example `muse_plan` payload with repo signals.
 
 - [ ] **Step 4: Verify**
 
@@ -177,7 +177,7 @@ git commit -m "docs: document agent mcp integration"
 ## Final Verification
 
 - [ ] `python -m pytest -q`
-- [ ] `python -m pytest --cov=creativity_layer --cov-fail-under=90`
+- [ ] `python -m pytest --cov=muse --cov-fail-under=90`
 - [ ] `python -m ruff check .`
 - [ ] `git status --short`
 - [ ] Push branch and open PR.

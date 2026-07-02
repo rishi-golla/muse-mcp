@@ -27,7 +27,7 @@
 
 - [ ] **Step 1: Write failing tests**
 
-Add tests that parse the expected TOML/JSON files, assert `creativity-layer-mcp` command values, check Codex allows only `creative_plan`, and ensure no sample file contains a literal API key.
+Add tests that parse the expected TOML/JSON files, assert `muse-mcp` command values, check Codex allows only `muse_plan`, and ensure no sample file contains a literal API key.
 
 - [ ] **Step 2: Verify RED**
 
@@ -93,7 +93,7 @@ git commit -m "docs: add agent mcp integration guide"
 ## Final Verification
 
 - [ ] `python -m pytest -q`
-- [ ] `python -m pytest --cov=creativity_layer --cov-fail-under=90`
+- [ ] `python -m pytest --cov=muse --cov-fail-under=90`
 - [ ] `python -m ruff check .`
 - [ ] `git diff --check`
 - [ ] Request code review.

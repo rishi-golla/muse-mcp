@@ -22,7 +22,7 @@ Add tests asserting that warning results produce:
 ```python
 handoff = result["agent_handoff"]
 assert handoff["status"] == "retry_recommended"
-assert handoff["recommended_action"] == "retry_creative_plan"
+assert handoff["recommended_action"] == "retry_muse_plan"
 assert handoff["use_current_finalist"] is False
 assert handoff["selected_finalist_id"] == result["finalists"][0]["id"]
 assert handoff["suggested_next_call_available"] is True
@@ -52,7 +52,7 @@ Expected: fail with missing `agent_handoff`.
 ### Task 2: Implement Handoff Serialization
 
 **Files:**
-- Modify: `src/creativity_layer/middleware.py`
+- Modify: `src/muse/middleware.py`
 
 - [ ] **Step 1: Add helper functions**
 
@@ -83,7 +83,7 @@ Expected: pass.
 
 - [ ] **Step 1: Write failing FastMCP test**
 
-Add a test that calls `creative_plan` through `build_mcp_server().call_tool(...)`
+Add a test that calls `muse_plan` through `build_mcp_server().call_tool(...)`
 and asserts `structured_result["agent_handoff"]` exists and equals
 `structured_result["agent_guidance"]["agent_handoff"]`.
 
@@ -132,7 +132,7 @@ Run:
 Run:
 `python -m pytest -q`
 `python -m ruff check .`
-`creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" --provider-mode deterministic --repo-language Python`
+`muse-mcp-smoke "Design a retry strategy for AI coding agents" --provider-mode deterministic --repo-language Python`
 
 - [ ] **Step 3: Commit, push, and open PR**
 

@@ -3,10 +3,10 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
-from creativity_layer.models import IdeaGenome
-from creativity_layer.operation import validate_transform_payload
-from creativity_layer.providers import MeteredResponse
-from creativity_layer.transforms import (
+from muse.models import IdeaGenome
+from muse.operation import validate_transform_payload
+from muse.providers import MeteredResponse
+from muse.transforms import (
     OPERATOR_INSTRUCTIONS,
     OperatorName,
     TransformationRequest,

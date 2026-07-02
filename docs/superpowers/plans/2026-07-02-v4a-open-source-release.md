@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add the public-release files, package metadata, examples, and docs needed to open source creativity-layer credibly.
+**Goal:** Add the public-release files, package metadata, examples, and docs needed to open source muse credibly.
 
 **Architecture:** Keep this slice documentation and packaging focused. Add a single public-readiness test module that validates release files, metadata, example config, and README setup instructions. No runtime code paths change.
 

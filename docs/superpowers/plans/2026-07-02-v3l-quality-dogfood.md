@@ -4,7 +4,7 @@
 
 **Goal:** Add a repeatable MCP dogfood quality suite that reports quality gates, search-mode comparisons, and cheap deterministic regression data.
 
-**Architecture:** Add `src/creativity_layer/dogfood_quality.py` as the single implementation module. It calls the FastMCP `creative_plan` tool in-process, evaluates structured quality gates, and returns JSON-safe reports. Add `src/creativity_layer/dogfood_quality_cli.py` as a thin terminal harness.
+**Architecture:** Add `src/muse/dogfood_quality.py` as the single implementation module. It calls the FastMCP `muse_plan` tool in-process, evaluates structured quality gates, and returns JSON-safe reports. Add `src/muse/dogfood_quality_cli.py` as a thin terminal harness.
 
 **Tech Stack:** Python 3.12, Pydantic v2-style JSON-safe dictionaries, FastMCP, pytest, Ruff.
 
@@ -13,7 +13,7 @@
 ### Task 1: Dogfood Quality Core
 
 **Files:**
-- Create: `src/creativity_layer/dogfood_quality.py`
+- Create: `src/muse/dogfood_quality.py`
 - Create: `tests/test_dogfood_quality.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -24,7 +24,7 @@ Add tests that import `DEFAULT_DOGFOOD_CASES`, `DEFAULT_SEARCH_VARIANTS`, `run_d
 
 Run: `python -m pytest tests/test_dogfood_quality.py -q`
 
-Expected: FAIL because `creativity_layer.dogfood_quality` does not exist.
+Expected: FAIL because `muse.dogfood_quality` does not exist.
 
 - [ ] **Step 3: Implement core module**
 
@@ -33,7 +33,7 @@ Implement:
 - immutable dataclasses `DogfoodCase` and `SearchVariant`;
 - defaults for four cases and three search variants;
 - `run_dogfood_quality_suite(...)`;
-- async MCP call helper using `build_mcp_server().call_tool("creative_plan", arguments)`;
+- async MCP call helper using `build_mcp_server().call_tool("muse_plan", arguments)`;
 - `evaluate_quality_gates(case, variant, result)`;
 - JSON-safe report assembly.
 
@@ -48,14 +48,14 @@ Expected: PASS.
 Run:
 
 ```powershell
-git add src\creativity_layer\dogfood_quality.py tests\test_dogfood_quality.py
+git add src\muse\dogfood_quality.py tests\test_dogfood_quality.py
 git commit -m "feat: add mcp dogfood quality suite"
 ```
 
 ### Task 2: Dogfood Quality CLI
 
 **Files:**
-- Create: `src/creativity_layer/dogfood_quality_cli.py`
+- Create: `src/muse/dogfood_quality_cli.py`
 - Modify: `pyproject.toml`
 - Create: `tests/test_dogfood_quality_cli.py`
 
@@ -84,7 +84,7 @@ Implement argparse options:
 - `--json`
 - `--fail-on-gates`
 
-Add `creativity-layer-dogfood-quality = "creativity_layer.dogfood_quality_cli:main"` to `pyproject.toml`.
+Add `muse-dogfood-quality = "muse.dogfood_quality_cli:main"` to `pyproject.toml`.
 
 - [ ] **Step 4: Run GREEN**
 
@@ -97,7 +97,7 @@ Expected: PASS.
 Run:
 
 ```powershell
-git add src\creativity_layer\dogfood_quality_cli.py tests\test_dogfood_quality_cli.py pyproject.toml
+git add src\muse\dogfood_quality_cli.py tests\test_dogfood_quality_cli.py pyproject.toml
 git commit -m "feat: add dogfood quality cli"
 ```
 
@@ -110,7 +110,7 @@ git commit -m "feat: add dogfood quality cli"
 
 - [ ] **Step 1: Write failing docs test**
 
-Add assertions that docs mention `creativity-layer-dogfood-quality`, `fail-on-gates`, search comparison, and V3-L as the last V3 validation slice.
+Add assertions that docs mention `muse-dogfood-quality`, `fail-on-gates`, search comparison, and V3-L as the last V3 validation slice.
 
 - [ ] **Step 2: Run RED**
 

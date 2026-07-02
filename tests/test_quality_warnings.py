@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from creativity_layer.quality_warnings import (
+from muse.quality_warnings import (
     build_suggested_next_call,
     finalist_quality_warnings,
     quality_action_policy,
@@ -135,7 +135,7 @@ def test_suggested_next_call_escalates_without_copying_repo_signals() -> None:
     )
 
     assert suggestion == {
-        "tool": "creative_plan",
+        "tool": "muse_plan",
         "automatic": False,
         "reason": "quality_action_policy",
         "request": {

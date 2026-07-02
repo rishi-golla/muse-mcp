@@ -5,7 +5,7 @@
 V3-C adds a provider-neutral context retrieval layer for middleware callers. V3-B
 proved the engine can consume typed `ContextBundle` data. V3-C defines how an agent
 backend can assemble that bundle from generic repository and task signals without
-turning Creativity Layer into a CLI, a repo-specific integration, or a filesystem
+turning Muse into a CLI, a repo-specific integration, or a filesystem
 crawler.
 
 The slice tests this claim:

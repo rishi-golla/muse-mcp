@@ -12,10 +12,10 @@
 
 ## File Map
 
-- Create `src/creativity_layer/runtime_defaults.py`: environment parsing helpers.
+- Create `src/muse/runtime_defaults.py`: environment parsing helpers.
 - Create `tests/test_runtime_defaults.py`: direct parser tests.
-- Modify `src/creativity_layer/mcp_server.py`: default omitted provider/effort/privacy/budget from runtime defaults.
-- Modify `src/creativity_layer/mcp_smoke.py`: same defaults for smoke command.
+- Modify `src/muse/mcp_server.py`: default omitted provider/effort/privacy/budget from runtime defaults.
+- Modify `src/muse/mcp_smoke.py`: same defaults for smoke command.
 - Modify `tests/test_mcp_server.py`: omitted provider should be live-first; explicit deterministic still works.
 - Modify `tests/test_mcp_smoke.py`: omitted provider/env override tests.
 - Modify docs in `README.md`, `docs/integrations/mcp-agent-hosts.md`, and `docs/integrations/agent-dogfood-playbook.md`.
@@ -25,7 +25,7 @@
 
 **Files:**
 - Create: `tests/test_runtime_defaults.py`
-- Create: `src/creativity_layer/runtime_defaults.py`
+- Create: `src/muse/runtime_defaults.py`
 
 - [ ] **Step 1: Write failing tests**
 
@@ -41,10 +41,10 @@ Expected: FAIL because `runtime_defaults` does not exist.
 Create `RuntimeDefaults` frozen dataclass and `RuntimeDefaults.from_environment(environ=os.environ)` that reads:
 
 ```text
-CREATIVITY_LAYER_PROVIDER_MODE
-CREATIVITY_LAYER_EFFORT
-CREATIVITY_LAYER_PRIVACY
-CREATIVITY_LAYER_BUDGET_USD
+MUSE_PROVIDER_MODE
+MUSE_EFFORT
+MUSE_PRIVACY
+MUSE_BUDGET_USD
 ```
 
 - [ ] **Step 4: Run GREEN**
@@ -55,7 +55,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src\creativity_layer\runtime_defaults.py tests\test_runtime_defaults.py
+git add src\muse\runtime_defaults.py tests\test_runtime_defaults.py
 git commit -m "feat: add runtime provider defaults"
 ```
 
@@ -64,8 +64,8 @@ git commit -m "feat: add runtime provider defaults"
 **Files:**
 - Modify: `tests/test_mcp_server.py`
 - Modify: `tests/test_mcp_smoke.py`
-- Modify: `src/creativity_layer/mcp_server.py`
-- Modify: `src/creativity_layer/mcp_smoke.py`
+- Modify: `src/muse/mcp_server.py`
+- Modify: `src/muse/mcp_smoke.py`
 
 - [ ] **Step 1: Write failing tests**
 
@@ -88,7 +88,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src\creativity_layer\mcp_server.py src\creativity_layer\mcp_smoke.py tests\test_mcp_server.py tests\test_mcp_smoke.py
+git add src\muse\mcp_server.py src\muse\mcp_smoke.py tests\test_mcp_server.py tests\test_mcp_smoke.py
 git commit -m "feat: make mcp defaults live first"
 ```
 
@@ -128,7 +128,7 @@ git commit -m "docs: document live first provider posture"
 ## Final Verification
 
 - [ ] `python -m pytest -q`
-- [ ] `python -m pytest --cov=creativity_layer --cov-fail-under=90`
+- [ ] `python -m pytest --cov=muse --cov-fail-under=90`
 - [ ] `python -m ruff check .`
 - [ ] `git diff --check`
 - [ ] Request code review.

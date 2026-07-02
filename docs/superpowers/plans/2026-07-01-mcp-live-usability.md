@@ -12,10 +12,10 @@
 
 ## File Map
 
-- Modify `src/creativity_layer/middleware.py`: provider mode, live runner construction, pricing loading, structured error response.
-- Modify `src/creativity_layer/mcp_server.py`: expose `provider_mode` and `privacy` tool inputs.
-- Create `src/creativity_layer/mcp_smoke.py`: in-process FastMCP smoke command.
-- Modify `pyproject.toml`: add `creativity-layer-mcp-smoke` script.
+- Modify `src/muse/middleware.py`: provider mode, live runner construction, pricing loading, structured error response.
+- Modify `src/muse/mcp_server.py`: expose `provider_mode` and `privacy` tool inputs.
+- Create `src/muse/mcp_smoke.py`: in-process FastMCP smoke command.
+- Modify `pyproject.toml`: add `muse-mcp-smoke` script.
 - Modify `README.md`: document deterministic/live MCP usage and env setup.
 - Modify `tests/test_middleware.py`: middleware mode and live configuration tests.
 - Modify `tests/test_mcp_server.py`: MCP provider mode and structured error tests.
@@ -25,7 +25,7 @@
 
 **Files:**
 - Modify `tests/test_middleware.py`
-- Modify `src/creativity_layer/middleware.py`
+- Modify `src/muse/middleware.py`
 
 - [ ] **Step 1: Write failing tests**
 
@@ -34,11 +34,11 @@ Add tests that assert default `provider_mode` is deterministic, `live_openai` re
 - [ ] **Step 2: Verify RED**
 
 Run: `python -m pytest tests/test_middleware.py -q`
-Expected: FAIL because `provider_mode`, `run_creative_plan`, and live constructors do not exist.
+Expected: FAIL because `provider_mode`, `run_muse_plan`, and live constructors do not exist.
 
 - [ ] **Step 3: Implement middleware**
 
-Add `ProviderMode`, `ConfigurationError`, `run_creative_plan`, `CreativeMiddlewareRunner.live_openai(...)`, pricing-file loading, and result serialization with `provider_mode`.
+Add `ProviderMode`, `ConfigurationError`, `run_muse_plan`, `CreativeMiddlewareRunner.live_openai(...)`, pricing-file loading, and result serialization with `provider_mode`.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -50,7 +50,7 @@ Expected: PASS.
 Run:
 
 ```powershell
-git add src\creativity_layer\middleware.py tests\test_middleware.py
+git add src\muse\middleware.py tests\test_middleware.py
 git commit -m "feat: add live provider mode to middleware"
 ```
 
@@ -58,11 +58,11 @@ git commit -m "feat: add live provider mode to middleware"
 
 **Files:**
 - Modify `tests/test_mcp_server.py`
-- Modify `src/creativity_layer/mcp_server.py`
+- Modify `src/muse/mcp_server.py`
 
 - [ ] **Step 1: Write failing tests**
 
-Add tests that call `creative_plan(provider_mode="live_openai")` with missing env and assert `stopped_reason == "configuration_error"`. Add a FastMCP invocation test that passes `provider_mode`.
+Add tests that call `muse_plan(provider_mode="live_openai")` with missing env and assert `stopped_reason == "configuration_error"`. Add a FastMCP invocation test that passes `provider_mode`.
 
 - [ ] **Step 2: Verify RED**
 
@@ -71,7 +71,7 @@ Expected: FAIL because the MCP tool does not expose provider mode.
 
 - [ ] **Step 3: Implement MCP adapter changes**
 
-Add `provider_mode` and `privacy` parameters, and delegate to `run_creative_plan`.
+Add `provider_mode` and `privacy` parameters, and delegate to `run_muse_plan`.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -83,14 +83,14 @@ Expected: PASS.
 Run:
 
 ```powershell
-git add src\creativity_layer\mcp_server.py tests\test_mcp_server.py
+git add src\muse\mcp_server.py tests\test_mcp_server.py
 git commit -m "feat: add mcp live mode inputs"
 ```
 
 ## Task 3: MCP Smoke Harness and Docs
 
 **Files:**
-- Create `src/creativity_layer/mcp_smoke.py`
+- Create `src/muse/mcp_smoke.py`
 - Create `tests/test_mcp_smoke.py`
 - Modify `pyproject.toml`
 - Modify `README.md`
@@ -122,14 +122,14 @@ python -m ruff check .
 Run:
 
 ```powershell
-git add src\creativity_layer\mcp_smoke.py tests\test_mcp_smoke.py pyproject.toml README.md
+git add src\muse\mcp_smoke.py tests\test_mcp_smoke.py pyproject.toml README.md
 git commit -m "docs: add mcp live smoke workflow"
 ```
 
 ## Final Verification
 
 - [ ] `python -m pytest -q`
-- [ ] `python -m pytest --cov=creativity_layer --cov-fail-under=90`
+- [ ] `python -m pytest --cov=muse --cov-fail-under=90`
 - [ ] `python -m ruff check .`
 - [ ] `git diff --check`
 - [ ] Request code review.

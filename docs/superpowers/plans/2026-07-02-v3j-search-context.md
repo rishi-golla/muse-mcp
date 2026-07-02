@@ -12,12 +12,12 @@
 
 ## File Map
 
-- Create `src/creativity_layer/search_context.py`: search mode enum, metadata model, resolver, and search-result-to-context conversion.
+- Create `src/muse/search_context.py`: search mode enum, metadata model, resolver, and search-result-to-context conversion.
 - Create `tests/test_search_context.py`: resolver behavior and metadata tests.
-- Modify `src/creativity_layer/runtime_defaults.py`: add `search_mode` and `CREATIVITY_LAYER_SEARCH_MODE`.
-- Modify `src/creativity_layer/middleware.py`: add `search_mode` to requests, inject resolver, merge context, serialize metadata.
-- Modify `src/creativity_layer/mcp_server.py`: expose `search_mode`, resolve runtime default, preserve positional compatibility.
-- Modify `src/creativity_layer/mcp_smoke.py`: add `--search-mode`.
+- Modify `src/muse/runtime_defaults.py`: add `search_mode` and `MUSE_SEARCH_MODE`.
+- Modify `src/muse/middleware.py`: add `search_mode` to requests, inject resolver, merge context, serialize metadata.
+- Modify `src/muse/mcp_server.py`: expose `search_mode`, resolve runtime default, preserve positional compatibility.
+- Modify `src/muse/mcp_smoke.py`: add `--search-mode`.
 - Modify `tests/test_runtime_defaults.py`, `tests/test_middleware.py`, `tests/test_mcp_server.py`, `tests/test_mcp_smoke.py`, `tests/test_mcp_config_packs.py`: contract tests.
 - Modify `README.md`, `docs/integrations/mcp-agent-hosts.md`, `docs/integrations/agent-dogfood-playbook.md`: opt-in search docs.
 
@@ -26,7 +26,7 @@
 ## Task 1: Search Context Resolver
 
 **Files:**
-- Create: `src/creativity_layer/search_context.py`
+- Create: `src/muse/search_context.py`
 - Create: `tests/test_search_context.py`
 
 - [ ] **Step 1: Write failing resolver tests**
@@ -36,10 +36,10 @@ Add tests that cover `off`, approval-required skip, provider configuration skip,
 ```python
 from __future__ import annotations
 
-from creativity_layer.context_provider import RepoSignals
-from creativity_layer.models import TaskContext
-from creativity_layer.search import DeterministicSearchProvider
-from creativity_layer.search_context import SearchContextMode, SearchContextResolver
+from muse.context_provider import RepoSignals
+from muse.models import TaskContext
+from muse.search import DeterministicSearchProvider
+from muse.search_context import SearchContextMode, SearchContextResolver
 
 
 def test_search_context_off_returns_empty_metadata() -> None:
@@ -77,7 +77,7 @@ def test_search_context_reports_missing_provider_after_approval() -> None:
     result = SearchContextResolver(
         provider=None,
         approval_required=True,
-        environ={"CREATIVITY_LAYER_LIVE_SEARCH_APPROVED": "1"},
+        environ={"MUSE_LIVE_SEARCH_APPROVED": "1"},
     ).resolve(
         mode=SearchContextMode.LIGHT,
         task=TaskContext(goal="reversible team decisions"),
@@ -113,7 +113,7 @@ def test_search_context_converts_results_to_context_snippets() -> None:
 
 Run: `python -m pytest tests/test_search_context.py -q`
 
-Expected: FAIL because `creativity_layer.search_context` does not exist.
+Expected: FAIL because `muse.search_context` does not exist.
 
 - [ ] **Step 3: Implement resolver**
 
@@ -144,7 +144,7 @@ class SearchContextResult(FrozenModel):
 `SearchContextResolver.resolve(...)` should:
 
 - return disabled metadata for `off`;
-- require `CREATIVITY_LAYER_LIVE_SEARCH_APPROVED=1` when `approval_required=True`;
+- require `MUSE_LIVE_SEARCH_APPROVED=1` when `approval_required=True`;
 - skip with `configuration_error` when approved but no provider exists;
 - run one `SearchQuery` for `light` and two bounded queries for `deep`;
 - convert provider results into private `ContextSnippet` records with sources like `search/<provider>/<source_id>`;
@@ -159,7 +159,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src\creativity_layer\search_context.py tests\test_search_context.py
+git add src\muse\search_context.py tests\test_search_context.py
 git commit -m "feat: add search context resolver"
 ```
 
@@ -168,18 +168,18 @@ git commit -m "feat: add search context resolver"
 ## Task 2: Runtime Defaults and Middleware Contract
 
 **Files:**
-- Modify: `src/creativity_layer/runtime_defaults.py`
-- Modify: `src/creativity_layer/middleware.py`
+- Modify: `src/muse/runtime_defaults.py`
+- Modify: `src/muse/middleware.py`
 - Modify: `tests/test_runtime_defaults.py`
 - Modify: `tests/test_middleware.py`
 
 - [ ] **Step 1: Write failing defaults and middleware tests**
 
-Add tests for `CREATIVITY_LAYER_SEARCH_MODE`, default `off`, explicit override, metadata serialization, approval skip, and injected search context:
+Add tests for `MUSE_SEARCH_MODE`, default `off`, explicit override, metadata serialization, approval skip, and injected search context:
 
 ```python
 def test_runtime_defaults_include_search_mode() -> None:
-    defaults = RuntimeDefaults.from_environment({"CREATIVITY_LAYER_SEARCH_MODE": "light"})
+    defaults = RuntimeDefaults.from_environment({"MUSE_SEARCH_MODE": "light"})
     assert defaults.search_mode == "light"
 
 
@@ -258,7 +258,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src\creativity_layer\runtime_defaults.py src\creativity_layer\middleware.py tests\test_runtime_defaults.py tests\test_middleware.py
+git add src\muse\runtime_defaults.py src\muse\middleware.py tests\test_runtime_defaults.py tests\test_middleware.py
 git commit -m "feat: add search mode to middleware"
 ```
 
@@ -267,8 +267,8 @@ git commit -m "feat: add search mode to middleware"
 ## Task 3: MCP and Smoke Search Mode
 
 **Files:**
-- Modify: `src/creativity_layer/mcp_server.py`
-- Modify: `src/creativity_layer/mcp_smoke.py`
+- Modify: `src/muse/mcp_server.py`
+- Modify: `src/muse/mcp_smoke.py`
 - Modify: `tests/test_mcp_server.py`
 - Modify: `tests/test_mcp_smoke.py`
 
@@ -284,7 +284,7 @@ Expected: FAIL because MCP and smoke do not accept search mode.
 
 - [ ] **Step 3: Implement MCP/smoke forwarding**
 
-Add `search_mode: str | None = None` after `effort` in `creative_plan` to preserve existing numeric positional ordering. Pass it into `RuntimeDefaults.resolve(...)` and the request. Add `--search-mode` choices `off`, `light`, `deep` to `mcp_smoke.py`, then forward it only when explicitly supplied.
+Add `search_mode: str | None = None` after `effort` in `muse_plan` to preserve existing numeric positional ordering. Pass it into `RuntimeDefaults.resolve(...)` and the request. Add `--search-mode` choices `off`, `light`, `deep` to `mcp_smoke.py`, then forward it only when explicitly supplied.
 
 - [ ] **Step 4: Run tests to verify GREEN**
 
@@ -295,7 +295,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src\creativity_layer\mcp_server.py src\creativity_layer\mcp_smoke.py tests\test_mcp_server.py tests\test_mcp_smoke.py
+git add src\muse\mcp_server.py src\muse\mcp_smoke.py tests\test_mcp_server.py tests\test_mcp_smoke.py
 git commit -m "feat: expose search mode through mcp"
 ```
 
@@ -311,7 +311,7 @@ git commit -m "feat: expose search mode through mcp"
 
 - [ ] **Step 1: Write failing docs test**
 
-Add a test asserting docs mention `search_mode`, `CREATIVITY_LAYER_SEARCH_MODE`, `CREATIVITY_LAYER_LIVE_SEARCH_APPROVED`, default `off`, and opt-in search.
+Add a test asserting docs mention `search_mode`, `MUSE_SEARCH_MODE`, `MUSE_LIVE_SEARCH_APPROVED`, default `off`, and opt-in search.
 
 - [ ] **Step 2: Run docs test to verify RED**
 
@@ -325,8 +325,8 @@ Document:
 
 - default search mode is `off`;
 - explicit MCP payload can set `"search_mode": "light"` or `"deep"`;
-- env default can set `CREATIVITY_LAYER_SEARCH_MODE`;
-- live search requires `CREATIVITY_LAYER_LIVE_SEARCH_APPROVED=1`;
+- env default can set `MUSE_SEARCH_MODE`;
+- live search requires `MUSE_LIVE_SEARCH_APPROVED=1`;
 - agents must still pass repo signals and must not rely on repo crawling.
 
 - [ ] **Step 4: Run docs test to verify GREEN**

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make live creativity-layer outputs useful as backend planning artifacts for AI
+Make live muse outputs useful as backend planning artifacts for AI
 agents, not just high-level idea briefs. Each generated idea will carry a
 structured operational contract that describes what an agent needs, what it
 returns, how it acts, where it integrates, how it verifies work, and how it can

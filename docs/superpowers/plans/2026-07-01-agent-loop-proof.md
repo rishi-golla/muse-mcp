@@ -4,7 +4,7 @@
 
 **Goal:** Add a deterministic proof that an agent loop can call the MCP tool, use repo signals, apply one bounded code fix, and verify it.
 
-**Architecture:** The proof harness creates a tiny external sample repo, runs pytest to capture failure evidence, invokes the FastMCP `creative_plan` tool in-process, applies a narrow repair to one sample file, and reruns the same verification command. It returns structured Python data so tests, docs, and future middleware probes can consume it without scraping stdout.
+**Architecture:** The proof harness creates a tiny external sample repo, runs pytest to capture failure evidence, invokes the FastMCP `muse_plan` tool in-process, applies a narrow repair to one sample file, and reruns the same verification command. It returns structured Python data so tests, docs, and future middleware probes can consume it without scraping stdout.
 
 **Tech Stack:** Python 3.12, FastMCP in-process calls, pytest subprocess verification, Pydantic-compatible JSON-safe dictionaries, Markdown docs.
 
@@ -12,9 +12,9 @@
 
 ## File Map
 
-- Create `src/creativity_layer/agent_loop_proof.py`: proof harness and optional proof-only CLI entrypoint.
+- Create `src/muse/agent_loop_proof.py`: proof harness and optional proof-only CLI entrypoint.
 - Create `tests/test_agent_loop_proof.py`: RED/GREEN tests for sample failure, MCP invocation, repair, and structured output.
-- Modify `pyproject.toml`: register `creativity-layer-agent-proof` if a local proof command is added.
+- Modify `pyproject.toml`: register `muse-agent-proof` if a local proof command is added.
 - Create `docs/integrations/agent-loop-proof.md`: proof usage and interpretation guide.
 - Modify `README.md`: link to the proof guide from Agent MCP integration.
 
@@ -22,7 +22,7 @@
 
 **Files:**
 - Create: `tests/test_agent_loop_proof.py`
-- Create: `src/creativity_layer/agent_loop_proof.py`
+- Create: `src/muse/agent_loop_proof.py`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -42,7 +42,7 @@ def test_sample_repo_starts_with_failing_verification(tmp_path):
 - [ ] **Step 2: Run RED**
 
 Run: `python -m pytest tests/test_agent_loop_proof.py::test_sample_repo_starts_with_failing_verification -q`
-Expected: FAIL because `creativity_layer.agent_loop_proof` does not exist.
+Expected: FAIL because `muse.agent_loop_proof` does not exist.
 
 - [ ] **Step 3: Implement minimal sample repo and runner**
 
@@ -56,7 +56,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src\creativity_layer\agent_loop_proof.py tests\test_agent_loop_proof.py
+git add src\muse\agent_loop_proof.py tests\test_agent_loop_proof.py
 git commit -m "test: add agent loop sample verification proof"
 ```
 
@@ -64,7 +64,7 @@ git commit -m "test: add agent loop sample verification proof"
 
 **Files:**
 - Modify: `tests/test_agent_loop_proof.py`
-- Modify: `src/creativity_layer/agent_loop_proof.py`
+- Modify: `src/muse/agent_loop_proof.py`
 
 - [ ] **Step 1: Write failing MCP proof tests**
 
@@ -89,7 +89,7 @@ Expected: FAIL because `run_agent_loop_proof` and repair behavior do not exist.
 
 - [ ] **Step 3: Implement MCP invocation and repair**
 
-Build repo signals from the sample repo, call `build_mcp_server().call_tool("creative_plan", ...)`, extract the first finalist, replace only `retry_policy.py` with an exponential capped retry delay, and rerun verification.
+Build repo signals from the sample repo, call `build_mcp_server().call_tool("muse_plan", ...)`, extract the first finalist, replace only `retry_policy.py` with an exponential capped retry delay, and rerun verification.
 
 - [ ] **Step 4: Run GREEN**
 
@@ -99,14 +99,14 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src\creativity_layer\agent_loop_proof.py tests\test_agent_loop_proof.py
+git add src\muse\agent_loop_proof.py tests\test_agent_loop_proof.py
 git commit -m "feat: prove agent loop through mcp planning"
 ```
 
 ## Task 3: Proof Runner and Documentation
 
 **Files:**
-- Modify: `src/creativity_layer/agent_loop_proof.py`
+- Modify: `src/muse/agent_loop_proof.py`
 - Modify: `pyproject.toml`
 - Create: `docs/integrations/agent-loop-proof.md`
 - Modify: `README.md`
@@ -114,7 +114,7 @@ git commit -m "feat: prove agent loop through mcp planning"
 
 - [ ] **Step 1: Write failing docs and script tests**
 
-Add tests that assert `pyproject.toml` registers `creativity-layer-agent-proof`, the proof doc exists, the doc mentions MCP, deterministic mode, bounded repair, and README links to the doc.
+Add tests that assert `pyproject.toml` registers `muse-agent-proof`, the proof doc exists, the doc mentions MCP, deterministic mode, bounded repair, and README links to the doc.
 
 - [ ] **Step 2: Run RED**
 
@@ -131,7 +131,7 @@ Run:
 
 ```powershell
 python -m pytest tests/test_agent_loop_proof.py -q
-creativity-layer-agent-proof --workspace .agent-proof-tmp
+muse-agent-proof --workspace .agent-proof-tmp
 ```
 
 Expected: tests PASS and the proof command prints JSON with `"passed": true`.
@@ -139,14 +139,14 @@ Expected: tests PASS and the proof command prints JSON with `"passed": true`.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src\creativity_layer\agent_loop_proof.py tests\test_agent_loop_proof.py pyproject.toml docs\integrations\agent-loop-proof.md README.md
+git add src\muse\agent_loop_proof.py tests\test_agent_loop_proof.py pyproject.toml docs\integrations\agent-loop-proof.md README.md
 git commit -m "docs: add agent loop proof runner"
 ```
 
 ## Final Verification
 
 - [ ] `python -m pytest -q`
-- [ ] `python -m pytest --cov=creativity_layer --cov-fail-under=90`
+- [ ] `python -m pytest --cov=muse --cov-fail-under=90`
 - [ ] `python -m ruff check .`
 - [ ] `git diff --check`
 - [ ] Request code review.

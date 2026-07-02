@@ -2,7 +2,7 @@
 
 ## Purpose
 
-V3-J makes the MCP planning surface capable of using bounded search context when an agent explicitly asks for it. V3-I made MCP live-first, but live model output still depends mostly on the model's prior knowledge plus caller-supplied repo signals. This slice adds a controlled search-context switch so agents can request better grounding without turning creativity-layer into a repo crawler, daemon, or CLI replacement.
+V3-J makes the MCP planning surface capable of using bounded search context when an agent explicitly asks for it. V3-I made MCP live-first, but live model output still depends mostly on the model's prior knowledge plus caller-supplied repo signals. This slice adds a controlled search-context switch so agents can request better grounding without turning muse into a repo crawler, daemon, or CLI replacement.
 
 The narrow claim for this slice:
 
@@ -18,14 +18,14 @@ Use an explicit `search_mode` field on the middleware and MCP request:
 
 `search_mode` is intentionally independent of `effort`. `effort` controls creative search budget and generations; `search_mode` controls external context. This avoids hidden network calls when a user only wanted a deeper model run.
 
-Live search must be gated by `CREATIVITY_LAYER_LIVE_SEARCH_APPROVED=1`. If search is requested without approval or without provider credentials, the MCP result should still return a normal planning payload when possible, plus search metadata explaining that search was skipped. Search setup problems should not crash the agent host.
+Live search must be gated by `MUSE_LIVE_SEARCH_APPROVED=1`. If search is requested without approval or without provider credentials, the MCP result should still return a normal planning payload when possible, plus search metadata explaining that search was skipped. Search setup problems should not crash the agent host.
 
 ## Scope
 
 Included:
 
 - Add request-level `search_mode` validation to the transport-neutral middleware and MCP tool.
-- Add runtime default support with `CREATIVITY_LAYER_SEARCH_MODE`.
+- Add runtime default support with `MUSE_SEARCH_MODE`.
 - Add a small `SearchContextResolver` that converts search mode, approval state, and available repo/task facts into a context bundle.
 - Reuse existing search/context models rather than inventing a second source format.
 - Return top-level `search_context` metadata in MCP/middleware payloads.
@@ -43,12 +43,12 @@ Excluded:
 
 ## Data Flow
 
-1. Agent observes repo/task facts and calls `creative_plan`.
+1. Agent observes repo/task facts and calls `muse_plan`.
 2. MCP applies explicit request fields first, then runtime defaults.
 3. Middleware validates `search_mode`.
 4. If `search_mode` is `off`, middleware runs exactly as it does today and returns `search_context.mode: "off"`.
 5. If `search_mode` is `light` or `deep`, middleware asks `SearchContextResolver` for bounded context.
-6. Resolver checks `CREATIVITY_LAYER_LIVE_SEARCH_APPROVED`.
+6. Resolver checks `MUSE_LIVE_SEARCH_APPROVED`.
 7. If not approved, resolver returns skipped metadata and no context snippets.
 8. If approved and configured, resolver builds search queries from task goal and supplied repo signals, executes bounded searches through existing providers, converts results to `ContextSnippet` data, and returns metadata.
 9. Middleware merges returned context into the task before running the engine.
@@ -78,7 +78,7 @@ Excluded:
 
 ## Privacy and Cost
 
-Search is off by default because task goals and repo facts may contain private product details. Approval must be explicit through environment or a later host-managed policy. This slice uses `CREATIVITY_LAYER_LIVE_SEARCH_APPROVED=1` as the local approval mechanism because it is already documented for live search tests and avoids adding persistence.
+Search is off by default because task goals and repo facts may contain private product details. Approval must be explicit through environment or a later host-managed policy. This slice uses `MUSE_LIVE_SEARCH_APPROVED=1` as the local approval mechanism because it is already documented for live search tests and avoids adding persistence.
 
 Search metadata must not include API keys, raw provider response objects, or unbounded page text. Private traces should continue to hash sensitive content through existing trace behavior.
 
@@ -95,11 +95,11 @@ This keeps agent workflows moving while making it obvious that search grounding 
 
 ## Files
 
-- `src/creativity_layer/search_context.py`: search mode enum, resolver, metadata model, and no-network resolver helpers.
-- `src/creativity_layer/runtime_defaults.py`: add `CREATIVITY_LAYER_SEARCH_MODE`.
-- `src/creativity_layer/middleware.py`: accept search mode, merge resolved context, serialize search metadata.
-- `src/creativity_layer/mcp_server.py`: expose `search_mode`.
-- `src/creativity_layer/mcp_smoke.py`: add `--search-mode`.
+- `src/muse/search_context.py`: search mode enum, resolver, metadata model, and no-network resolver helpers.
+- `src/muse/runtime_defaults.py`: add `MUSE_SEARCH_MODE`.
+- `src/muse/middleware.py`: accept search mode, merge resolved context, serialize search metadata.
+- `src/muse/mcp_server.py`: expose `search_mode`.
+- `src/muse/mcp_smoke.py`: add `--search-mode`.
 - `tests/test_search_context.py`: resolver and metadata behavior.
 - `tests/test_middleware.py`, `tests/test_mcp_server.py`, `tests/test_mcp_smoke.py`: request/default serialization.
 - `tests/test_mcp_config_packs.py`, `README.md`, `docs/integrations/mcp-agent-hosts.md`, `docs/integrations/agent-dogfood-playbook.md`: documentation contract.
@@ -109,7 +109,7 @@ This keeps agent workflows moving while making it obvious that search grounding 
 Tests must prove:
 
 - Omitted search mode defaults to `off`.
-- `CREATIVITY_LAYER_SEARCH_MODE` is honored only when the caller omits `search_mode`.
+- `MUSE_SEARCH_MODE` is honored only when the caller omits `search_mode`.
 - Explicit `search_mode` overrides env defaults.
 - Invalid search modes fail as structured request/configuration errors.
 - `light` or `deep` without approval skips search and reports why.

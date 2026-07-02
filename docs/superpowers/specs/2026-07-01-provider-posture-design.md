@@ -12,10 +12,10 @@ The MCP surface is technically working, but omitted provider mode currently beha
 
 Add runtime defaults for MCP/smoke/user-facing planning:
 
-- `CREATIVITY_LAYER_PROVIDER_MODE`
-- `CREATIVITY_LAYER_EFFORT`
-- `CREATIVITY_LAYER_PRIVACY`
-- `CREATIVITY_LAYER_BUDGET_USD`
+- `MUSE_PROVIDER_MODE`
+- `MUSE_EFFORT`
+- `MUSE_PRIVACY`
+- `MUSE_BUDGET_USD`
 
 When no provider mode is explicitly supplied, the MCP tool and smoke runner should default to `live_openai`. If live environment is incomplete, the result remains a structured `configuration_error` with `agent_guidance` and no provider cost. Tests and CI should pass `provider_mode="deterministic"` explicitly.
 
@@ -31,9 +31,9 @@ Keep the internal enum value `deterministic` for compatibility, but update docum
 
 ## Files
 
-- `src/creativity_layer/runtime_defaults.py`: environment parsing for user-facing defaults.
-- `src/creativity_layer/mcp_server.py`: use runtime defaults for omitted provider/effort/privacy/budget.
-- `src/creativity_layer/mcp_smoke.py`: use runtime defaults for omitted CLI args.
+- `src/muse/runtime_defaults.py`: environment parsing for user-facing defaults.
+- `src/muse/mcp_server.py`: use runtime defaults for omitted provider/effort/privacy/budget.
+- `src/muse/mcp_smoke.py`: use runtime defaults for omitted CLI args.
 - `tests/test_runtime_defaults.py`: direct runtime default parsing tests.
 - `tests/test_mcp_server.py`: live-first omitted default and explicit deterministic behavior.
 - `tests/test_mcp_smoke.py`: smoke runner default behavior and env override tests.

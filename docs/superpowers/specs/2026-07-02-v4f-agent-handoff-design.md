@@ -9,14 +9,14 @@ extra host glue and makes integrations inconsistent.
 
 ## Design
 
-Add a compact top-level `agent_handoff` object to every `creative_plan`
+Add a compact top-level `agent_handoff` object to every `muse_plan`
 response. Mirror the same object in `agent_guidance.agent_handoff`.
 
 The handoff is advisory and does not execute provider calls, apply code, or skip
 repository verification. It answers four host questions:
 
 - Is this response usable for the next agent step?
-- Should the host use the current finalist or retry `creative_plan`?
+- Should the host use the current finalist or retry `muse_plan`?
 - Which finalist should the host inspect first?
 - Which action should the host take next?
 
@@ -24,7 +24,7 @@ Normal responses should derive the handoff from existing fields:
 
 - `status`: `ready`, `review`, `retry_recommended`, or `blocked`.
 - `recommended_action`: `apply_current_finalist`, `review_current_finalist`,
-  `retry_creative_plan`, or `fix_configuration`.
+  `retry_muse_plan`, or `fix_configuration`.
 - `use_current_finalist`: `true` only when a current finalist is safe to use as
   advisory planning input.
 - `selected_finalist_id`: first finalist id when present, otherwise `null`.
@@ -38,7 +38,7 @@ Configuration errors should return a blocked handoff with
 
 Modify:
 
-- `src/creativity_layer/middleware.py`
+- `src/muse/middleware.py`
 - `tests/test_middleware.py`
 - `tests/test_mcp_server.py`
 - `tests/test_mcp_config_packs.py`

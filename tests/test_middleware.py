@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import json
 
-from creativity_layer.deterministic import DeterministicCreativeProvider
-from creativity_layer.middleware import (
+from muse.deterministic import DeterministicCreativeProvider
+from muse.middleware import (
     CreativeMiddlewareRunner,
     CreativePlanRequest,
     EffortPreset,
     ProviderMode,
-    run_creative_plan,
+    run_muse_plan,
 )
-from creativity_layer.search import DeterministicSearchProvider
-from creativity_layer.search_context import SearchContextResolver, SearchProviderPolicy
+from muse.search import DeterministicSearchProvider
+from muse.search_context import SearchContextResolver, SearchProviderPolicy
 
 
 def test_runner_returns_json_safe_operational_plan_from_repo_signals() -> None:
@@ -112,7 +112,7 @@ def test_runner_returns_suggested_next_call_for_warning_results() -> None:
 
     suggestion = result["suggested_next_call"]
 
-    assert suggestion["tool"] == "creative_plan"
+    assert suggestion["tool"] == "muse_plan"
     assert suggestion["automatic"] is False
     assert suggestion["request"]["goal"] == (
         "Design a better retry strategy for AI coding agents after failed tests"
@@ -142,7 +142,7 @@ def test_runner_returns_agent_handoff_for_warning_results() -> None:
     handoff = result["agent_handoff"]
 
     assert handoff["status"] == "retry_recommended"
-    assert handoff["recommended_action"] == "retry_creative_plan"
+    assert handoff["recommended_action"] == "retry_muse_plan"
     assert handoff["use_current_finalist"] is False
     assert handoff["selected_finalist_id"] == result["finalists"][0]["id"]
     assert handoff["suggested_next_call_available"] is True
@@ -321,7 +321,7 @@ def test_runner_strict_search_returns_configuration_error_when_unavailable() -> 
 
 
 def test_direct_runner_respects_explicit_search_provider_policy(monkeypatch) -> None:
-    monkeypatch.setenv("CREATIVITY_LAYER_LIVE_SEARCH_APPROVED", "1")
+    monkeypatch.setenv("MUSE_LIVE_SEARCH_APPROVED", "1")
 
     result = CreativeMiddlewareRunner.deterministic().run(
         CreativePlanRequest(
@@ -353,7 +353,7 @@ def test_live_openai_mode_returns_structured_configuration_error(
     ):
         monkeypatch.delenv(name, raising=False)
 
-    result = run_creative_plan(
+    result = run_muse_plan(
         {
             "goal": "Design a retry strategy for AI coding agents",
             "provider_mode": "live_openai",
@@ -380,7 +380,7 @@ def test_live_openai_mode_returns_structured_configuration_error(
 
 
 def test_configuration_error_includes_empty_quality_warning_fields() -> None:
-    result = run_creative_plan(
+    result = run_muse_plan(
         {
             "goal": "Design a retry strategy for AI coding agents",
             "provider_mode": "bogus",
@@ -397,7 +397,7 @@ def test_configuration_error_includes_empty_quality_warning_fields() -> None:
 
 
 def test_configuration_error_includes_clear_quality_action_policy() -> None:
-    result = run_creative_plan(
+    result = run_muse_plan(
         {
             "goal": "Design a retry strategy for AI coding agents",
             "provider_mode": "bogus",
@@ -419,7 +419,7 @@ def test_configuration_error_includes_clear_quality_action_policy() -> None:
 
 
 def test_configuration_error_includes_blocked_agent_handoff() -> None:
-    result = run_creative_plan(
+    result = run_muse_plan(
         {
             "goal": "Design a retry strategy for AI coding agents",
             "provider_mode": "bogus",
@@ -438,7 +438,7 @@ def test_configuration_error_includes_blocked_agent_handoff() -> None:
 
 
 def test_invalid_search_mode_error_preserves_response_shape() -> None:
-    result = run_creative_plan(
+    result = run_muse_plan(
         {
             "goal": "Design a retry strategy for AI coding agents",
             "provider_mode": "deterministic",

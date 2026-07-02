@@ -5,22 +5,22 @@ import os
 import pytest
 from pydantic import SecretStr
 
-from creativity_layer.brave_search import BraveSearchProvider
-from creativity_layer.exa_search import ExaSearchProvider
-from creativity_layer.live_search_config import (
+from muse.brave_search import BraveSearchProvider
+from muse.exa_search import ExaSearchProvider
+from muse.live_search_config import (
     BraveSearchCredentials,
     ExaSearchCredentials,
     LiveSearchRuntime,
     OpenAIWebSearchConfig,
 )
-from creativity_layer.openai_web_search import OpenAIWebSearchProvider
-from creativity_layer.search import SearchPurpose, SearchQuery
+from muse.openai_web_search import OpenAIWebSearchProvider
+from muse.search import SearchPurpose, SearchQuery
 
 pytestmark = pytest.mark.live_search
 
 
 def _skip_unless_live_search_approved(*required_env: str) -> None:
-    if os.getenv("CREATIVITY_LAYER_LIVE_SEARCH_APPROVED") != "1":
+    if os.getenv("MUSE_LIVE_SEARCH_APPROVED") != "1":
         pytest.skip("live search smoke tests are not explicitly approved")
     missing = [name for name in required_env if not os.getenv(name)]
     if missing:

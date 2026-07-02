@@ -4,7 +4,7 @@ import pytest
 from openai.lib._pydantic import to_strict_json_schema
 from pydantic import ValidationError
 
-from creativity_layer.models import (
+from muse.models import (
     FramedTask,
     IdeaGenome,
     InspirationKind,
@@ -14,13 +14,13 @@ from creativity_layer.models import (
     RunResult,
     TaskContext,
 )
-from creativity_layer.openai_schemas import (
+from muse.openai_schemas import (
     OpenAIEvaluation,
     OpenAIFrame,
     OpenAIIdea,
     OpenAISeedBatch,
 )
-from creativity_layer.transforms import (
+from muse.transforms import (
     OperatorName,
     TransformationRequest,
     expected_transformation_history,

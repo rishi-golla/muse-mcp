@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve creativity-layer. This project is open-source
+Thanks for helping improve muse. This project is open-source
 middleware for AI coding agents, so contributions should keep the MCP workflow
 and repo-agnostic agent use case clear.
 
@@ -17,8 +17,8 @@ python -m ruff check .
 - Add or update tests for behavior changes.
 - Run `python -m pytest -q`.
 - Run `python -m ruff check .`.
-- For MCP-facing changes, run `creativity-layer-mcp-smoke` with deterministic mode.
-- For quality-related changes, run `creativity-layer-dogfood-quality` and include quality gate results.
+- For MCP-facing changes, run `muse-mcp-smoke` with deterministic mode.
+- For quality-related changes, run `muse-dogfood-quality` and include quality gate results.
 - Do not commit real API keys, trace files with secrets, or local `.env` files.
 
 ## Design Direction

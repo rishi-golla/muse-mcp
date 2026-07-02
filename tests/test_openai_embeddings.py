@@ -8,11 +8,11 @@ import pytest
 from openai import APITimeoutError, AuthenticationError, RateLimitError
 from pydantic import ValidationError
 
-from creativity_layer.embeddings import EmbeddingBatch
-from creativity_layer.live_config import LiveModelConfig
-from creativity_layer.openai_embeddings import OpenAIEmbeddingProvider
-from creativity_layer.pricing import EmbeddingPrice, PricingTable
-from creativity_layer.reliability import CircuitBreaker, RetryPolicy
+from muse.embeddings import EmbeddingBatch
+from muse.live_config import LiveModelConfig
+from muse.openai_embeddings import OpenAIEmbeddingProvider
+from muse.pricing import EmbeddingPrice, PricingTable
+from muse.reliability import CircuitBreaker, RetryPolicy
 
 
 @dataclass

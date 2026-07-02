@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-import creativity_layer.cli as cli_module
-from creativity_layer.cli import main, run_cli
-from creativity_layer.models import (
+import muse.cli as cli_module
+from muse.cli import main, run_cli
+from muse.models import (
     EvaluationScores,
     FramedTask,
     IdeaGenome,
@@ -235,7 +235,7 @@ def test_cli_reports_invalid_model_input_as_argparse_error(
 
     assert exc_info.value.code == 2
     assert captured.out == ""
-    assert "usage: creativity-layer" in captured.err
+    assert "usage: muse" in captured.err
     assert f"error: {message}" in captured.err
     assert "Traceback" not in captured.err
 

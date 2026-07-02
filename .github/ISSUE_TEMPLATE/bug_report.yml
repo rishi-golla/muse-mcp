@@ -15,14 +15,14 @@ body:
     attributes:
       label: Reproduction
       description: Include MCP payload or CLI command, without secrets.
-      placeholder: creativity-layer-mcp-smoke ... --provider-mode deterministic
+      placeholder: muse-mcp-smoke ... --provider-mode deterministic
     validations:
       required: true
   - type: textarea
     id: quality
     attributes:
       label: Quality gates or verification evidence
-      description: Paste creativity-layer-dogfood-quality output, pytest, or ruff evidence if relevant.
+      description: Paste muse-dogfood-quality output, pytest, or ruff evidence if relevant.
     validations:
       required: false
   - type: input

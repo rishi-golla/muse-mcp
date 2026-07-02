@@ -5,7 +5,7 @@ import re
 import tomllib
 from pathlib import Path
 
-from creativity_layer.pricing import PricingTable
+from muse.pricing import PricingTable
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -42,9 +42,9 @@ def test_pyproject_has_open_source_metadata() -> None:
     assert "Development Status :: 3 - Alpha" in project["classifiers"]
     assert "License :: OSI Approved :: MIT License" in project["classifiers"]
     assert "Programming Language :: Python :: 3.12" in project["classifiers"]
-    assert project["urls"]["Repository"] == "https://github.com/rishi-golla/creative-layer"
+    assert project["urls"]["Repository"] == "https://github.com/rishi-golla/muse"
     assert project["urls"]["Issues"] == (
-        "https://github.com/rishi-golla/creative-layer/issues"
+        "https://github.com/rishi-golla/muse/issues"
     )
 
 
@@ -57,11 +57,11 @@ def test_env_example_documents_safe_public_configuration() -> None:
         "OPENAI_STRONG_MODEL",
         "OPENAI_EMBEDDING_MODEL",
         "OPENAI_PRICING_FILE",
-        "CREATIVITY_LAYER_PROVIDER_MODE",
-        "CREATIVITY_LAYER_EFFORT",
-        "CREATIVITY_LAYER_SEARCH_MODE",
-        "CREATIVITY_LAYER_SEARCH_PROVIDER",
-        "CREATIVITY_LAYER_LIVE_SEARCH_APPROVED",
+        "MUSE_PROVIDER_MODE",
+        "MUSE_EFFORT",
+        "MUSE_SEARCH_MODE",
+        "MUSE_SEARCH_PROVIDER",
+        "MUSE_LIVE_SEARCH_APPROVED",
         "EXA_API_KEY",
         "BRAVE_SEARCH_API_KEY",
     ):
@@ -99,12 +99,12 @@ def test_public_docs_include_copy_pasteable_first_run_path() -> None:
     for phrase in (
         "open-source quickstart",
         'python -m pip install -e ".[dev]"',
-        "creativity-layer-mcp-smoke",
-        "creativity-layer-dogfood-quality",
+        "muse-mcp-smoke",
+        "muse-dogfood-quality",
         "--provider-mode deterministic",
         ".env.example",
         "openai-pricing.example.json",
-        "creative_plan",
+        "muse_plan",
         "mcp",
     ):
         assert phrase in combined
@@ -116,7 +116,7 @@ def test_github_templates_request_quality_and_verification_evidence() -> None:
     pr = _read_text(".github/PULL_REQUEST_TEMPLATE.md").casefold()
     combined = "\n".join((bug, feature, pr))
 
-    assert "creativity-layer-dogfood-quality" in combined
+    assert "muse-dogfood-quality" in combined
     assert "pytest" in combined
     assert "ruff" in combined
     assert "mcp" in combined

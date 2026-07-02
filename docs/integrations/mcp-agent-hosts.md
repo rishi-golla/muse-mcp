@@ -1,8 +1,8 @@
 # MCP Agent Host Integration
 
-This guide wires creativity-layer into coding agents as an MCP tool. The goal is
-for the agent to call `creative_plan` during normal planning, debugging, and
-verification work. The CLI remains a local harness; `creativity-layer-mcp` is
+This guide wires muse into coding agents as an MCP tool. The goal is
+for the agent to call `muse_plan` during normal planning, debugging, and
+verification work. The CLI remains a local harness; `muse-mcp` is
 the agent-facing server.
 
 ## Install Once Per Python Environment
@@ -15,19 +15,19 @@ python -m pip install -e ".[dev]"
 
 For open-source quickstart setup, start with deterministic mode first. It
 requires no API keys and verifies install, MCP tool registration, and the
-`creative_plan` response contract before live provider configuration is added.
+`muse_plan` response contract before live provider configuration is added.
 
 Then verify the MCP tool without starting an agent host:
 
 ```powershell
-creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" `
+muse-mcp-smoke "Design a retry strategy for AI coding agents" `
   --provider-mode deterministic `
   --repo-language Python `
   --effort quick
 ```
 
 The smoke command invokes the FastMCP server in-process and prints the
-structured payload returned by `creative_plan`. This example uses the
+structured payload returned by `muse_plan`. This example uses the
 deterministic test provider so install and transport problems can be isolated
 without spending money or requiring live model credentials.
 
@@ -54,11 +54,11 @@ as `command`, `args`, `env`, `enabled_tools`, `startup_timeout_sec`, and
 Copy the Codex pack into the config file you want to use:
 
 ```toml
-[mcp_servers.creativity-layer]
-command = "creativity-layer-mcp"
+[mcp_servers.muse]
+command = "muse-mcp"
 args = []
 enabled = true
-enabled_tools = ["creative_plan"]
+enabled_tools = ["muse_plan"]
 startup_timeout_sec = 10
 tool_timeout_sec = 120
 ```
@@ -77,8 +77,8 @@ Claude Code stores project-scoped MCP servers in `.mcp.json`. Use:
 ```json
 {
   "mcpServers": {
-    "creativity-layer": {
-      "command": "creativity-layer-mcp",
+    "muse": {
+      "command": "muse-mcp",
       "args": []
     }
   }
@@ -100,8 +100,8 @@ Many editor MCP clients accept an `mcpServers` JSON shape with `command` and
 ```json
 {
   "mcpServers": {
-    "creativity-layer": {
-      "command": "creativity-layer-mcp",
+    "muse": {
+      "command": "muse-mcp",
       "args": []
     }
   }
@@ -140,28 +140,28 @@ edits or repeated failure loops. Explicit `budget_usd`, `seed_count`,
 
 ## Provider Posture
 
-MCP and `creativity-layer-mcp-smoke` are live-first by default. If
-`provider_mode` is omitted, `creative_plan` resolves it from
-`CREATIVITY_LAYER_PROVIDER_MODE`, falling back to `live_openai`.
+MCP and `muse-mcp-smoke` are live-first by default. If
+`provider_mode` is omitted, `muse_plan` resolves it from
+`MUSE_PROVIDER_MODE`, falling back to `live_openai`.
 
 Set these runtime defaults in the agent host environment when you want a stable
 default without repeating fields in every tool call:
 
 ```powershell
-$env:CREATIVITY_LAYER_PROVIDER_MODE = "live_openai"
-$env:CREATIVITY_LAYER_EFFORT = "quick"
-$env:CREATIVITY_LAYER_PRIVACY = "research"
-$env:CREATIVITY_LAYER_BUDGET_USD = "0.25"
-$env:CREATIVITY_LAYER_SEARCH_MODE = "off"
-$env:CREATIVITY_LAYER_SEARCH_PROVIDER = "auto"
-$env:CREATIVITY_LAYER_SEARCH_STRICT = "false"
+$env:MUSE_PROVIDER_MODE = "live_openai"
+$env:MUSE_EFFORT = "quick"
+$env:MUSE_PRIVACY = "research"
+$env:MUSE_BUDGET_USD = "0.25"
+$env:MUSE_SEARCH_MODE = "off"
+$env:MUSE_SEARCH_PROVIDER = "auto"
+$env:MUSE_SEARCH_STRICT = "false"
 ```
 
 The deterministic test provider is only for no-network CI, protocol checks, and
 local smoke tests. Use it explicitly with `--provider-mode deterministic` or:
 
 ```powershell
-$env:CREATIVITY_LAYER_PROVIDER_MODE = "deterministic"
+$env:MUSE_PROVIDER_MODE = "deterministic"
 ```
 
 Do not use deterministic output to judge product quality; it is intentionally
@@ -191,7 +191,7 @@ Use `search_mode: "deep"` only when broader bounded context is worth the extra
 latency and possible provider spend. For smoke tests:
 
 ```powershell
-creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" `
+muse-mcp-smoke "Design a retry strategy for AI coding agents" `
   --provider-mode deterministic `
   --search-mode off `
   --search-provider deterministic `
@@ -201,18 +201,18 @@ creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" `
 For environment-level defaults:
 
 ```powershell
-$env:CREATIVITY_LAYER_SEARCH_MODE = "light"
-$env:CREATIVITY_LAYER_SEARCH_PROVIDER = "auto"
-$env:CREATIVITY_LAYER_SEARCH_STRICT = "false"
-$env:CREATIVITY_LAYER_LIVE_SEARCH_APPROVED = "1"
+$env:MUSE_SEARCH_MODE = "light"
+$env:MUSE_SEARCH_PROVIDER = "auto"
+$env:MUSE_SEARCH_STRICT = "false"
+$env:MUSE_LIVE_SEARCH_APPROVED = "1"
 ```
 
-`CREATIVITY_LAYER_LIVE_SEARCH_APPROVED=1` is required before live search
+`MUSE_LIVE_SEARCH_APPROVED=1` is required before live search
 providers may be used. If approval or provider configuration is missing,
-`creative_plan` returns `search_context` metadata explaining the skipped reason
+`muse_plan` returns `search_context` metadata explaining the skipped reason
 and still runs planning when possible. Strict search changes that behavior: if
-`search_strict` or `CREATIVITY_LAYER_SEARCH_STRICT=true` is set and requested
-search is unavailable, `creative_plan` returns `configuration_error` with no
+`search_strict` or `MUSE_SEARCH_STRICT=true` is set and requested
+search is unavailable, `muse_plan` returns `configuration_error` with no
 finalists. The MCP server still does not crawl repos; agents must pass observed
 repo facts through `repo_signals`.
 
@@ -238,7 +238,7 @@ Set `OPENAI_API_KEY`, `OPENAI_ECONOMY_MODEL`, `OPENAI_STRONG_MODEL`,
 agent-host environment before starting the MCP server. Do not commit real
 values to the repository.
 
-If config is missing or invalid, `creative_plan` returns
+If config is missing or invalid, `muse_plan` returns
 `stopped_reason: "configuration_error"` with a structured error and no finalists.
 
 ## Agent Prompt Hook
@@ -248,7 +248,7 @@ Use this instruction in an agent system prompt or project instruction file:
 ```text
 When a coding task needs creative planning, retry strategy design, test-failure
 recovery, workflow alternatives, or repo-agnostic middleware design, call the
-creativity-layer MCP tool `creative_plan`. Pass the current task goal and repo
+muse MCP tool `muse_plan`. Pass the current task goal and repo
 signals you already observed, such as changed files, test commands, CI logs,
 dependency hints, languages, and frameworks. Treat returned finalists as planning
 options; do not execute them blindly. Pick one bounded next action and verify it
@@ -258,6 +258,6 @@ with the narrowest relevant check.
 ## Troubleshooting
 
 - `configuration_error`: check env variables, model names, and pricing file path.
-- Tool does not appear: rerun `creativity-layer-mcp-smoke`, then restart the agent host.
+- Tool does not appear: rerun `muse-mcp-smoke`, then restart the agent host.
 - Live calls spend money: lower `budget_usd`, `seed_count`, or `max_generations`.
 - Weak context: pass richer `repo_signals`; the MCP server intentionally does not crawl the repo.

@@ -8,13 +8,13 @@ from uuid import UUID
 
 import pytest
 
-import creativity_layer.cli as cli
-import creativity_layer.engine as engine_module
-from creativity_layer.budget import BudgetController
-from creativity_layer.cli import run_cli
-from creativity_layer.deterministic import DeterministicCreativeProvider
-from creativity_layer.engine import CreativeEngine
-from creativity_layer.models import (
+import muse.cli as cli
+import muse.engine as engine_module
+from muse.budget import BudgetController
+from muse.cli import run_cli
+from muse.deterministic import DeterministicCreativeProvider
+from muse.engine import CreativeEngine
+from muse.models import (
     EvaluationScores,
     FramedTask,
     IdeaGenome,
@@ -26,9 +26,9 @@ from creativity_layer.models import (
     SpendRecord,
     TaskContext,
 )
-from creativity_layer.openai_provider import DEVELOPER_INSTRUCTIONS
-from creativity_layer.providers import MeteredResponse
-from creativity_layer.transforms import TransformationRequest
+from muse.openai_provider import DEVELOPER_INSTRUCTIONS
+from muse.providers import MeteredResponse
+from muse.transforms import TransformationRequest
 
 
 def build_engine(provider: DeterministicCreativeProvider) -> CreativeEngine:
@@ -168,7 +168,7 @@ def test_run_result_is_self_contained_and_fingerprint_is_reproducible() -> None:
 
 
 def test_trace_naturally_persists_reproducibility_fields(tmp_path: Path) -> None:
-    from creativity_layer.tracing import JsonTraceStore
+    from muse.tracing import JsonTraceStore
 
     result = build_engine(DeterministicCreativeProvider()).run(
         TaskContext(goal="Invent a calmer decision process."),
@@ -222,7 +222,7 @@ def test_run_result_rejects_stale_fingerprint_after_payload_tampering() -> None:
 
 
 def test_review_packet_exports_do_not_expose_hidden_fields() -> None:
-    from creativity_layer import ReviewPacket, ReviewPacketStore, build_review_packet
+    from muse import ReviewPacket, ReviewPacketStore, build_review_packet
 
     result = review_packet_source_result()
     packet = build_review_packet(result, shuffle_seed=17)

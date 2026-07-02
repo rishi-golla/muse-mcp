@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make creativity-layer easy to wire into real AI coding-agent hosts by shipping copyable MCP config packs, a focused integration guide, and tests that keep the examples syntactically valid.
+Make muse easy to wire into real AI coding-agent hosts by shipping copyable MCP config packs, a focused integration guide, and tests that keep the examples syntactically valid.
 
 ## Current Problem
 
@@ -12,7 +12,7 @@ The MCP server exists and can be smoke-tested, but users still have to translate
 
 Add repo-owned config templates for common MCP host shapes:
 
-- Codex `config.toml` fragment using `[mcp_servers.creativity-layer]`.
+- Codex `config.toml` fragment using `[mcp_servers.muse]`.
 - Project-scoped MCP JSON using `.mcp.json` shape for Claude Code style hosts.
 - Generic `mcp.json` for JSON-based editor clients such as Cursor-style MCP clients.
 
@@ -37,7 +37,7 @@ Add a short integration guide explaining where each template belongs, how to ins
 
 ## Validation
 
-Tests parse every JSON/TOML template, assert `creativity-layer-mcp` is the command, assert deterministic config does not require secrets, assert live env placeholders are present only as placeholder strings, and assert the guide links to the config packs.
+Tests parse every JSON/TOML template, assert `muse-mcp` is the command, assert deterministic config does not require secrets, assert live env placeholders are present only as placeholder strings, and assert the guide links to the config packs.
 
 ## Spec Self-Review
 

@@ -1,9 +1,9 @@
 import json
 from pathlib import Path
 
-import creativity_layer.cli as cli_module
-from creativity_layer.cli import run_cli
-from creativity_layer.models import (
+import muse.cli as cli_module
+from muse.cli import run_cli
+from muse.models import (
     EvaluationScores,
     FramedTask,
     IdeaGenome,

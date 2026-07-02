@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "creativity-layer"
+name = "muse"
 version = "0.1.0"
 description = "Research prototype for evolutionary creative search in AI agents"
 readme = "README.md"
@@ -34,19 +34,19 @@ dev = [
 ]
 
 [project.scripts]
-creativity-layer = "creativity_layer.cli:main"
-creativity-layer-mcp = "creativity_layer.mcp_server:main"
-creativity-layer-mcp-smoke = "creativity_layer.mcp_smoke:main"
-creativity-layer-agent-proof = "creativity_layer.agent_loop_proof:main"
-creativity-layer-dogfood-quality = "creativity_layer.dogfood_quality_cli:main"
+muse = "muse.cli:main"
+muse-mcp = "muse.mcp_server:main"
+muse-mcp-smoke = "muse.mcp_smoke:main"
+muse-agent-proof = "muse.agent_loop_proof:main"
+muse-dogfood-quality = "muse.dogfood_quality_cli:main"
 
 [project.urls]
-Repository = "https://github.com/rishi-golla/creative-layer"
-Issues = "https://github.com/rishi-golla/creative-layer/issues"
-Documentation = "https://github.com/rishi-golla/creative-layer#readme"
+Repository = "https://github.com/rishi-golla/muse"
+Issues = "https://github.com/rishi-golla/muse/issues"
+Documentation = "https://github.com/rishi-golla/muse#readme"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/creativity_layer"]
+packages = ["src/muse"]
 
 [tool.pytest.ini_options]
 addopts = "-ra -m \"not live_openai and not live_search\""

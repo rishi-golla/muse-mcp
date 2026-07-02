@@ -3,8 +3,8 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from creativity_layer.inspiration import SourceAbstraction, abstract_sources
-from creativity_layer.search import SearchResult
+from muse.inspiration import SourceAbstraction, abstract_sources
+from muse.search import SearchResult
 
 
 def source(

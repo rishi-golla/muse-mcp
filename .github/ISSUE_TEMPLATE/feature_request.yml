@@ -1,5 +1,5 @@
 name: Feature request
-description: Propose a repo-agnostic improvement to creativity-layer.
+description: Propose a repo-agnostic improvement to muse.
 title: "[Feature]: "
 labels: ["enhancement"]
 body:
@@ -21,6 +21,6 @@ body:
     id: quality
     attributes:
       label: Quality and verification
-      description: Which creativity-layer-dogfood-quality case or quality gate should prove this works?
+      description: Which muse-dogfood-quality case or quality gate should prove this works?
     validations:
       required: false

@@ -88,7 +88,7 @@ Expected: FAIL because `quality_action_policy` does not exist.
 ### Task 3: Implement Pure Policy Helper
 
 **Files:**
-- Modify: `src/creativity_layer/quality_warnings.py`
+- Modify: `src/muse/quality_warnings.py`
 - Modify: `tests/test_quality_warnings.py`
 
 - [ ] **Step 1: Implement the helper**
@@ -101,7 +101,7 @@ Run:
 
 ```powershell
 python -m pytest tests\test_quality_warnings.py -q
-python -m ruff check src\creativity_layer\quality_warnings.py tests\test_quality_warnings.py
+python -m ruff check src\muse\quality_warnings.py tests\test_quality_warnings.py
 ```
 
 Expected: tests pass and Ruff is clean.
@@ -111,7 +111,7 @@ Expected: tests pass and Ruff is clean.
 Run:
 
 ```powershell
-git add src\creativity_layer\quality_warnings.py tests\test_quality_warnings.py
+git add src\muse\quality_warnings.py tests\test_quality_warnings.py
 git commit -m "feat: add quality action policy"
 ```
 
@@ -120,7 +120,7 @@ Expected: one implementation commit.
 ### Task 4: Serialize Policy In Middleware And MCP
 
 **Files:**
-- Modify: `src/creativity_layer/middleware.py`
+- Modify: `src/muse/middleware.py`
 - Modify: `tests/test_middleware.py`
 - Modify: `tests/test_mcp_server.py`
 
@@ -152,7 +152,7 @@ Run:
 
 ```powershell
 python -m pytest tests\test_middleware.py tests\test_mcp_server.py -q
-python -m ruff check src\creativity_layer\middleware.py tests\test_middleware.py tests\test_mcp_server.py
+python -m ruff check src\muse\middleware.py tests\test_middleware.py tests\test_mcp_server.py
 ```
 
 Expected: tests pass and Ruff is clean.
@@ -162,7 +162,7 @@ Expected: tests pass and Ruff is clean.
 Run:
 
 ```powershell
-git add src\creativity_layer\middleware.py tests\test_middleware.py tests\test_mcp_server.py
+git add src\muse\middleware.py tests\test_middleware.py tests\test_mcp_server.py
 git commit -m "feat: surface quality action policy in mcp responses"
 ```
 
@@ -202,7 +202,7 @@ Run:
 ```powershell
 python -m pytest -q
 python -m ruff check .
-creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" --provider-mode deterministic --repo-language Python
+muse-mcp-smoke "Design a retry strategy for AI coding agents" --provider-mode deterministic --repo-language Python
 ```
 
 Expected: tests pass, Ruff is clean, and smoke output includes

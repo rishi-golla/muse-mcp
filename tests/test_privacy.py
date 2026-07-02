@@ -1,5 +1,5 @@
-from creativity_layer.live_config import PrivacyMode
-from creativity_layer.privacy import TraceView
+from muse.live_config import PrivacyMode
+from muse.privacy import TraceView
 
 
 def test_research_trace_keeps_prompts_but_never_secrets() -> None:

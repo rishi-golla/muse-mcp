@@ -1,6 +1,6 @@
 # Agent Dogfood Playbook
 
-This playbook is for using creativity-layer while coding normally in another repository. The integration surface is the MCP tool `creative_plan`; CLI commands are only smoke tests.
+This playbook is for using muse while coding normally in another repository. The integration surface is the MCP tool `muse_plan`; CLI commands are only smoke tests.
 
 ## Effort Presets
 
@@ -13,23 +13,23 @@ Explicit values such as `budget_usd`, `seed_count`, `finalist_count`, and `max_g
 ## Provider Posture
 
 Normal dogfood runs should use the live-first MCP posture. If `provider_mode` is
-omitted, the tool uses `CREATIVITY_LAYER_PROVIDER_MODE` and falls back to
+omitted, the tool uses `MUSE_PROVIDER_MODE` and falls back to
 `live_openai`. Use runtime defaults when your agent host should apply the same
 settings to every call:
 
 ```powershell
-$env:CREATIVITY_LAYER_PROVIDER_MODE = "live_openai"
-$env:CREATIVITY_LAYER_EFFORT = "quick"
-$env:CREATIVITY_LAYER_PRIVACY = "research"
-$env:CREATIVITY_LAYER_BUDGET_USD = "0.25"
-$env:CREATIVITY_LAYER_SEARCH_MODE = "off"
-$env:CREATIVITY_LAYER_SEARCH_PROVIDER = "auto"
-$env:CREATIVITY_LAYER_SEARCH_STRICT = "false"
+$env:MUSE_PROVIDER_MODE = "live_openai"
+$env:MUSE_EFFORT = "quick"
+$env:MUSE_PRIVACY = "research"
+$env:MUSE_BUDGET_USD = "0.25"
+$env:MUSE_SEARCH_MODE = "off"
+$env:MUSE_SEARCH_PROVIDER = "auto"
+$env:MUSE_SEARCH_STRICT = "false"
 ```
 
 The deterministic test provider is only for no-network CI, smoke tests, and
 protocol checks. Use `--provider-mode deterministic` or
-`CREATIVITY_LAYER_PROVIDER_MODE=deterministic` when you need that mode, but do
+`MUSE_PROVIDER_MODE=deterministic` when you need that mode, but do
 not judge creative quality from it.
 
 ## Opt-in Search Context
@@ -42,16 +42,16 @@ or `brave`. Use strict search only when the agent should fail closed instead of
 continuing without search context. This is opt-in search, not repo crawling.
 
 ```powershell
-$env:CREATIVITY_LAYER_SEARCH_MODE = "off"
-$env:CREATIVITY_LAYER_SEARCH_PROVIDER = "auto"
-$env:CREATIVITY_LAYER_SEARCH_STRICT = "false"
-$env:CREATIVITY_LAYER_LIVE_SEARCH_APPROVED = "1"
+$env:MUSE_SEARCH_MODE = "off"
+$env:MUSE_SEARCH_PROVIDER = "auto"
+$env:MUSE_SEARCH_STRICT = "false"
+$env:MUSE_LIVE_SEARCH_APPROVED = "1"
 ```
 
-`CREATIVITY_LAYER_LIVE_SEARCH_APPROVED=1` is required before live search
+`MUSE_LIVE_SEARCH_APPROVED=1` is required before live search
 providers may be used. Without approval, the tool reports the skipped reason in
 `search_context` and continues with the repo signals the agent supplied. If
-`search_strict` or `CREATIVITY_LAYER_SEARCH_STRICT=true` is set, missing search
+`search_strict` or `MUSE_SEARCH_STRICT=true` is set, missing search
 returns `configuration_error` and no finalists.
 
 ## V3-L quality runs
@@ -61,7 +61,7 @@ a repeatable dogfood harness for the actual MCP path. Run it when changing
 prompts, evaluator pressure, search policy, or agent guidance.
 
 ```powershell
-creativity-layer-dogfood-quality `
+muse-dogfood-quality `
   --provider-mode deterministic `
   --case agent-retry-python `
   --variant search-off `
@@ -73,7 +73,7 @@ behavior against `search-off`. Add `--fail-on-gates` when a CI or release check
 should fail if any run has quality gates:
 
 ```powershell
-creativity-layer-dogfood-quality `
+muse-dogfood-quality `
   --provider-mode live_openai `
   --variant search-off `
   --variant search-light `
@@ -93,13 +93,13 @@ live seed, transform, and evaluation instructions now name failures such as
 `missing_operational_field` before output is returned.
 
 This is live prompt pressure, not proof that a run is high quality. Keep using
-`creativity-layer-dogfood-quality` with live OpenAI when making product-quality
+`muse-dogfood-quality` with live OpenAI when making product-quality
 claims, and compare `search-off`, `search-light`, and `search-deep` when search
 context is part of the decision.
 
 ## V4-C quality warning fields
 
-V4-C surfaces advisory warning fields in every normal `creative_plan` response.
+V4-C surfaces advisory warning fields in every normal `muse_plan` response.
 Use top-level `quality_warnings` and `quality_summary` to decide whether an
 agent should ask for a stronger effort level, add more repo signals, or choose a
 different finalist. Each finalist also includes `quality_warnings` so agents can
@@ -111,14 +111,14 @@ repository verification.
 
 ## V4-D quality action policy
 
-V4-D adds `quality_action_policy` to `creative_plan` output and mirrors it inside
+V4-D adds `quality_action_policy` to `muse_plan` output and mirrors it inside
 `agent_guidance`. The policy includes `status`, `escalate_effort_to`,
 `recommended_actions`, and `warning_actions`.
 
 Use it as routing guidance. If `status` is `needs_retry`, the agent should add
 repo signals or request the recommended effort level before relying on the
-finalist. If `escalate_effort_to` is set, the host may call `creative_plan`
-again with that effort, but creativity-layer does not automatically spend that
+finalist. If `escalate_effort_to` is set, the host may call `muse_plan`
+again with that effort, but muse does not automatically spend that
 budget.
 
 ## V4-E suggested next call
@@ -127,7 +127,7 @@ V4-E adds advisory `suggested_next_call` output when `quality_action_policy`
 recommends review or retry. The same object is mirrored inside
 `agent_guidance.suggested_next_call`.
 
-The suggestion names `creative_plan`, sets `automatic` to `false`, carries safe
+The suggestion names `muse_plan`, sets `automatic` to `false`, carries safe
 request fields such as goal, provider mode, privacy, effort, and search policy,
 and includes `repo_signal_requests` describing which observed facts the host
 should pass again or improve. It does not copy raw `repo_signals`, logs, or
@@ -145,7 +145,7 @@ It is mirrored inside `agent_guidance.agent_handoff`.
 The handoff summarizes the richer policy fields into `status`,
 `recommended_action`, `use_current_finalist`, `selected_finalist_id`,
 `suggested_next_call_available`, and `verification_required`. A host can use it
-to decide whether to inspect the current finalist, call `creative_plan` again
+to decide whether to inspect the current finalist, call `muse_plan` again
 with `suggested_next_call`, or fix configuration before continuing.
 
 `agent_handoff` is still advisory. It does not apply edits, does not authorize
@@ -153,7 +153,7 @@ spend, and does not replace repository-owned verification.
 
 ## before-edit
 
-Call `creative_plan` before editing when the task has multiple plausible approaches, unclear boundaries, or needs a repo-agnostic workflow idea.
+Call `muse_plan` before editing when the task has multiple plausible approaches, unclear boundaries, or needs a repo-agnostic workflow idea.
 
 ```json
 {
@@ -178,7 +178,7 @@ Use the returned `agent_guidance.recommended_agent_loop` as the route:
 
 ## after-failure
 
-Call `creative_plan` after a failed test when the next action is not obvious. Include the exact failing command and a sanitized CI or terminal log excerpt.
+Call `muse_plan` after a failed test when the next action is not obvious. Include the exact failing command and a sanitized CI or terminal log excerpt.
 
 ```json
 {
@@ -198,7 +198,7 @@ Use `deep` only after repeated failures, broad architectural uncertainty, or whe
 
 ## after-fix
 
-Call `creative_plan` after a fix only when you need a verification strategy, follow-up risk review, or a safer next slice.
+Call `muse_plan` after a fix only when you need a verification strategy, follow-up risk review, or a safer next slice.
 
 ```json
 {
@@ -228,4 +228,4 @@ Prefer concise facts the agent already observed:
 - `detected_languages`: languages in scope.
 - `detected_frameworks`: test frameworks, build tools, UI frameworks, or CI tools.
 
-Do not ask creativity-layer to crawl the repo. It should receive context from the agent workflow.
+Do not ask muse to crawl the repo. It should receive context from the agent workflow.

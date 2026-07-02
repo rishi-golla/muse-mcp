@@ -63,11 +63,11 @@ Invalid provider policy should return a structured configuration error. In non-s
 
 ## Files
 
-- `src/creativity_layer/search_context.py`: provider policy, strict behavior, query planner, metadata.
-- `src/creativity_layer/runtime_defaults.py`: `CREATIVITY_LAYER_SEARCH_PROVIDER` and `CREATIVITY_LAYER_SEARCH_STRICT`.
-- `src/creativity_layer/middleware.py`: request fields, strict search short-circuit, provider policy resolver.
-- `src/creativity_layer/mcp_server.py`: expose provider and strict fields.
-- `src/creativity_layer/mcp_smoke.py`: add flags.
+- `src/muse/search_context.py`: provider policy, strict behavior, query planner, metadata.
+- `src/muse/runtime_defaults.py`: `MUSE_SEARCH_PROVIDER` and `MUSE_SEARCH_STRICT`.
+- `src/muse/middleware.py`: request fields, strict search short-circuit, provider policy resolver.
+- `src/muse/mcp_server.py`: expose provider and strict fields.
+- `src/muse/mcp_smoke.py`: add flags.
 - Tests in `tests/test_search_context.py`, `tests/test_runtime_defaults.py`, `tests/test_middleware.py`, `tests/test_mcp_server.py`, `tests/test_mcp_smoke.py`, and `tests/test_mcp_config_packs.py`.
 - Docs in `README.md`, `docs/integrations/mcp-agent-hosts.md`, and `docs/integrations/agent-dogfood-playbook.md`.
 

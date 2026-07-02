@@ -3,8 +3,8 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-import creativity_layer.search as search_module
-from creativity_layer.search import (
+import muse.search as search_module
+from muse.search import (
     DeterministicSearchProvider,
     SearchPurpose,
     SearchQuery,

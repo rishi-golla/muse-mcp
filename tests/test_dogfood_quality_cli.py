@@ -4,11 +4,11 @@ import json
 import tomllib
 from pathlib import Path
 
-from creativity_layer.dogfood_quality_cli import main
+from muse.dogfood_quality_cli import main
 
 
 def test_dogfood_quality_cli_prints_json_report(capsys, monkeypatch) -> None:
-    monkeypatch.setenv("CREATIVITY_LAYER_PROVIDER_MODE", "deterministic")
+    monkeypatch.setenv("MUSE_PROVIDER_MODE", "deterministic")
 
     exit_code = main(
         [
@@ -33,7 +33,7 @@ def test_dogfood_quality_cli_fail_on_gates_returns_nonzero(
     capsys,
     monkeypatch,
 ) -> None:
-    monkeypatch.setenv("CREATIVITY_LAYER_PROVIDER_MODE", "deterministic")
+    monkeypatch.setenv("MUSE_PROVIDER_MODE", "deterministic")
 
     exit_code = main(
         [
@@ -55,7 +55,7 @@ def test_dogfood_quality_cli_fail_on_gates_returns_nonzero(
 
 
 def test_dogfood_quality_cli_forwards_search_policy(capsys, monkeypatch) -> None:
-    monkeypatch.setenv("CREATIVITY_LAYER_PROVIDER_MODE", "deterministic")
+    monkeypatch.setenv("MUSE_PROVIDER_MODE", "deterministic")
 
     exit_code = main(
         [
@@ -82,6 +82,6 @@ def test_dogfood_quality_cli_forwards_search_policy(capsys, monkeypatch) -> None
 def test_package_exposes_dogfood_quality_console_script() -> None:
     pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
 
-    assert pyproject["project"]["scripts"]["creativity-layer-dogfood-quality"] == (
-        "creativity_layer.dogfood_quality_cli:main"
+    assert pyproject["project"]["scripts"]["muse-dogfood-quality"] == (
+        "muse.dogfood_quality_cli:main"
     )

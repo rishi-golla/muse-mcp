@@ -13,7 +13,7 @@
 ## Task 1: Context Provider Models
 
 **Files:**
-- Create: `src/creativity_layer/context_provider.py`
+- Create: `src/muse/context_provider.py`
 - Create: `tests/test_context_provider.py`
 
 - [ ] Write failing tests for `RepoSignals`, `ContextRequest`, provider quote, and deterministic provider output.
@@ -25,7 +25,7 @@
 ## Task 2: Repo-Agnostic Signal Behavior
 
 **Files:**
-- Modify: `src/creativity_layer/context_provider.py`
+- Modify: `src/muse/context_provider.py`
 - Modify: `tests/test_context_provider.py`
 
 - [ ] Write failing tests for TypeScript monorepo, Python repo, and arbitrary middleware/GraphQL behavior.
@@ -37,7 +37,7 @@
 ## Task 3: Engine-Facing Helper
 
 **Files:**
-- Modify: `src/creativity_layer/context_provider.py`
+- Modify: `src/muse/context_provider.py`
 - Modify: `tests/test_context_provider.py`
 
 - [ ] Write failing tests for helper merging provider context with existing `TaskContext`.
@@ -49,7 +49,7 @@
 ## Task 4: CLI Harness
 
 **Files:**
-- Modify: `src/creativity_layer/cli.py`
+- Modify: `src/muse/cli.py`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_live_cli.py`
 - Modify: `README.md`
@@ -66,7 +66,7 @@
 **Files:**
 - Modify only if verification exposes issues.
 
-- [ ] Run `python -m pytest -m "not live_openai" -q --cov=creativity_layer --cov-report=term-missing -p no:cacheprovider --basetemp=.pytest-tmp-v3c-final`.
+- [ ] Run `python -m pytest -m "not live_openai" -q --cov=muse --cov-report=term-missing -p no:cacheprovider --basetemp=.pytest-tmp-v3c-final`.
 - [ ] Run `python -m ruff check .`.
 - [ ] Run `git diff --check origin/main...HEAD`.
 - [ ] Request subagent review.

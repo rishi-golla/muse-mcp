@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add cheap MCP effort presets, top-level agent guidance, and a dogfood playbook for using creativity-layer while coding normally.
+**Goal:** Add cheap MCP effort presets, top-level agent guidance, and a dogfood playbook for using muse while coding normally.
 
 **Architecture:** Effort presets resolve inside middleware before `RunConfig` is built, so MCP and future API callers share the same behavior. MCP and smoke tooling expose the preset as a simple optional argument. Documentation explains how an agent should call the tool without making the CLI the primary product.
 
@@ -12,9 +12,9 @@
 
 ## File Map
 
-- Modify `src/creativity_layer/middleware.py`: add `EffortPreset`, preset resolution, guidance serialization.
-- Modify `src/creativity_layer/mcp_server.py`: add `effort` argument.
-- Modify `src/creativity_layer/mcp_smoke.py`: add `--effort`.
+- Modify `src/muse/middleware.py`: add `EffortPreset`, preset resolution, guidance serialization.
+- Modify `src/muse/mcp_server.py`: add `effort` argument.
+- Modify `src/muse/mcp_smoke.py`: add `--effort`.
 - Modify `tests/test_middleware.py`: request defaults, override behavior, guidance assertions.
 - Modify `tests/test_mcp_server.py`: MCP tool effort behavior.
 - Modify `tests/test_mcp_smoke.py`: smoke CLI forwards effort.
@@ -25,7 +25,7 @@
 
 **Files:**
 - Modify: `tests/test_middleware.py`
-- Modify: `src/creativity_layer/middleware.py`
+- Modify: `src/muse/middleware.py`
 
 - [ ] **Step 1: Write failing tests**
 
@@ -48,7 +48,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src\creativity_layer\middleware.py tests\test_middleware.py
+git add src\muse\middleware.py tests\test_middleware.py
 git commit -m "feat: add agent effort presets"
 ```
 
@@ -57,12 +57,12 @@ git commit -m "feat: add agent effort presets"
 **Files:**
 - Modify: `tests/test_mcp_server.py`
 - Modify: `tests/test_mcp_smoke.py`
-- Modify: `src/creativity_layer/mcp_server.py`
-- Modify: `src/creativity_layer/mcp_smoke.py`
+- Modify: `src/muse/mcp_server.py`
+- Modify: `src/muse/mcp_smoke.py`
 
 - [ ] **Step 1: Write failing tests**
 
-Add tests that call `creative_plan(..., effort="deep")` and assert `config.effort == "deep"` with deep preset values, that default MCP calls use quick values, and that `run_smoke(["goal", "--effort", "standard"])` forwards standard effort into printed JSON.
+Add tests that call `muse_plan(..., effort="deep")` and assert `config.effort == "deep"` with deep preset values, that default MCP calls use quick values, and that `run_smoke(["goal", "--effort", "standard"])` forwards standard effort into printed JSON.
 
 - [ ] **Step 2: Run RED**
 
@@ -71,7 +71,7 @@ Expected: FAIL because MCP and smoke do not accept `effort`.
 
 - [ ] **Step 3: Implement MCP/smoke arguments**
 
-Add `effort` to `creative_plan` and `mcp_smoke` parser/payload. Keep explicit numeric arguments supported.
+Add `effort` to `muse_plan` and `mcp_smoke` parser/payload. Keep explicit numeric arguments supported.
 
 - [ ] **Step 4: Run GREEN**
 
@@ -81,7 +81,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src\creativity_layer\mcp_server.py src\creativity_layer\mcp_smoke.py tests\test_mcp_server.py tests\test_mcp_smoke.py
+git add src\muse\mcp_server.py src\muse\mcp_smoke.py tests\test_mcp_server.py tests\test_mcp_smoke.py
 git commit -m "feat: expose mcp effort presets"
 ```
 
@@ -121,7 +121,7 @@ git commit -m "docs: add agent dogfood playbook"
 ## Final Verification
 
 - [ ] `python -m pytest -q`
-- [ ] `python -m pytest --cov=creativity_layer --cov-fail-under=90`
+- [ ] `python -m pytest --cov=muse --cov-fail-under=90`
 - [ ] `python -m ruff check .`
 - [ ] `git diff --check`
 - [ ] Request code review.

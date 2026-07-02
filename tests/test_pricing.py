@@ -4,8 +4,8 @@ from math import inf, nan
 import pytest
 from pydantic import ValidationError
 
-from creativity_layer.models import TokenUsage
-from creativity_layer.pricing import (
+from muse.models import TokenUsage
+from muse.pricing import (
     EmbeddingModelPricing,
     EmbeddingPrice,
     ModelPrice,

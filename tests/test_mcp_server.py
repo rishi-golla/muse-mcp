@@ -4,11 +4,11 @@ import asyncio
 import tomllib
 from pathlib import Path
 
-from creativity_layer.mcp_server import build_mcp_server, creative_plan
+from muse.mcp_server import build_mcp_server, muse_plan
 
 
-def test_creative_plan_tool_delegates_to_middleware_runner() -> None:
-    result = creative_plan(
+def test_muse_plan_tool_delegates_to_middleware_runner() -> None:
+    result = muse_plan(
         goal="Design a backend middleware planning hook for arbitrary repos",
         repo_signals={"detected_languages": ("Python",)},
         provider_mode="deterministic",
@@ -24,7 +24,7 @@ def test_creative_plan_tool_delegates_to_middleware_runner() -> None:
     assert result["agent_guidance"]["intended_use"] == "planning_middleware"
 
 
-def test_creative_plan_tool_defaults_to_live_openai_when_provider_is_omitted(
+def test_muse_plan_tool_defaults_to_live_openai_when_provider_is_omitted(
     monkeypatch,
 ) -> None:
     for name in (
@@ -32,11 +32,11 @@ def test_creative_plan_tool_defaults_to_live_openai_when_provider_is_omitted(
         "OPENAI_ECONOMY_MODEL",
         "OPENAI_STRONG_MODEL",
         "OPENAI_PRICING_FILE",
-        "CREATIVITY_LAYER_PROVIDER_MODE",
+        "MUSE_PROVIDER_MODE",
     ):
         monkeypatch.delenv(name, raising=False)
 
-    result = creative_plan(
+    result = muse_plan(
         goal="Design a backend middleware planning hook for arbitrary repos",
         repo_signals={"detected_languages": ("Python",)},
     )
@@ -47,13 +47,13 @@ def test_creative_plan_tool_defaults_to_live_openai_when_provider_is_omitted(
     assert "OPENAI_API_KEY" in result["errors"][0]["message"]
 
 
-def test_creative_plan_tool_uses_runtime_default_environment(monkeypatch) -> None:
-    monkeypatch.setenv("CREATIVITY_LAYER_PROVIDER_MODE", "deterministic")
-    monkeypatch.setenv("CREATIVITY_LAYER_EFFORT", "standard")
-    monkeypatch.setenv("CREATIVITY_LAYER_BUDGET_USD", "0.22")
-    monkeypatch.setenv("CREATIVITY_LAYER_SEARCH_MODE", "light")
+def test_muse_plan_tool_uses_runtime_default_environment(monkeypatch) -> None:
+    monkeypatch.setenv("MUSE_PROVIDER_MODE", "deterministic")
+    monkeypatch.setenv("MUSE_EFFORT", "standard")
+    monkeypatch.setenv("MUSE_BUDGET_USD", "0.22")
+    monkeypatch.setenv("MUSE_SEARCH_MODE", "light")
 
-    result = creative_plan(
+    result = muse_plan(
         goal="Design a backend middleware planning hook for arbitrary repos",
         repo_signals={"detected_languages": ("Python",)},
     )
@@ -66,13 +66,13 @@ def test_creative_plan_tool_uses_runtime_default_environment(monkeypatch) -> Non
     assert result["finalist_count"] == 2
 
 
-def test_creative_plan_tool_reports_invalid_runtime_default_environment(
+def test_muse_plan_tool_reports_invalid_runtime_default_environment(
     monkeypatch,
 ) -> None:
-    monkeypatch.delenv("CREATIVITY_LAYER_PROVIDER_MODE", raising=False)
-    monkeypatch.setenv("CREATIVITY_LAYER_BUDGET_USD", "not-money")
+    monkeypatch.delenv("MUSE_PROVIDER_MODE", raising=False)
+    monkeypatch.setenv("MUSE_BUDGET_USD", "not-money")
 
-    result = creative_plan(
+    result = muse_plan(
         goal="Design a backend middleware planning hook for arbitrary repos",
         repo_signals={"detected_languages": ("Python",)},
     )
@@ -80,16 +80,16 @@ def test_creative_plan_tool_reports_invalid_runtime_default_environment(
     assert result["provider_mode"] == "live_openai"
     assert result["stopped_reason"] == "configuration_error"
     assert result["finalist_count"] == 0
-    assert "CREATIVITY_LAYER_BUDGET_USD" in result["errors"][0]["message"]
+    assert "MUSE_BUDGET_USD" in result["errors"][0]["message"]
 
 
-def test_creative_plan_tool_explicit_budget_overrides_invalid_runtime_default(
+def test_muse_plan_tool_explicit_budget_overrides_invalid_runtime_default(
     monkeypatch,
 ) -> None:
-    monkeypatch.setenv("CREATIVITY_LAYER_PROVIDER_MODE", "live_openai")
-    monkeypatch.setenv("CREATIVITY_LAYER_BUDGET_USD", "not-money")
+    monkeypatch.setenv("MUSE_PROVIDER_MODE", "live_openai")
+    monkeypatch.setenv("MUSE_BUDGET_USD", "not-money")
 
-    result = creative_plan(
+    result = muse_plan(
         goal="Design a backend middleware planning hook for arbitrary repos",
         provider_mode="deterministic",
         budget_usd=0.20,
@@ -102,8 +102,8 @@ def test_creative_plan_tool_explicit_budget_overrides_invalid_runtime_default(
     assert result["finalist_count"] == 1
 
 
-def test_creative_plan_tool_accepts_deep_effort_preset() -> None:
-    result = creative_plan(
+def test_muse_plan_tool_accepts_deep_effort_preset() -> None:
+    result = muse_plan(
         goal="Design a backend middleware planning hook for arbitrary repos",
         effort="deep",
         repo_signals={"detected_languages": ("Python",)},
@@ -117,10 +117,10 @@ def test_creative_plan_tool_accepts_deep_effort_preset() -> None:
     assert result["config"]["max_generations"] == 2
 
 
-def test_creative_plan_tool_forwards_explicit_search_mode(monkeypatch) -> None:
-    monkeypatch.setenv("CREATIVITY_LAYER_SEARCH_MODE", "deep")
+def test_muse_plan_tool_forwards_explicit_search_mode(monkeypatch) -> None:
+    monkeypatch.setenv("MUSE_SEARCH_MODE", "deep")
 
-    result = creative_plan(
+    result = muse_plan(
         goal="Design a backend middleware planning hook for arbitrary repos",
         search_mode="off",
         repo_signals={"detected_languages": ("Python",)},
@@ -131,10 +131,10 @@ def test_creative_plan_tool_forwards_explicit_search_mode(monkeypatch) -> None:
     assert result["search_context"]["mode"] == "off"
 
 
-def test_creative_plan_tool_forwards_explicit_search_policy(monkeypatch) -> None:
-    monkeypatch.setenv("CREATIVITY_LAYER_LIVE_SEARCH_APPROVED", "1")
+def test_muse_plan_tool_forwards_explicit_search_policy(monkeypatch) -> None:
+    monkeypatch.setenv("MUSE_LIVE_SEARCH_APPROVED", "1")
 
-    result = creative_plan(
+    result = muse_plan(
         goal="reversible team decisions",
         search_mode="light",
         search_provider="deterministic",
@@ -151,10 +151,10 @@ def test_creative_plan_tool_forwards_explicit_search_policy(monkeypatch) -> None
     assert result["search_context"]["used"] is True
 
 
-def test_creative_plan_tool_uses_approved_search_context(monkeypatch) -> None:
-    monkeypatch.setenv("CREATIVITY_LAYER_LIVE_SEARCH_APPROVED", "1")
+def test_muse_plan_tool_uses_approved_search_context(monkeypatch) -> None:
+    monkeypatch.setenv("MUSE_LIVE_SEARCH_APPROVED", "1")
 
-    result = creative_plan(
+    result = muse_plan(
         goal="reversible team decisions",
         search_mode="light",
         provider_mode="deterministic",
@@ -169,10 +169,10 @@ def test_creative_plan_tool_uses_approved_search_context(monkeypatch) -> None:
     assert "search/deterministic-search/src-1" in result["context_sources"]
 
 
-def test_creative_plan_configuration_error_includes_search_context(monkeypatch) -> None:
+def test_muse_plan_configuration_error_includes_search_context(monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
-    result = creative_plan(
+    result = muse_plan(
         goal="Design a backend middleware planning hook for arbitrary repos",
         provider_mode="live_openai",
         search_mode="light",
@@ -184,8 +184,8 @@ def test_creative_plan_configuration_error_includes_search_context(monkeypatch) 
     assert result["search_context"]["used"] is False
 
 
-def test_creative_plan_tool_preserves_old_positional_numeric_arguments() -> None:
-    result = creative_plan(
+def test_muse_plan_tool_preserves_old_positional_numeric_arguments() -> None:
+    result = muse_plan(
         "Design a backend middleware planning hook for arbitrary repos",
         {"detected_languages": ("Python",)},
         "deterministic",
@@ -210,14 +210,14 @@ def test_build_mcp_server_returns_named_server() -> None:
     assert server is not None
 
 
-def test_fastmcp_server_exposes_and_invokes_creative_plan_tool() -> None:
+def test_fastmcp_server_exposes_and_invokes_muse_plan_tool() -> None:
     async def run_probe() -> None:
         server = build_mcp_server()
 
         tools = await server.list_tools()
         tool_names = {tool.name for tool in tools}
         result = await server.call_tool(
-            "creative_plan",
+            "muse_plan",
             {
                 "goal": "Design a retry strategy for AI coding agents",
                 "repo_signals": {"detected_languages": ("Python",)},
@@ -226,7 +226,7 @@ def test_fastmcp_server_exposes_and_invokes_creative_plan_tool() -> None:
         )
         _content_blocks, structured_result = result
 
-        assert "creative_plan" in tool_names
+        assert "muse_plan" in tool_names
         assert isinstance(structured_result, dict)
         assert structured_result["provider_mode"] == "deterministic"
         assert structured_result["config"]["effort"] == "quick"
@@ -241,7 +241,7 @@ def test_fastmcp_server_exposes_quality_warnings() -> None:
         server = build_mcp_server()
 
         result = await server.call_tool(
-            "creative_plan",
+            "muse_plan",
             {
                 "goal": "Design a retry strategy for AI coding agents",
                 "repo_signals": {
@@ -268,7 +268,7 @@ def test_fastmcp_server_exposes_quality_action_policy() -> None:
         server = build_mcp_server()
 
         result = await server.call_tool(
-            "creative_plan",
+            "muse_plan",
             {
                 "goal": "Design a retry strategy for AI coding agents",
                 "repo_signals": {
@@ -296,7 +296,7 @@ def test_fastmcp_server_exposes_suggested_next_call() -> None:
         server = build_mcp_server()
 
         result = await server.call_tool(
-            "creative_plan",
+            "muse_plan",
             {
                 "goal": "Design a retry strategy for AI coding agents",
                 "repo_signals": {
@@ -310,7 +310,7 @@ def test_fastmcp_server_exposes_suggested_next_call() -> None:
         _content_blocks, structured_result = result
 
         assert isinstance(structured_result, dict)
-        assert structured_result["suggested_next_call"]["tool"] == "creative_plan"
+        assert structured_result["suggested_next_call"]["tool"] == "muse_plan"
         assert (
             structured_result["suggested_next_call"]
             == structured_result["agent_guidance"]["suggested_next_call"]
@@ -324,7 +324,7 @@ def test_fastmcp_server_exposes_agent_handoff() -> None:
         server = build_mcp_server()
 
         result = await server.call_tool(
-            "creative_plan",
+            "muse_plan",
             {
                 "goal": "Design a retry strategy for AI coding agents",
                 "repo_signals": {
@@ -347,7 +347,7 @@ def test_fastmcp_server_exposes_agent_handoff() -> None:
     asyncio.run(run_probe())
 
 
-def test_creative_plan_live_mode_returns_structured_configuration_error(
+def test_muse_plan_live_mode_returns_structured_configuration_error(
     monkeypatch,
 ) -> None:
     for name in (
@@ -358,7 +358,7 @@ def test_creative_plan_live_mode_returns_structured_configuration_error(
     ):
         monkeypatch.delenv(name, raising=False)
 
-    result = creative_plan(
+    result = muse_plan(
         goal="Design a retry strategy for AI coding agents",
         provider_mode="live_openai",
         privacy="private",
@@ -370,8 +370,8 @@ def test_creative_plan_live_mode_returns_structured_configuration_error(
     assert result["errors"][0]["stage"] == "configuration"
 
 
-def test_creative_plan_invalid_provider_mode_returns_structured_error() -> None:
-    result = creative_plan(
+def test_muse_plan_invalid_provider_mode_returns_structured_error() -> None:
+    result = muse_plan(
         goal="Design a retry strategy for AI coding agents",
         provider_mode="bogus",
     )
@@ -387,7 +387,7 @@ def test_fastmcp_invalid_provider_mode_returns_structured_error() -> None:
         server = build_mcp_server()
 
         result = await server.call_tool(
-            "creative_plan",
+            "muse_plan",
             {
                 "goal": "Design a retry strategy for AI coding agents",
                 "provider_mode": "bogus",
@@ -406,6 +406,6 @@ def test_fastmcp_invalid_provider_mode_returns_structured_error() -> None:
 def test_package_exposes_mcp_console_script() -> None:
     pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
 
-    assert pyproject["project"]["scripts"]["creativity-layer-mcp"] == (
-        "creativity_layer.mcp_server:main"
+    assert pyproject["project"]["scripts"]["muse-mcp"] == (
+        "muse.mcp_server:main"
     )

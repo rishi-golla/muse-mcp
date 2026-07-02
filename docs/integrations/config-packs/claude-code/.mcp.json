@@ -1,7 +1,7 @@
 {
   "mcpServers": {
-    "creativity-layer": {
-      "command": "creativity-layer-mcp",
+    "muse": {
+      "command": "muse-mcp",
       "args": [],
       "env": {
         "OPENAI_API_KEY": "${OPENAI_API_KEY}",
