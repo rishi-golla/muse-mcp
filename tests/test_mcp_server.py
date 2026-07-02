@@ -51,6 +51,7 @@ def test_creative_plan_tool_uses_runtime_default_environment(monkeypatch) -> Non
     monkeypatch.setenv("CREATIVITY_LAYER_PROVIDER_MODE", "deterministic")
     monkeypatch.setenv("CREATIVITY_LAYER_EFFORT", "standard")
     monkeypatch.setenv("CREATIVITY_LAYER_BUDGET_USD", "0.22")
+    monkeypatch.setenv("CREATIVITY_LAYER_SEARCH_MODE", "light")
 
     result = creative_plan(
         goal="Design a backend middleware planning hook for arbitrary repos",
@@ -60,6 +61,8 @@ def test_creative_plan_tool_uses_runtime_default_environment(monkeypatch) -> Non
     assert result["provider_mode"] == "deterministic"
     assert result["config"]["effort"] == "standard"
     assert result["config"]["budget_usd"] == 0.22
+    assert result["config"]["search_mode"] == "light"
+    assert result["search_context"]["skipped_reason"] == "approval_required"
     assert result["finalist_count"] == 2
 
 
@@ -112,6 +115,20 @@ def test_creative_plan_tool_accepts_deep_effort_preset() -> None:
     assert result["config"]["seed_count"] == 6
     assert result["config"]["finalist_count"] == 3
     assert result["config"]["max_generations"] == 2
+
+
+def test_creative_plan_tool_forwards_explicit_search_mode(monkeypatch) -> None:
+    monkeypatch.setenv("CREATIVITY_LAYER_SEARCH_MODE", "deep")
+
+    result = creative_plan(
+        goal="Design a backend middleware planning hook for arbitrary repos",
+        search_mode="off",
+        repo_signals={"detected_languages": ("Python",)},
+        provider_mode="deterministic",
+    )
+
+    assert result["config"]["search_mode"] == "off"
+    assert result["search_context"]["mode"] == "off"
 
 
 def test_creative_plan_tool_preserves_old_positional_numeric_arguments() -> None:

@@ -87,6 +87,7 @@ def test_mcp_smoke_uses_runtime_default_environment(capsys, monkeypatch) -> None
     monkeypatch.setenv("CREATIVITY_LAYER_PROVIDER_MODE", "deterministic")
     monkeypatch.setenv("CREATIVITY_LAYER_EFFORT", "standard")
     monkeypatch.setenv("CREATIVITY_LAYER_BUDGET_USD", "0.23")
+    monkeypatch.setenv("CREATIVITY_LAYER_SEARCH_MODE", "light")
 
     exit_code = run_smoke(
         [
@@ -101,6 +102,8 @@ def test_mcp_smoke_uses_runtime_default_environment(capsys, monkeypatch) -> None
     assert payload["provider_mode"] == "deterministic"
     assert payload["config"]["effort"] == "standard"
     assert payload["config"]["budget_usd"] == 0.23
+    assert payload["config"]["search_mode"] == "light"
+    assert payload["search_context"]["skipped_reason"] == "approval_required"
 
 
 def test_mcp_smoke_reports_invalid_runtime_default_environment(
@@ -149,6 +152,26 @@ def test_mcp_smoke_explicit_budget_overrides_invalid_runtime_default(
     assert payload["provider_mode"] == "deterministic"
     assert payload["config"]["budget_usd"] == 0.20
     assert payload["finalist_count"] == 1
+
+
+def test_mcp_smoke_forwards_explicit_search_mode(capsys, monkeypatch) -> None:
+    monkeypatch.setenv("CREATIVITY_LAYER_PROVIDER_MODE", "deterministic")
+    monkeypatch.setenv("CREATIVITY_LAYER_SEARCH_MODE", "deep")
+
+    exit_code = run_smoke(
+        [
+            "Design a retry strategy for AI coding agents",
+            "--search-mode",
+            "off",
+            "--repo-language",
+            "Python",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["config"]["search_mode"] == "off"
+    assert payload["search_context"]["mode"] == "off"
 
 
 def test_package_exposes_mcp_smoke_console_script() -> None:
