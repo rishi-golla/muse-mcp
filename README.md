@@ -196,6 +196,7 @@ $env:CREATIVITY_LAYER_PROVIDER_MODE = "live_openai"
 $env:CREATIVITY_LAYER_EFFORT = "quick"
 $env:CREATIVITY_LAYER_PRIVACY = "research"
 $env:CREATIVITY_LAYER_BUDGET_USD = "0.25"
+$env:CREATIVITY_LAYER_SEARCH_MODE = "off"
 ```
 
 The deterministic test provider exists for no-network CI, protocol checks, and
@@ -208,6 +209,7 @@ To smoke-test the actual MCP tool registration without an agent host:
 ```powershell
 creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" `
   --provider-mode deterministic `
+  --search-mode off `
   --repo-language Python `
   --seed-count 2 `
   --finalist-count 1 `
@@ -251,6 +253,39 @@ Example live MCP payload:
 If live configuration is missing or invalid, the MCP tool returns
 `stopped_reason: "configuration_error"` with a structured error and no finalists
 instead of charging provider calls.
+
+### Opt-in search context
+
+MCP search context is explicit. The default is `off`, so `quick`, `standard`,
+and `deep` effort levels do not trigger search by themselves. Set
+`"search_mode": "light"` for bounded context or `"search_mode": "deep"` for a
+broader bounded pass:
+
+```json
+{
+  "goal": "Design a better retry strategy for AI coding agents after failed tests",
+  "provider_mode": "live_openai",
+  "search_mode": "light",
+  "repo_signals": {
+    "test_commands": ["python -m pytest tests/test_runner.py"],
+    "detected_languages": ["Python"],
+    "detected_frameworks": ["pytest"]
+  }
+}
+```
+
+For environment-level defaults, use:
+
+```powershell
+$env:CREATIVITY_LAYER_SEARCH_MODE = "light"
+$env:CREATIVITY_LAYER_LIVE_SEARCH_APPROVED = "1"
+```
+
+`CREATIVITY_LAYER_LIVE_SEARCH_APPROVED=1` is required before live search
+providers may be used. Without approval or provider configuration, the result
+still returns finalists when possible and includes `search_context` metadata
+with the skipped reason. This is opt-in search; creativity-layer still does not
+crawl repositories, and agents should pass observed repo signals.
 
 The engine does not read this file. The CLI parses it into `ContextBundle`, then
 calls the same provider-neutral API a future middleware layer will call.
