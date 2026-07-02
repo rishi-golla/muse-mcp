@@ -97,6 +97,18 @@ This is live prompt pressure, not proof that a run is high quality. Keep using
 claims, and compare `search-off`, `search-light`, and `search-deep` when search
 context is part of the decision.
 
+## V4-C quality warning fields
+
+V4-C surfaces advisory warning fields in every normal `creative_plan` response.
+Use top-level `quality_warnings` and `quality_summary` to decide whether an
+agent should ask for a stronger effort level, add more repo signals, or choose a
+different finalist. Each finalist also includes `quality_warnings` so agents can
+avoid generic options without running the separate dogfood CLI.
+
+Warnings are not hard failures. They flag review pressure such as generic titles
+or missing operational fields; the coding agent still owns the final judgment and
+repository verification.
+
 ## before-edit
 
 Call `creative_plan` before editing when the task has multiple plausible approaches, unclear boundaries, or needs a repo-agnostic workflow idea.
