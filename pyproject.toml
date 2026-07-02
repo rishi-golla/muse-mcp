@@ -37,6 +37,7 @@ dev = [
 muse = "muse.cli:main"
 muse-mcp = "muse.mcp_server:main"
 muse-mcp-smoke = "muse.mcp_smoke:main"
+muse-mcp-doctor = "muse.mcp_doctor:main"
 muse-agent-proof = "muse.agent_loop_proof:main"
 muse-dogfood-quality = "muse.dogfood_quality_cli:main"
 

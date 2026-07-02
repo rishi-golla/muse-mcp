@@ -22,7 +22,16 @@ $env:OPENAI_API_KEY = "replace_me"
 $env:OPENAI_ECONOMY_MODEL = "gpt-5.4-mini"
 $env:OPENAI_STRONG_MODEL = "gpt-5.4"
 $env:OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
-$env:OPENAI_PRICING_FILE = "C:\path\to\openai-pricing.json"
+```
+
+Muse includes packaged default pricing for the example models above. Set
+`OPENAI_PRICING_FILE` only when you choose different models or want to override
+the bundled pricing table.
+
+Check local MCP live configuration without making provider calls:
+
+```powershell
+muse-mcp-doctor --json
 ```
 
 Then run the MCP smoke path. Omit `provider_mode`; public Muse is live-only by
@@ -45,9 +54,9 @@ muse-dogfood-quality `
   --json
 ```
 
-For local setup, copy `.env.example` to a local environment file or shell setup,
-copy `openai-pricing.example.json` to your own pricing config if needed, then
-set real provider values outside the repo.
+For local setup, copy `.env.example` to a local environment file or shell setup
+and set real provider values outside the repo. `openai-pricing.example.json`
+shows the packaged default pricing schema for overrides.
 
 Historical note: the first implementation milestone used deterministic fixtures
 to validate orchestration, data contracts, budget accounting, selection
@@ -120,7 +129,6 @@ $env:OPENAI_API_KEY = "<OPENAI_API_KEY>"
 $env:OPENAI_ECONOMY_MODEL = "<explicit model id>"
 $env:OPENAI_STRONG_MODEL = "<explicit model id>"
 $env:OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
-$env:OPENAI_PRICING_FILE = "path\to\pricing.json"
 ```
 
 Run:
@@ -319,8 +327,11 @@ $env:OPENAI_API_KEY = "<OPENAI_API_KEY>"
 $env:OPENAI_ECONOMY_MODEL = "<cheap-model-id>"
 $env:OPENAI_STRONG_MODEL = "<stronger-model-id>"
 $env:OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
-$env:OPENAI_PRICING_FILE = "C:\path\to\openai-pricing.json"
 ```
+
+`OPENAI_PRICING_FILE` is optional when the selected models are covered by the
+packaged default pricing. Set it to a local JSON file when using different
+models or pricing.
 
 Example live MCP payload:
 

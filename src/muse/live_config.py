@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import unicodedata
+from collections.abc import Mapping
 from enum import StrEnum
 from typing import Annotated
 
@@ -35,7 +36,14 @@ class OpenAICredentials(FrozenModel):
 
     @classmethod
     def from_environment(cls) -> OpenAICredentials:
-        value = os.getenv("OPENAI_API_KEY")
+        return cls.from_environment_mapping(os.environ)
+
+    @classmethod
+    def from_environment_mapping(
+        cls,
+        environ: Mapping[str, str],
+    ) -> OpenAICredentials:
+        value = environ.get("OPENAI_API_KEY")
         if not value or not value.strip():
             raise ValueError("OPENAI_API_KEY is required for live OpenAI runs")
         return cls(api_key=SecretStr(value.strip()))
@@ -63,8 +71,15 @@ class LiveModelConfig(FrozenModel):
 
     @classmethod
     def from_environment(cls) -> LiveModelConfig:
-        economy = os.getenv("OPENAI_ECONOMY_MODEL")
-        strong = os.getenv("OPENAI_STRONG_MODEL")
+        return cls.from_environment_mapping(os.environ)
+
+    @classmethod
+    def from_environment_mapping(
+        cls,
+        environ: Mapping[str, str],
+    ) -> LiveModelConfig:
+        economy = environ.get("OPENAI_ECONOMY_MODEL")
+        strong = environ.get("OPENAI_STRONG_MODEL")
         if not economy or not economy.strip() or not strong or not strong.strip():
             raise ValueError(
                 "OPENAI_ECONOMY_MODEL and OPENAI_STRONG_MODEL are required"
@@ -72,7 +87,7 @@ class LiveModelConfig(FrozenModel):
         return cls(
             economy_model=economy,
             strong_model=strong,
-            embedding_model=os.getenv(
+            embedding_model=environ.get(
                 "OPENAI_EMBEDDING_MODEL",
                 "text-embedding-3-small",
             ),

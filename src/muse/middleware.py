@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from enum import StrEnum
-from pathlib import Path
 from typing import Any
 
 from openai import OpenAI
@@ -20,6 +19,7 @@ from muse.deterministic import DeterministicCreativeProvider
 from muse.engine import CreativeEngine
 from muse.exa_search import ExaSearchProvider
 from muse.live_config import LiveModelConfig, OpenAICredentials, PrivacyMode
+from muse.live_preflight import resolve_openai_pricing_table
 from muse.live_search_config import BraveSearchCredentials, ExaSearchCredentials
 from muse.models import FrozenModel, IdeaGenome, RunConfig, RunResult, TaskContext
 from muse.openai_provider import OpenAICreativeProvider
@@ -473,18 +473,8 @@ def _build_openai_provider_from_environment(
 
 
 def _load_pricing_table_from_environment() -> PricingTable:
-    raw_path = os.getenv("OPENAI_PRICING_FILE")
-    if raw_path is None:
-        raise ValueError("OPENAI_PRICING_FILE is required")
-    path = Path(raw_path)
-    try:
-        payload = path.read_text(encoding="utf-8")
-    except OSError as error:
-        raise ValueError(f"could not read pricing config {path}: {error}") from error
-    try:
-        return PricingTable.model_validate_json(payload)
-    except ValueError as error:
-        raise ValueError(f"invalid pricing config {path}: {error}") from error
+    pricing, _source = resolve_openai_pricing_table()
+    return pricing
 
 
 def _validate_live_pricing(config: LiveModelConfig, pricing: PricingTable) -> None:

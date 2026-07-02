@@ -1,0 +1,20 @@
+{
+  "version": "example-v1",
+  "models": {
+    "gpt-5.4-mini": {
+      "input_per_million": 0.15,
+      "cached_input_per_million": 0.02,
+      "output_per_million": 0.6
+    },
+    "gpt-5.4": {
+      "input_per_million": 1.25,
+      "cached_input_per_million": 0.125,
+      "output_per_million": 10.0
+    }
+  },
+  "embeddings": {
+    "text-embedding-3-small": {
+      "input_per_million": 0.02
+    }
+  }
+}

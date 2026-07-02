@@ -1,3 +1,4 @@
+import argparse
 import json
 from pathlib import Path
 
@@ -505,7 +506,6 @@ def test_live_provider_errors_return_one_and_write_trace(
 @pytest.mark.parametrize(
     ("pricing_value", "expected_message"),
     [
-        (None, "OPENAI_PRICING_FILE"),
         ("not-json", "pricing"),
     ],
 )
@@ -533,6 +533,17 @@ def test_live_pricing_config_errors_return_two_without_traceback(
     assert output.out == ""
     assert expected_message in output.err
     assert "Traceback" not in output.err
+
+
+def test_live_cli_uses_packaged_pricing_when_pricing_env_is_absent(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("OPENAI_PRICING_FILE", raising=False)
+
+    pricing = cli_module._load_pricing_table(argparse.Namespace(pricing_file=None))
+
+    assert pricing.version == "example-v1"
+    assert pricing.text_price("gpt-5.4-mini").input_per_million > 0
 
 
 def test_live_missing_selected_model_pricing_returns_two_without_trace(
