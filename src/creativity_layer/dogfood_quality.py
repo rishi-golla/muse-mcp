@@ -9,6 +9,7 @@ from time import perf_counter
 from typing import Any
 
 from creativity_layer.mcp_server import build_mcp_server
+from creativity_layer.quality_warnings import finalist_quality_warnings
 
 
 @dataclass(frozen=True)
@@ -99,34 +100,6 @@ DEFAULT_SEARCH_VARIANTS: tuple[SearchVariant, ...] = (
 )
 
 
-GENERIC_TITLES = frozenset(
-    {
-        "consent gradients",
-        "counterfactual ledger",
-        "decision garden",
-        "silent delegation market",
-    }
-)
-
-GENERIC_MECHANISM_PHRASES = (
-    "binary votes",
-    "central coordinator",
-    "decision authority",
-    "proposals mature through evidence thresholds",
-    "reversible confidence",
-)
-
-OPERATIONAL_FIELDS = (
-    "inputs_required",
-    "outputs_produced",
-    "agent_workflow",
-    "decision_policy",
-    "integration_points",
-    "verification_strategy",
-    "failure_modes",
-)
-
-
 def run_dogfood_quality_suite(
     *,
     provider_mode: str = "deterministic",
@@ -194,16 +167,12 @@ def evaluate_quality_gates(
     if not finalists:
         gates.append("missing_finalist")
     if finalist:
-        title = str(finalist.get("title", "")).strip().casefold()
-        if title in GENERIC_TITLES:
-            gates.append("generic_title")
-        mechanism = str(finalist.get("core_mechanism", "")).casefold()
-        if any(phrase in mechanism for phrase in GENERIC_MECHANISM_PHRASES):
-            gates.append("generic_mechanism")
-        if _missing_operational_fields(finalist):
-            gates.append("missing_operational_field")
-        if _missing_required_terms(case, finalist):
-            gates.append("missing_required_terms")
+        gates.extend(
+            finalist_quality_warnings(
+                finalist,
+                required_terms=case.required_terms,
+            )
+        )
     if variant.search_mode != "off" and search_context.get("used") is not True:
         gates.append("search_expected_but_unused")
 
@@ -315,32 +284,6 @@ def _variant_summary(variant: SearchVariant) -> dict[str, Any]:
         "search_provider": variant.search_provider,
         "search_strict": variant.search_strict,
     }
-
-
-def _missing_operational_fields(finalist: Mapping[str, Any]) -> bool:
-    for field in OPERATIONAL_FIELDS:
-        value = finalist.get(field)
-        if value is None or value == "" or value == []:
-            return True
-    return False
-
-
-def _missing_required_terms(case: DogfoodCase, finalist: Mapping[str, Any]) -> bool:
-    haystack = " ".join(
-        str(finalist.get(field, ""))
-        for field in (
-            "title",
-            "core_mechanism",
-            "problem_framing",
-            "task_value",
-            "agent_workflow",
-            "decision_policy",
-            "verification_strategy",
-        )
-    ).casefold()
-    matches = sum(1 for term in case.required_terms if term.casefold() in haystack)
-    required_match_count = min(2, len(case.required_terms))
-    return matches < required_match_count
 
 
 def _as_sequence(value: object) -> Sequence[object]:
