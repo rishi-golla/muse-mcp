@@ -150,3 +150,18 @@ def test_agent_dogfood_playbook_describes_coding_loop_usage() -> None:
     assert "after-fix" in playbook
     assert "creative_plan" in playbook
     assert "repo_signals" in playbook
+
+
+def test_docs_describe_v3l_dogfood_quality_suite() -> None:
+    readme = _read_text(ROOT / "README.md")
+    playbook = _read_text(ROOT / "docs" / "integrations" / "agent-dogfood-playbook.md")
+    combined = "\n".join((readme, playbook)).casefold()
+
+    assert "v3-l" in combined
+    assert "last v3 validation slice" in combined
+    assert "creativity-layer-dogfood-quality" in combined
+    assert "--fail-on-gates" in combined
+    assert "search-off" in combined
+    assert "search-light" in combined
+    assert "search-deep" in combined
+    assert "deterministic output can intentionally fail quality gates" in combined
