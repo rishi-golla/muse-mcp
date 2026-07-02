@@ -31,6 +31,7 @@ from creativity_layer.search_context import (
     SearchContextMetadata,
     SearchContextMode,
     SearchContextResolver,
+    SearchProviderPolicy,
 )
 
 
@@ -80,6 +81,8 @@ class CreativePlanRequest(FrozenModel):
     max_calls: int = Field(default=20, strict=True, gt=0)
     max_context_snippets: int = Field(default=8, strict=True, ge=1, le=20)
     search_mode: SearchContextMode = SearchContextMode.OFF
+    search_provider: SearchProviderPolicy = SearchProviderPolicy.AUTO
+    search_strict: bool = Field(default=False, strict=True)
     random_seed: int = Field(default=0, strict=True)
 
     @model_validator(mode="before")
@@ -130,7 +133,10 @@ class CreativeMiddlewareRunner:
             evaluator=creative_provider,
             context_provider=DeterministicContextProvider(),
             search_context_resolver=search_context_resolver
-            or SearchContextResolver(provider=DeterministicSearchProvider()),
+            or SearchContextResolver(
+                provider=DeterministicSearchProvider(),
+                provider_policy=SearchProviderPolicy.DETERMINISTIC,
+            ),
         )
 
     @classmethod
@@ -151,7 +157,9 @@ class CreativeMiddlewareRunner:
             evaluator=creative_provider,
             context_provider=DeterministicContextProvider(),
             search_context_resolver=search_context_resolver
-            or _build_search_context_resolver_from_environment(),
+            or _build_search_context_resolver_from_environment(
+                SearchProviderPolicy.AUTO,
+            ),
         )
 
     def run(self, request: CreativePlanRequest | Mapping[str, object]) -> dict[str, Any]:
@@ -162,7 +170,18 @@ class CreativeMiddlewareRunner:
             task=TaskContext(goal=parsed_request.goal),
             repo_signals=repo_signals,
             max_snippets=parsed_request.max_context_snippets,
+            strict=parsed_request.search_strict,
         )
+        if _strict_search_failed(parsed_request, search_context.metadata):
+            return _configuration_error_result(
+                provider_mode=parsed_request.provider_mode.value,
+                message=_strict_search_error_message(search_context.metadata),
+                effort=parsed_request.effort,
+                search_mode=parsed_request.search_mode.value,
+                search_provider=parsed_request.search_provider.value,
+                search_strict=parsed_request.search_strict,
+                search_context=search_context.metadata,
+            )
         task = build_task_context(
             task=TaskContext(
                 goal=parsed_request.goal,
@@ -220,6 +239,8 @@ def _serialize_result(
             "max_calls": request.max_calls,
             "privacy": request.privacy.value,
             "search_mode": request.search_mode.value,
+            "search_provider": request.search_provider.value,
+            "search_strict": request.search_strict,
         },
         "search_context": search_context.model_dump(mode="json"),
         "agent_guidance": _agent_guidance(request.effort),
@@ -240,6 +261,8 @@ def run_creative_plan(request: CreativePlanRequest | Mapping[str, object]) -> di
             provider_mode=_provider_mode_from_raw(request),
             message=str(error),
             search_mode=_search_mode_from_raw(request),
+            search_provider=_search_provider_from_raw(request),
+            search_strict=_search_strict_from_raw(request),
         )
     except ConfigurationError as error:
         return _configuration_error_result(
@@ -251,6 +274,16 @@ def run_creative_plan(request: CreativePlanRequest | Mapping[str, object]) -> di
                 if parsed_request
                 else _search_mode_from_raw(request)
             ),
+            search_provider=(
+                parsed_request.search_provider.value
+                if parsed_request
+                else _search_provider_from_raw(request)
+            ),
+            search_strict=(
+                parsed_request.search_strict
+                if parsed_request
+                else _search_strict_from_raw(request)
+            ),
         )
 
 
@@ -260,33 +293,106 @@ def configuration_error_result(
     message: str,
     effort: EffortPreset = EffortPreset.QUICK,
     search_mode: str = SearchContextMode.OFF.value,
+    search_provider: str = SearchProviderPolicy.AUTO.value,
+    search_strict: bool = False,
 ) -> dict[str, Any]:
     return _configuration_error_result(
         provider_mode=provider_mode,
         message=message,
         effort=effort,
         search_mode=search_mode,
+        search_provider=search_provider,
+        search_strict=search_strict,
     )
 
 
 def _runner_for_request(request: CreativePlanRequest) -> CreativeMiddlewareRunner:
     if request.provider_mode is ProviderMode.DETERMINISTIC:
-        return CreativeMiddlewareRunner.deterministic()
+        return CreativeMiddlewareRunner.deterministic(
+            search_context_resolver=_deterministic_search_context_resolver(
+                request.search_provider,
+            )
+        )
     if request.provider_mode is ProviderMode.LIVE_OPENAI:
-        return CreativeMiddlewareRunner.live_openai(privacy=request.privacy)
+        return CreativeMiddlewareRunner.live_openai(
+            privacy=request.privacy,
+            search_context_resolver=_build_search_context_resolver_from_environment(
+                request.search_provider,
+            ),
+        )
     raise ConfigurationError(f"unsupported provider mode: {request.provider_mode}")
 
 
-def _build_search_context_resolver_from_environment() -> SearchContextResolver:
-    return SearchContextResolver(provider=_build_search_provider_from_environment())
+def _deterministic_search_context_resolver(
+    policy: SearchProviderPolicy,
+) -> SearchContextResolver:
+    provider: SearchProvider | None = (
+        DeterministicSearchProvider()
+        if policy in {SearchProviderPolicy.AUTO, SearchProviderPolicy.DETERMINISTIC}
+        else None
+    )
+    provider_policy = (
+        SearchProviderPolicy.DETERMINISTIC
+        if policy is SearchProviderPolicy.AUTO
+        else policy
+    )
+    return SearchContextResolver(
+        provider=provider,
+        provider_policy=provider_policy,
+    )
 
 
-def _build_search_provider_from_environment() -> SearchProvider | None:
+def _build_search_context_resolver_from_environment(
+    policy: SearchProviderPolicy,
+) -> SearchContextResolver:
+    provider = _build_search_provider_from_environment(policy)
+    provider_policy = _provider_policy_for_selected_provider(policy, provider)
+    return SearchContextResolver(provider=provider, provider_policy=provider_policy)
+
+
+def _build_search_provider_from_environment(
+    policy: SearchProviderPolicy,
+) -> SearchProvider | None:
+    if policy is SearchProviderPolicy.DETERMINISTIC:
+        return DeterministicSearchProvider()
+    if policy is SearchProviderPolicy.EXA:
+        return _maybe_exa_search_provider()
+    if policy is SearchProviderPolicy.BRAVE:
+        return _maybe_brave_search_provider()
     if os.getenv("EXA_API_KEY", "").strip():
-        return ExaSearchProvider(credentials=ExaSearchCredentials.from_environment())
+        return _maybe_exa_search_provider()
     if os.getenv("BRAVE_SEARCH_API_KEY", "").strip():
-        return BraveSearchProvider(credentials=BraveSearchCredentials.from_environment())
+        return _maybe_brave_search_provider()
     return None
+
+
+def _maybe_exa_search_provider() -> SearchProvider | None:
+    try:
+        return ExaSearchProvider(credentials=ExaSearchCredentials.from_environment())
+    except ValueError:
+        return None
+
+
+def _maybe_brave_search_provider() -> SearchProvider | None:
+    try:
+        return BraveSearchProvider(credentials=BraveSearchCredentials.from_environment())
+    except ValueError:
+        return None
+
+
+def _provider_policy_for_selected_provider(
+    policy: SearchProviderPolicy,
+    provider: SearchProvider | None,
+) -> SearchProviderPolicy:
+    if policy is not SearchProviderPolicy.AUTO or provider is None:
+        return policy
+    if isinstance(provider, ExaSearchProvider):
+        return SearchProviderPolicy.EXA
+    if isinstance(provider, BraveSearchProvider):
+        return SearchProviderPolicy.BRAVE
+    if isinstance(provider, DeterministicSearchProvider):
+        return SearchProviderPolicy.DETERMINISTIC
+    return SearchProviderPolicy.AUTO
 
 
 def _build_openai_provider_from_environment(
@@ -355,13 +461,56 @@ def _search_mode_from_raw(request: CreativePlanRequest | Mapping[str, object]) -
     return str(raw_mode or SearchContextMode.OFF.value)
 
 
+def _search_provider_from_raw(request: CreativePlanRequest | Mapping[str, object]) -> str:
+    if isinstance(request, CreativePlanRequest):
+        return request.search_provider.value
+    raw_provider = request.get("search_provider") if isinstance(request, Mapping) else None
+    return str(raw_provider or SearchProviderPolicy.AUTO.value)
+
+
+def _search_strict_from_raw(request: CreativePlanRequest | Mapping[str, object]) -> bool:
+    if isinstance(request, CreativePlanRequest):
+        return request.search_strict
+    raw_value = request.get("search_strict") if isinstance(request, Mapping) else None
+    return bool(raw_value) if isinstance(raw_value, bool) else False
+
+
+def _strict_search_failed(
+    request: CreativePlanRequest,
+    search_context: SearchContextMetadata,
+) -> bool:
+    return (
+        request.search_strict
+        and request.search_mode is not SearchContextMode.OFF
+        and not search_context.used
+    )
+
+
+def _strict_search_error_message(search_context: SearchContextMetadata) -> str:
+    if search_context.errors:
+        return search_context.errors[0]
+    reason = search_context.skipped_reason or "unavailable"
+    return f"strict search requested but search context was not available: {reason}"
+
+
 def _configuration_error_result(
     *,
     provider_mode: str,
     message: str,
     effort: EffortPreset = EffortPreset.QUICK,
     search_mode: str = SearchContextMode.OFF.value,
+    search_provider: str = SearchProviderPolicy.AUTO.value,
+    search_strict: bool = False,
+    search_context: SearchContextMetadata | None = None,
 ) -> dict[str, Any]:
+    metadata = search_context or SearchContextMetadata(
+        mode=search_mode,
+        used=False,
+        skipped_reason="configuration_error",
+        provider_policy=search_provider,
+        strict=search_strict,
+        errors=(message,),
+    )
     return {
         "run_id": None,
         "provider_mode": provider_mode,
@@ -370,13 +519,12 @@ def _configuration_error_result(
         "finalist_count": 0,
         "context_tags": [],
         "context_sources": [],
-        "config": {"search_mode": search_mode},
-        "search_context": SearchContextMetadata(
-            mode=search_mode,
-            used=False,
-            skipped_reason="configuration_error",
-            errors=(message,),
-        ).model_dump(mode="json"),
+        "config": {
+            "search_mode": search_mode,
+            "search_provider": search_provider,
+            "search_strict": search_strict,
+        },
+        "search_context": metadata.model_dump(mode="json"),
         "agent_guidance": _agent_guidance(effort),
         "spend_usd": 0.0,
         "errors": [

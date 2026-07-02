@@ -12,6 +12,8 @@ class RuntimeDefaults:
     privacy: str = "research"
     budget_usd: float | None = None
     search_mode: str = "off"
+    search_provider: str = "auto"
+    search_strict: bool = False
 
     @classmethod
     def from_environment(
@@ -29,6 +31,16 @@ class RuntimeDefaults:
             privacy=_env_text(values, "CREATIVITY_LAYER_PRIVACY", "research"),
             budget_usd=_env_float(values, "CREATIVITY_LAYER_BUDGET_USD"),
             search_mode=_env_text(values, "CREATIVITY_LAYER_SEARCH_MODE", "off"),
+            search_provider=_env_text(
+                values,
+                "CREATIVITY_LAYER_SEARCH_PROVIDER",
+                "auto",
+            ),
+            search_strict=_env_bool(
+                values,
+                "CREATIVITY_LAYER_SEARCH_STRICT",
+                False,
+            ),
         )
 
     @classmethod
@@ -40,6 +52,8 @@ class RuntimeDefaults:
         privacy: str | None = None,
         budget_usd: float | None = None,
         search_mode: str | None = None,
+        search_provider: str | None = None,
+        search_strict: bool | None = None,
         environ: Mapping[str, str] | None = None,
     ) -> RuntimeDefaults:
         values = os.environ if environ is None else environ
@@ -57,6 +71,11 @@ class RuntimeDefaults:
             else _env_float(values, "CREATIVITY_LAYER_BUDGET_USD"),
             search_mode=search_mode
             or _env_text(values, "CREATIVITY_LAYER_SEARCH_MODE", "off"),
+            search_provider=search_provider
+            or _env_text(values, "CREATIVITY_LAYER_SEARCH_PROVIDER", "auto"),
+            search_strict=search_strict
+            if search_strict is not None
+            else _env_bool(values, "CREATIVITY_LAYER_SEARCH_STRICT", False),
         )
 
 
@@ -75,3 +94,15 @@ def _env_float(values: Mapping[str, str], name: str) -> float | None:
         return float(value)
     except ValueError as error:
         raise ValueError(f"{name} must be a valid number") from error
+
+
+def _env_bool(values: Mapping[str, str], name: str, default: bool) -> bool:
+    value = values.get(name)
+    if value is None or not value.strip():
+        return default
+    normalized = value.strip().casefold()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean")

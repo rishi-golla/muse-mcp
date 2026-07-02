@@ -11,7 +11,7 @@ from creativity_layer.middleware import (
     run_creative_plan,
 )
 from creativity_layer.search import DeterministicSearchProvider
-from creativity_layer.search_context import SearchContextResolver
+from creativity_layer.search_context import SearchContextResolver, SearchProviderPolicy
 
 
 def test_runner_returns_json_safe_operational_plan_from_repo_signals() -> None:
@@ -57,7 +57,10 @@ def test_runner_uses_cheap_agent_defaults() -> None:
     assert result["config"]["finalist_count"] == 1
     assert result["config"]["max_generations"] == 0
     assert result["config"]["search_mode"] == "off"
+    assert result["config"]["search_provider"] == "auto"
+    assert result["config"]["search_strict"] is False
     assert result["search_context"]["mode"] == "off"
+    assert result["search_context"]["provider_policy"] == "deterministic"
     assert result["search_context"]["used"] is False
     assert result["finalist_count"] == 1
 
@@ -154,6 +157,39 @@ def test_runner_merges_injected_search_context() -> None:
     assert result["search_context"]["used"] is True
     assert result["search_context"]["source_count"] == 1
     assert "search/deterministic-search/src-1" in result["context_sources"]
+
+
+def test_runner_strict_search_returns_configuration_error_when_unavailable() -> None:
+    runner = CreativeMiddlewareRunner.deterministic(
+        search_context_resolver=SearchContextResolver(
+            provider=None,
+            provider_policy=SearchProviderPolicy.DETERMINISTIC,
+            approval_required=False,
+        )
+    )
+
+    result = runner.run(
+        CreativePlanRequest(
+            goal="reversible team decisions",
+            search_mode="light",
+            search_provider="deterministic",
+            search_strict=True,
+            seed_count=2,
+            finalist_count=1,
+            max_generations=0,
+            budget_usd=0.20,
+        )
+    )
+
+    assert result["stopped_reason"] == "configuration_error"
+    assert result["generated_count"] == 0
+    assert result["finalist_count"] == 0
+    assert result["config"]["search_mode"] == "light"
+    assert result["config"]["search_provider"] == "deterministic"
+    assert result["config"]["search_strict"] is True
+    assert result["search_context"]["skipped_reason"] == "configuration_error"
+    assert result["search_context"]["strict"] is True
+    assert "search provider" in result["errors"][0]["message"]
 
 
 def test_live_openai_mode_returns_structured_configuration_error(

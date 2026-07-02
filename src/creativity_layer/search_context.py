@@ -70,24 +70,28 @@ class SearchContextResolver:
         task: TaskContext,
         repo_signals: RepoSignals,
         max_snippets: int,
+        strict: bool = False,
     ) -> SearchContextResult:
         if mode is SearchContextMode.OFF:
             return _skipped(
                 mode=mode,
                 reason="disabled",
                 provider_policy=self._provider_policy,
+                strict=strict,
             )
         if self._approval_required and not _live_search_approved(self._environ):
             return _skipped(
                 mode=mode,
                 reason="approval_required",
                 provider_policy=self._provider_policy,
+                strict=strict,
             )
         if self._provider is None:
             return _skipped(
                 mode=mode,
                 reason="configuration_error",
                 provider_policy=self._provider_policy,
+                strict=strict,
                 errors=("search provider is not configured",),
             )
 
@@ -99,6 +103,7 @@ class SearchContextResolver:
                 reason="provider_error",
                 provider=self._provider.name,
                 provider_policy=self._provider_policy,
+                strict=strict,
                 errors=(f"search provider failed: {type(error).__name__}",),
             )
 
@@ -114,6 +119,7 @@ class SearchContextResolver:
                     skipped_reason="empty_results",
                     provider=self._provider.name,
                     provider_policy=self._provider_policy.value,
+                    strict=strict,
                     query_count=len(search_result.queries),
                     queries=_query_metadata(search_result.queries),
                     query_source_counts=search_result.query_source_counts,
@@ -130,6 +136,7 @@ class SearchContextResolver:
                 used=True,
                 provider=self._provider.name,
                 provider_policy=self._provider_policy.value,
+                strict=strict,
                 source_count=len(snippets),
                 query_count=len(search_result.queries),
                 queries=_query_metadata(search_result.queries),
