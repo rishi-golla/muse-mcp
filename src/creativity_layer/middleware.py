@@ -23,6 +23,11 @@ from creativity_layer.openai_provider import OpenAICreativeProvider
 from creativity_layer.pricing import PricingTable
 from creativity_layer.providers import IdeaEvaluator, IdeaSeeder, IdeaTransformer, TaskFramer
 from creativity_layer.reliability import CircuitBreaker, RetryPolicy
+from creativity_layer.search_context import (
+    SearchContextMetadata,
+    SearchContextMode,
+    SearchContextResolver,
+)
 
 
 class ProviderMode(StrEnum):
@@ -70,6 +75,7 @@ class CreativePlanRequest(FrozenModel):
     max_generations: int = Field(strict=True, ge=0)
     max_calls: int = Field(default=20, strict=True, gt=0)
     max_context_snippets: int = Field(default=8, strict=True, ge=1, le=20)
+    search_mode: SearchContextMode = SearchContextMode.OFF
     random_seed: int = Field(default=0, strict=True)
 
     @model_validator(mode="before")
@@ -97,15 +103,21 @@ class CreativeMiddlewareRunner:
         transformer: IdeaTransformer,
         evaluator: IdeaEvaluator,
         context_provider: ContextProvider,
+        search_context_resolver: SearchContextResolver | None = None,
     ) -> None:
         self._framer = framer
         self._seeder = seeder
         self._transformer = transformer
         self._evaluator = evaluator
         self._context_provider = context_provider
+        self._search_context_resolver = search_context_resolver or SearchContextResolver()
 
     @classmethod
-    def deterministic(cls) -> CreativeMiddlewareRunner:
+    def deterministic(
+        cls,
+        *,
+        search_context_resolver: SearchContextResolver | None = None,
+    ) -> CreativeMiddlewareRunner:
         creative_provider = DeterministicCreativeProvider()
         return cls(
             framer=creative_provider,
@@ -113,6 +125,7 @@ class CreativeMiddlewareRunner:
             transformer=creative_provider,
             evaluator=creative_provider,
             context_provider=DeterministicContextProvider(),
+            search_context_resolver=search_context_resolver,
         )
 
     @classmethod
@@ -121,6 +134,7 @@ class CreativeMiddlewareRunner:
         *,
         provider: Any | None = None,
         privacy: PrivacyMode = PrivacyMode.RESEARCH,
+        search_context_resolver: SearchContextResolver | None = None,
     ) -> CreativeMiddlewareRunner:
         creative_provider = provider or _build_openai_provider_from_environment(
             privacy=privacy,
@@ -131,13 +145,23 @@ class CreativeMiddlewareRunner:
             transformer=creative_provider,
             evaluator=creative_provider,
             context_provider=DeterministicContextProvider(),
+            search_context_resolver=search_context_resolver,
         )
 
     def run(self, request: CreativePlanRequest | Mapping[str, object]) -> dict[str, Any]:
         parsed_request = CreativePlanRequest.model_validate(request)
         repo_signals = RepoSignals.model_validate(parsed_request.repo_signals)
-        task = build_task_context(
+        search_context = self._search_context_resolver.resolve(
+            mode=parsed_request.search_mode,
             task=TaskContext(goal=parsed_request.goal),
+            repo_signals=repo_signals,
+            max_snippets=parsed_request.max_context_snippets,
+        )
+        task = build_task_context(
+            task=TaskContext(
+                goal=parsed_request.goal,
+                context_bundle=search_context.bundle,
+            ),
             repo_signals=repo_signals,
             provider=self._context_provider,
             max_snippets=parsed_request.max_context_snippets,
@@ -158,12 +182,17 @@ class CreativeMiddlewareRunner:
             transformer=self._transformer,
             evaluator=self._evaluator,
         )
-        return _serialize_result(engine.run(task, config), parsed_request)
+        return _serialize_result(
+            engine.run(task, config),
+            parsed_request,
+            search_context.metadata,
+        )
 
 
 def _serialize_result(
     result: RunResult,
     request: CreativePlanRequest,
+    search_context: SearchContextMetadata,
 ) -> dict[str, Any]:
     spend_total = round(sum(record.cost_usd for record in result.spend_records), 10)
     return {
@@ -184,7 +213,9 @@ def _serialize_result(
             "max_generations": request.max_generations,
             "max_calls": request.max_calls,
             "privacy": request.privacy.value,
+            "search_mode": request.search_mode.value,
         },
+        "search_context": search_context.model_dump(mode="json"),
         "agent_guidance": _agent_guidance(request.effort),
         "spend_usd": spend_total,
         "errors": [error.model_dump(mode="json") for error in result.errors],

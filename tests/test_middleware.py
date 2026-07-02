@@ -10,6 +10,8 @@ from creativity_layer.middleware import (
     ProviderMode,
     run_creative_plan,
 )
+from creativity_layer.search import DeterministicSearchProvider
+from creativity_layer.search_context import SearchContextResolver
 
 
 def test_runner_returns_json_safe_operational_plan_from_repo_signals() -> None:
@@ -54,6 +56,9 @@ def test_runner_uses_cheap_agent_defaults() -> None:
     assert result["config"]["seed_count"] == 2
     assert result["config"]["finalist_count"] == 1
     assert result["config"]["max_generations"] == 0
+    assert result["config"]["search_mode"] == "off"
+    assert result["search_context"]["mode"] == "off"
+    assert result["search_context"]["used"] is False
     assert result["finalist_count"] == 1
 
 
@@ -107,6 +112,48 @@ def test_runner_returns_agent_guidance_contract() -> None:
     assert guidance["verification_required"] is True
     assert "observe_repo_state" in guidance["recommended_agent_loop"]
     assert "verification keeps failing" in guidance["escalation_policy"]
+
+
+def test_runner_reports_search_approval_skip() -> None:
+    result = CreativeMiddlewareRunner.deterministic().run(
+        CreativePlanRequest(
+            goal="reversible team decisions",
+            search_mode="light",
+            seed_count=2,
+            finalist_count=1,
+            max_generations=0,
+            budget_usd=0.20,
+        )
+    )
+
+    assert result["config"]["search_mode"] == "light"
+    assert result["search_context"]["mode"] == "light"
+    assert result["search_context"]["used"] is False
+    assert result["search_context"]["skipped_reason"] == "approval_required"
+
+
+def test_runner_merges_injected_search_context() -> None:
+    runner = CreativeMiddlewareRunner.deterministic(
+        search_context_resolver=SearchContextResolver(
+            provider=DeterministicSearchProvider(),
+            approval_required=False,
+        )
+    )
+
+    result = runner.run(
+        CreativePlanRequest(
+            goal="reversible team decisions",
+            search_mode="light",
+            seed_count=2,
+            finalist_count=1,
+            max_generations=0,
+            budget_usd=0.20,
+        )
+    )
+
+    assert result["search_context"]["used"] is True
+    assert result["search_context"]["source_count"] == 1
+    assert "search/deterministic-search/src-1" in result["context_sources"]
 
 
 def test_live_openai_mode_returns_structured_configuration_error(

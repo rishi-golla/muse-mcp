@@ -21,6 +21,7 @@ def test_runtime_defaults_read_environment_overrides() -> None:
             "CREATIVITY_LAYER_EFFORT": "standard",
             "CREATIVITY_LAYER_PRIVACY": "private",
             "CREATIVITY_LAYER_BUDGET_USD": "0.25",
+            "CREATIVITY_LAYER_SEARCH_MODE": "light",
         }
     )
 
@@ -28,6 +29,7 @@ def test_runtime_defaults_read_environment_overrides() -> None:
     assert defaults.effort == "standard"
     assert defaults.privacy == "private"
     assert defaults.budget_usd == 0.25
+    assert defaults.search_mode == "light"
 
 
 def test_runtime_defaults_ignore_blank_environment_values() -> None:
@@ -60,3 +62,12 @@ def test_runtime_defaults_explicit_budget_overrides_invalid_environment() -> Non
 
     assert defaults.provider_mode == "deterministic"
     assert defaults.budget_usd == 0.2
+
+
+def test_runtime_defaults_explicit_search_mode_overrides_environment() -> None:
+    defaults = RuntimeDefaults.resolve(
+        search_mode="deep",
+        environ={"CREATIVITY_LAYER_SEARCH_MODE": "light"},
+    )
+
+    assert defaults.search_mode == "deep"
