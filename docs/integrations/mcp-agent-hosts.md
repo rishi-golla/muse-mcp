@@ -13,23 +13,23 @@ From this repository:
 python -m pip install -e ".[dev]"
 ```
 
-For open-source quickstart setup, start with deterministic mode first. It
-requires no API keys and verifies install, MCP tool registration, and the
-`muse_plan` response contract before live provider configuration is added.
+For open-source quickstart setup, configure live OpenAI first. Public Muse is
+live-only because the MCP output should reflect the behavior agents will use in
+real coding workflows.
 
 Then verify the MCP tool without starting an agent host:
 
 ```powershell
 muse-mcp-smoke "Design a retry strategy for AI coding agents" `
-  --provider-mode deterministic `
   --repo-language Python `
-  --effort quick
+  --effort quick `
+  --budget-usd 0.20
 ```
 
 The smoke command invokes the FastMCP server in-process and prints the
-structured payload returned by `muse_plan`. This example uses the
-deterministic test provider so install and transport problems can be isolated
-without spending money or requiring live model credentials.
+structured payload returned by `muse_plan`. If live config is missing, it
+returns a structured `configuration_error`; with valid OpenAI config, it runs
+the actual live planning path.
 
 For live runs, copy `.env.example` into your local shell or agent-host
 environment and use `openai-pricing.example.json` as the safe pricing schema
@@ -157,23 +157,17 @@ $env:MUSE_SEARCH_PROVIDER = "auto"
 $env:MUSE_SEARCH_STRICT = "false"
 ```
 
-The deterministic test provider is only for no-network CI, protocol checks, and
-local smoke tests. Use it explicitly with `--provider-mode deterministic` or:
-
-```powershell
-$env:MUSE_PROVIDER_MODE = "deterministic"
-```
-
-Do not use deterministic output to judge product quality; it is intentionally
-repeatable and cheap.
+The deterministic provider is an internal maintainer fixture for no-network CI
+and protocol regression tests. Public MCP and smoke calls reject it unless the
+maintainer sets `MUSE_ENABLE_TEST_PROVIDER=1`.
 
 ## Opt-in Search Context
 
 The default is `off` for search context. `effort: "standard"` and
 `effort: "deep"` do not automatically call search providers. Agents can request
 opt-in search with `search_mode`. Use `search_provider` to select `auto`,
-`deterministic`, `exa`, or `brave`; use `search_strict` only when the agent
-should fail closed if requested search cannot run:
+`exa`, or `brave`; use `search_strict` only when the agent should fail closed if
+requested search cannot run:
 
 ```json
 {
@@ -192,9 +186,8 @@ latency and possible provider spend. For smoke tests:
 
 ```powershell
 muse-mcp-smoke "Design a retry strategy for AI coding agents" `
-  --provider-mode deterministic `
   --search-mode off `
-  --search-provider deterministic `
+  --search-provider auto `
   --repo-language Python
 ```
 

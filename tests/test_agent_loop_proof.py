@@ -35,7 +35,12 @@ def test_sample_repo_creation_removes_stale_generated_files(tmp_path) -> None:
     assert stale_files == []
 
 
-def test_agent_loop_proof_calls_mcp_and_repairs_sample_repo(tmp_path) -> None:
+def test_agent_loop_proof_calls_mcp_and_repairs_sample_repo(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("MUSE_ENABLE_TEST_PROVIDER", "1")
+
     result = run_agent_loop_proof(tmp_path / "workspace")
 
     assert result["passed"] is True
