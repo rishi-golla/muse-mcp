@@ -253,6 +253,11 @@ def _serialize_result(
         search_strict=request.search_strict,
         max_context_snippets=request.max_context_snippets,
     )
+    agent_handoff = _agent_handoff(
+        finalists=finalists,
+        quality_action_policy=action_policy,
+        suggested_next_call=suggested_next_call,
+    )
     return {
         "run_id": str(result.run_id),
         "provider_mode": request.provider_mode.value,
@@ -280,6 +285,7 @@ def _serialize_result(
             request.effort,
             quality_action_policy=action_policy,
             suggested_next_call=suggested_next_call,
+            agent_handoff=agent_handoff,
         ),
         "spend_usd": spend_total,
         "errors": [error.model_dump(mode="json") for error in result.errors],
@@ -287,6 +293,7 @@ def _serialize_result(
         "quality_summary": quality_summary,
         "quality_action_policy": action_policy,
         "suggested_next_call": suggested_next_call,
+        "agent_handoff": agent_handoff,
         "finalists": finalists,
     }
 
@@ -553,6 +560,7 @@ def _configuration_error_result(
         strict=search_strict,
         errors=(message,),
     )
+    agent_handoff = _configuration_error_handoff()
     return {
         "run_id": None,
         "provider_mode": provider_mode,
@@ -571,6 +579,7 @@ def _configuration_error_result(
             effort,
             quality_action_policy=_empty_quality_action_policy(effort),
             suggested_next_call=None,
+            agent_handoff=agent_handoff,
         ),
         "spend_usd": 0.0,
         "errors": [
@@ -586,6 +595,7 @@ def _configuration_error_result(
         "quality_summary": _empty_quality_summary(),
         "quality_action_policy": _empty_quality_action_policy(effort),
         "suggested_next_call": None,
+        "agent_handoff": agent_handoff,
         "finalists": [],
     }
 
@@ -595,6 +605,7 @@ def _agent_guidance(
     *,
     quality_action_policy: dict[str, object] | None = None,
     suggested_next_call: dict[str, object] | None = None,
+    agent_handoff: dict[str, object] | None = None,
 ) -> dict[str, Any]:
     return {
         "intended_use": "planning_middleware",
@@ -603,6 +614,7 @@ def _agent_guidance(
         "quality_action_policy": quality_action_policy
         or _empty_quality_action_policy(effort),
         "suggested_next_call": suggested_next_call,
+        "agent_handoff": agent_handoff,
         "recommended_agent_loop": [
             "observe_repo_state",
             "call_creative_plan_with_current_repo_signals",
@@ -619,6 +631,48 @@ def _agent_guidance(
             "Do not skip repository-owned verification.",
             "Pass observed repo facts instead of asking creativity-layer to crawl the repo.",
         ],
+    }
+
+
+def _agent_handoff(
+    *,
+    finalists: list[dict[str, Any]],
+    quality_action_policy: dict[str, object],
+    suggested_next_call: dict[str, object] | None,
+) -> dict[str, object]:
+    policy_status = str(quality_action_policy.get("status", "clear"))
+    selected_finalist_id = finalists[0]["id"] if finalists else None
+    if policy_status == "needs_retry":
+        status = "retry_recommended"
+        recommended_action = "retry_creative_plan"
+        use_current_finalist = False
+    elif policy_status == "review":
+        status = "review"
+        recommended_action = "review_current_finalist"
+        use_current_finalist = bool(finalists)
+    else:
+        status = "ready"
+        recommended_action = "apply_current_finalist"
+        use_current_finalist = bool(finalists)
+
+    return {
+        "status": status,
+        "recommended_action": recommended_action,
+        "use_current_finalist": use_current_finalist,
+        "selected_finalist_id": selected_finalist_id,
+        "suggested_next_call_available": suggested_next_call is not None,
+        "verification_required": True,
+    }
+
+
+def _configuration_error_handoff() -> dict[str, object]:
+    return {
+        "status": "blocked",
+        "recommended_action": "fix_configuration",
+        "use_current_finalist": False,
+        "selected_finalist_id": None,
+        "suggested_next_call_available": False,
+        "verification_required": True,
     }
 
 
