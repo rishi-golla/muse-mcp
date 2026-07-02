@@ -3,6 +3,43 @@
 A research prototype for testing whether evolutionary creative search produces ideas
 that humans judge as simultaneously more original and useful than strong prompting.
 
+Creativity-layer is open-source middleware for AI coding agents. The preferred
+integration surface is MCP: agents call `creative_plan` during planning,
+debugging, and verification instead of replacing their normal coding workflow.
+
+## Open-source quickstart
+
+Install from a fresh clone:
+
+```powershell
+python -m pip install -e ".[dev]"
+```
+
+Run the no-key deterministic MCP smoke path:
+
+```powershell
+creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" `
+  --provider-mode deterministic `
+  --repo-language Python `
+  --effort quick
+```
+
+Run the dogfood quality harness:
+
+```powershell
+creativity-layer-dogfood-quality `
+  --provider-mode deterministic `
+  --case agent-retry-python `
+  --variant search-off `
+  --json
+```
+
+Deterministic mode is intentionally cheap and repeatable; it proves install,
+MCP transport, and contract shape. For live quality reads, copy `.env.example`
+to a local environment file or shell setup, copy `openai-pricing.example.json`
+to your own pricing config if needed, then set real provider values outside the
+repo.
+
 The first implementation milestone is intentionally deterministic. It validates the
 core orchestration, data contracts, budget accounting, selection behavior, and trace
 reproducibility before paid model and search providers are introduced.

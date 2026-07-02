@@ -13,6 +13,10 @@ From this repository:
 python -m pip install -e ".[dev]"
 ```
 
+For open-source quickstart setup, start with deterministic mode first. It
+requires no API keys and verifies install, MCP tool registration, and the
+`creative_plan` response contract before live provider configuration is added.
+
 Then verify the MCP tool without starting an agent host:
 
 ```powershell
@@ -26,6 +30,10 @@ The smoke command invokes the FastMCP server in-process and prints the
 structured payload returned by `creative_plan`. This example uses the
 deterministic test provider so install and transport problems can be isolated
 without spending money or requiring live model credentials.
+
+For live runs, copy `.env.example` into your local shell or agent-host
+environment and use `openai-pricing.example.json` as the safe pricing schema
+example. Do not commit local files with real secrets.
 
 For when to call the tool inside a normal coding loop, see
 `docs/integrations/agent-dogfood-playbook.md`.

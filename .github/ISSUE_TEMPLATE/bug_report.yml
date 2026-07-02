@@ -1,0 +1,34 @@
+name: Bug report
+description: Report incorrect behavior in the MCP middleware, CLI harnesses, or providers.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Include MCP payload or CLI command, without secrets.
+      placeholder: creativity-layer-mcp-smoke ... --provider-mode deterministic
+    validations:
+      required: true
+  - type: textarea
+    id: quality
+    attributes:
+      label: Quality gates or verification evidence
+      description: Paste creativity-layer-dogfood-quality output, pytest, or ruff evidence if relevant.
+    validations:
+      required: false
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, provider mode, MCP host.
+    validations:
+      required: true

@@ -6,6 +6,9 @@ htmlcov/
 .pytest_cache/
 .pytest-tmp/
 .venv/
+.env
+.env.*
+!.env.example
 .task9-*-tmp/
 .task9-quality-*/
 __pycache__/
