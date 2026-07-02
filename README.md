@@ -197,6 +197,8 @@ $env:CREATIVITY_LAYER_EFFORT = "quick"
 $env:CREATIVITY_LAYER_PRIVACY = "research"
 $env:CREATIVITY_LAYER_BUDGET_USD = "0.25"
 $env:CREATIVITY_LAYER_SEARCH_MODE = "off"
+$env:CREATIVITY_LAYER_SEARCH_PROVIDER = "auto"
+$env:CREATIVITY_LAYER_SEARCH_STRICT = "false"
 ```
 
 The deterministic test provider exists for no-network CI, protocol checks, and
@@ -259,13 +261,18 @@ instead of charging provider calls.
 MCP search context is explicit. The default is `off`, so `quick`, `standard`,
 and `deep` effort levels do not trigger search by themselves. Set
 `"search_mode": "light"` for bounded context or `"search_mode": "deep"` for a
-broader bounded pass:
+broader bounded pass. `search_provider` selects `auto`, `deterministic`, `exa`,
+or `brave`; `auto` chooses a configured live search provider when one is
+available. Set `search_strict: true` only when the agent should fail closed if
+requested search cannot run:
 
 ```json
 {
   "goal": "Design a better retry strategy for AI coding agents after failed tests",
   "provider_mode": "live_openai",
   "search_mode": "light",
+  "search_provider": "auto",
+  "search_strict": false,
   "repo_signals": {
     "test_commands": ["python -m pytest tests/test_runner.py"],
     "detected_languages": ["Python"],
@@ -278,14 +285,30 @@ For environment-level defaults, use:
 
 ```powershell
 $env:CREATIVITY_LAYER_SEARCH_MODE = "light"
+$env:CREATIVITY_LAYER_SEARCH_PROVIDER = "auto"
+$env:CREATIVITY_LAYER_SEARCH_STRICT = "false"
 $env:CREATIVITY_LAYER_LIVE_SEARCH_APPROVED = "1"
 ```
 
 `CREATIVITY_LAYER_LIVE_SEARCH_APPROVED=1` is required before live search
 providers may be used. Without approval or provider configuration, the result
 still returns finalists when possible and includes `search_context` metadata
-with the skipped reason. This is opt-in search; creativity-layer still does not
-crawl repositories, and agents should pass observed repo signals.
+with the skipped reason. Strict search changes that behavior: if
+`search_strict` or `CREATIVITY_LAYER_SEARCH_STRICT=true` is set and requested
+search is unavailable, the MCP result returns `configuration_error` and no
+finalists. This is opt-in search; creativity-layer still does not crawl
+repositories, and agents should pass observed repo signals.
+
+The smoke command exposes the same policy controls:
+
+```powershell
+creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" `
+  --provider-mode live_openai `
+  --search-mode light `
+  --search-provider auto `
+  --search-strict `
+  --repo-language Python
+```
 
 The engine does not read this file. The CLI parses it into `ContextBundle`, then
 calls the same provider-neutral API a future middleware layer will call.
