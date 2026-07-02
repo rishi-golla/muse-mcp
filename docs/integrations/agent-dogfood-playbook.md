@@ -54,6 +54,37 @@ providers may be used. Without approval, the tool reports the skipped reason in
 `search_strict` or `CREATIVITY_LAYER_SEARCH_STRICT=true` is set, missing search
 returns `configuration_error` and no finalists.
 
+## V3-L quality runs
+
+V3-L is the last V3 validation slice before V4 productization. It gives the team
+a repeatable dogfood harness for the actual MCP path. Run it when changing
+prompts, evaluator pressure, search policy, or agent guidance.
+
+```powershell
+creativity-layer-dogfood-quality `
+  --provider-mode deterministic `
+  --case agent-retry-python `
+  --variant search-off `
+  --json
+```
+
+Use `--variant search-light` and `--variant search-deep` to compare search
+behavior against `search-off`. Add `--fail-on-gates` when a CI or release check
+should fail if any run has quality gates:
+
+```powershell
+creativity-layer-dogfood-quality `
+  --provider-mode live_openai `
+  --variant search-off `
+  --variant search-light `
+  --variant search-deep `
+  --fail-on-gates `
+  --json
+```
+
+Deterministic output can intentionally fail quality gates. Treat that as a
+protocol-quality check, not a creative-quality failure of the live engine.
+
 ## before-edit
 
 Call `creative_plan` before editing when the task has multiple plausible approaches, unclear boundaries, or needs a repo-agnostic workflow idea.

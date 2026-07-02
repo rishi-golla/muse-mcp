@@ -219,6 +219,40 @@ creativity-layer-mcp-smoke "Design a retry strategy for AI coding agents" `
   --budget-usd 0.20
 ```
 
+### V3-L dogfood quality suite
+
+V3-L is the last V3 validation slice before V4 productization. It adds a
+repeatable MCP quality harness, not a new product surface. Use it to compare
+`search-off`, `search-light`, and `search-deep` runs across built-in dogfood
+cases and to catch weak output before it reaches an agent workflow.
+
+Cheap deterministic run:
+
+```powershell
+creativity-layer-dogfood-quality `
+  --provider-mode deterministic `
+  --case agent-retry-python `
+  --variant search-off `
+  --json
+```
+
+CI-style quality gate:
+
+```powershell
+creativity-layer-dogfood-quality `
+  --provider-mode deterministic `
+  --case agent-retry-python `
+  --variant search-off `
+  --fail-on-gates `
+  --json
+```
+
+Deterministic output can intentionally fail quality gates. That is useful: it
+proves the harness can flag generic fixture-style ideas instead of treating
+protocol success as product quality. Use live OpenAI configuration for real
+quality reads, then compare `search-off`, `search-light`, and `search-deep`
+before changing prompts or evaluator pressure.
+
 For live OpenAI MCP calls, keep the same MCP server command and either omit
 `provider_mode` or pass `"provider_mode": "live_openai"` in the tool payload.
 The live path uses the same environment variables as CLI live mode:
