@@ -43,6 +43,33 @@ def test_runner_returns_json_safe_operational_plan_from_repo_signals() -> None:
     assert json.loads(json.dumps(result)) == result
 
 
+def test_runner_returns_quality_warnings_for_generic_finalists() -> None:
+    result = CreativeMiddlewareRunner.deterministic().run(
+        CreativePlanRequest(
+            goal="Design a better retry strategy for AI coding agents after failed tests",
+            repo_signals={
+                "ci_logs": ("pytest failed after retry loop change",),
+                "detected_languages": ("Python",),
+                "detected_frameworks": ("pytest",),
+            },
+            seed_count=2,
+            finalist_count=1,
+            max_generations=0,
+            budget_usd=0.20,
+        )
+    )
+
+    finalist = result["finalists"][0]
+
+    assert "quality_warnings" in result
+    assert "quality_summary" in result
+    assert "quality_warnings" in finalist
+    assert "generic_title" in result["quality_warnings"]
+    assert "generic_title" in finalist["quality_warnings"]
+    assert result["quality_summary"]["finalist_warning_count"] == 1
+    assert result["quality_summary"]["warnings"]["generic_title"] == 1
+
+
 def test_runner_uses_cheap_agent_defaults() -> None:
     request = CreativePlanRequest(goal="Design a planning hook for arbitrary repos")
 
@@ -243,6 +270,29 @@ def test_live_openai_mode_returns_structured_configuration_error(
     assert result["config"]["search_mode"] == "off"
     assert result["search_context"]["mode"] == "off"
     assert result["search_context"]["used"] is False
+    assert result["quality_warnings"] == []
+    assert result["quality_summary"] == {
+        "warning_count": 0,
+        "finalist_warning_count": 0,
+        "warnings": {},
+    }
+
+
+def test_configuration_error_includes_empty_quality_warning_fields() -> None:
+    result = run_creative_plan(
+        {
+            "goal": "Design a retry strategy for AI coding agents",
+            "provider_mode": "bogus",
+        }
+    )
+
+    assert result["stopped_reason"] == "configuration_error"
+    assert result["quality_warnings"] == []
+    assert result["quality_summary"] == {
+        "warning_count": 0,
+        "finalist_warning_count": 0,
+        "warnings": {},
+    }
 
 
 def test_invalid_search_mode_error_preserves_response_shape() -> None:

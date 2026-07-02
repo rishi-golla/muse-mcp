@@ -25,6 +25,10 @@ from creativity_layer.models import FrozenModel, IdeaGenome, RunConfig, RunResul
 from creativity_layer.openai_provider import OpenAICreativeProvider
 from creativity_layer.pricing import PricingTable
 from creativity_layer.providers import IdeaEvaluator, IdeaSeeder, IdeaTransformer, TaskFramer
+from creativity_layer.quality_warnings import (
+    finalist_quality_warnings,
+    summarize_quality_warnings,
+)
 from creativity_layer.reliability import CircuitBreaker, RetryPolicy
 from creativity_layer.search import DeterministicSearchProvider, SearchProvider
 from creativity_layer.search_context import (
@@ -216,6 +220,22 @@ def _serialize_result(
     search_context: SearchContextMetadata,
 ) -> dict[str, Any]:
     spend_total = round(sum(record.cost_usd for record in result.spend_records), 10)
+    required_terms = result.framed_task.context.context_bundle.tags
+    finalists = [
+        _serialize_finalist(finalist, required_terms=required_terms)
+        for finalist in result.finalists
+    ]
+    warnings_by_finalist = [
+        tuple(finalist["quality_warnings"]) for finalist in finalists
+    ]
+    quality_summary = summarize_quality_warnings(warnings_by_finalist)
+    quality_warnings = sorted(
+        {
+            warning
+            for finalist_warnings in warnings_by_finalist
+            for warning in finalist_warnings
+        }
+    )
     return {
         "run_id": str(result.run_id),
         "provider_mode": request.provider_mode.value,
@@ -242,7 +262,9 @@ def _serialize_result(
         "agent_guidance": _agent_guidance(request.effort),
         "spend_usd": spend_total,
         "errors": [error.model_dump(mode="json") for error in result.errors],
-        "finalists": [_serialize_finalist(finalist) for finalist in result.finalists],
+        "quality_warnings": quality_warnings,
+        "quality_summary": quality_summary,
+        "finalists": finalists,
     }
 
 
@@ -533,6 +555,8 @@ def _configuration_error_result(
                 "cost_incurred": False,
             }
         ],
+        "quality_warnings": [],
+        "quality_summary": _empty_quality_summary(),
         "finalists": [],
     }
 
@@ -561,9 +585,13 @@ def _agent_guidance(effort: EffortPreset) -> dict[str, Any]:
     }
 
 
-def _serialize_finalist(finalist: IdeaGenome) -> dict[str, Any]:
+def _serialize_finalist(
+    finalist: IdeaGenome,
+    *,
+    required_terms: tuple[str, ...] = (),
+) -> dict[str, Any]:
     scores = finalist.scores.model_dump(mode="json") if finalist.scores else None
-    return {
+    payload = {
         "id": str(finalist.id),
         "generation": finalist.generation,
         "title": finalist.title,
@@ -581,3 +609,11 @@ def _serialize_finalist(finalist: IdeaGenome) -> dict[str, Any]:
         "branch_cost_usd": finalist.branch_cost_usd,
         "branch_latency_ms": finalist.branch_latency_ms,
     }
+    payload["quality_warnings"] = list(
+        finalist_quality_warnings(payload, required_terms=required_terms)
+    )
+    return payload
+
+
+def _empty_quality_summary() -> dict[str, object]:
+    return summarize_quality_warnings(())

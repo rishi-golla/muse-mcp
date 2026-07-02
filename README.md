@@ -225,6 +225,14 @@ agent-facing posture is live-first: if `provider_mode` is omitted, MCP calls use
 `live_openai` and return a structured `configuration_error` when required live
 environment variables are missing.
 
+V4-C adds advisory quality fields to that same response. Top-level
+`quality_warnings` lists warning names seen across finalists, `quality_summary`
+counts those warnings, and each finalist includes its own `quality_warnings`.
+Treat these as planning signals, not hard rejection: an agent should prefer a
+specific, operational finalist when warnings such as `generic_title`,
+`generic_mechanism`, or `missing_operational_field` appear, then still run
+repository-owned verification.
+
 Set runtime defaults in the agent host environment when you want every omitted
 tool field to use the same posture:
 

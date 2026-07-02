@@ -177,3 +177,14 @@ def test_dogfood_playbook_describes_v4b_live_quality_pressure() -> None:
     assert "generic_title" in playbook
     assert "generic_mechanism" in playbook
     assert "missing_required_terms" in playbook
+
+
+def test_docs_describe_v4c_quality_warning_fields() -> None:
+    readme = _read_text(ROOT / "README.md")
+    playbook = _read_text(ROOT / "docs" / "integrations" / "agent-dogfood-playbook.md")
+    combined = "\n".join((readme, playbook)).casefold()
+
+    assert "v4-c" in combined
+    assert "quality_warnings" in combined
+    assert "quality_summary" in combined
+    assert "advisory" in combined
