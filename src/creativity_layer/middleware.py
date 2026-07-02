@@ -26,6 +26,7 @@ from creativity_layer.openai_provider import OpenAICreativeProvider
 from creativity_layer.pricing import PricingTable
 from creativity_layer.providers import IdeaEvaluator, IdeaSeeder, IdeaTransformer, TaskFramer
 from creativity_layer.quality_warnings import (
+    build_suggested_next_call,
     finalist_quality_warnings,
     quality_action_policy,
     summarize_quality_warnings,
@@ -241,6 +242,17 @@ def _serialize_result(
         quality_warnings,
         effort=request.effort.value,
     )
+    suggested_next_call = build_suggested_next_call(
+        action_policy,
+        goal=request.goal,
+        provider_mode=request.provider_mode.value,
+        privacy=request.privacy.value,
+        effort=request.effort.value,
+        search_mode=request.search_mode.value,
+        search_provider=request.search_provider.value,
+        search_strict=request.search_strict,
+        max_context_snippets=request.max_context_snippets,
+    )
     return {
         "run_id": str(result.run_id),
         "provider_mode": request.provider_mode.value,
@@ -267,12 +279,14 @@ def _serialize_result(
         "agent_guidance": _agent_guidance(
             request.effort,
             quality_action_policy=action_policy,
+            suggested_next_call=suggested_next_call,
         ),
         "spend_usd": spend_total,
         "errors": [error.model_dump(mode="json") for error in result.errors],
         "quality_warnings": quality_warnings,
         "quality_summary": quality_summary,
         "quality_action_policy": action_policy,
+        "suggested_next_call": suggested_next_call,
         "finalists": finalists,
     }
 
@@ -556,6 +570,7 @@ def _configuration_error_result(
         "agent_guidance": _agent_guidance(
             effort,
             quality_action_policy=_empty_quality_action_policy(effort),
+            suggested_next_call=None,
         ),
         "spend_usd": 0.0,
         "errors": [
@@ -570,6 +585,7 @@ def _configuration_error_result(
         "quality_warnings": [],
         "quality_summary": _empty_quality_summary(),
         "quality_action_policy": _empty_quality_action_policy(effort),
+        "suggested_next_call": None,
         "finalists": [],
     }
 
@@ -578,6 +594,7 @@ def _agent_guidance(
     effort: EffortPreset,
     *,
     quality_action_policy: dict[str, object] | None = None,
+    suggested_next_call: dict[str, object] | None = None,
 ) -> dict[str, Any]:
     return {
         "intended_use": "planning_middleware",
@@ -585,6 +602,7 @@ def _agent_guidance(
         "verification_required": True,
         "quality_action_policy": quality_action_policy
         or _empty_quality_action_policy(effort),
+        "suggested_next_call": suggested_next_call,
         "recommended_agent_loop": [
             "observe_repo_state",
             "call_creative_plan_with_current_repo_signals",

@@ -199,3 +199,13 @@ def test_docs_describe_v4d_quality_action_policy() -> None:
     assert "quality_action_policy" in combined
     assert "escalate_effort_to" in combined
     assert "recommended_actions" in combined
+
+
+def test_docs_describe_v4e_suggested_next_call() -> None:
+    playbook = _read_text(ROOT / "docs" / "integrations" / "agent-dogfood-playbook.md")
+    normalized = playbook.casefold()
+
+    assert "v4-e" in normalized
+    assert "suggested_next_call" in playbook
+    assert "repo_signal_requests" in playbook
+    assert "automatic" in normalized

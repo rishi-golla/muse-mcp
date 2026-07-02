@@ -50,6 +50,15 @@ WARNING_ACTIONS = {
     ),
 }
 
+REPO_SIGNAL_REQUESTS = {
+    "missing_required_terms": (
+        "include observed stack, changed files, test commands, and failure excerpts"
+    ),
+    "missing_operational_field": "ask for complete operational contract fields",
+    "generic_title": "ask for task-specific title and mechanism before editing",
+    "generic_mechanism": "ask for task-specific title and mechanism before editing",
+}
+
 
 def finalist_quality_warnings(
     finalist: Mapping[str, Any],
@@ -125,6 +134,48 @@ def quality_action_policy(
     }
 
 
+def build_suggested_next_call(
+    policy: Mapping[str, Any],
+    *,
+    goal: str,
+    provider_mode: str,
+    privacy: str,
+    effort: str,
+    search_mode: str,
+    search_provider: str,
+    search_strict: bool,
+    max_context_snippets: int,
+) -> dict[str, object] | None:
+    status = str(policy.get("status", "clear"))
+    escalate_effort_to = policy.get("escalate_effort_to")
+    if status == "clear" and not escalate_effort_to:
+        return None
+
+    warning_actions = policy.get("warning_actions", {})
+    warning_names = (
+        tuple(str(warning) for warning in warning_actions)
+        if isinstance(warning_actions, Mapping)
+        else ()
+    )
+
+    return {
+        "tool": "creative_plan",
+        "automatic": False,
+        "reason": "quality_action_policy",
+        "request": {
+            "goal": goal,
+            "provider_mode": provider_mode,
+            "privacy": privacy,
+            "effort": str(escalate_effort_to or effort),
+            "search_mode": search_mode,
+            "search_provider": search_provider,
+            "search_strict": search_strict,
+            "max_context_snippets": max_context_snippets,
+        },
+        "repo_signal_requests": _repo_signal_requests(warning_names),
+    }
+
+
 def missing_operational_fields(finalist: Mapping[str, Any]) -> bool:
     for field in OPERATIONAL_FIELDS:
         value = finalist.get(field)
@@ -167,3 +218,21 @@ def _recommended_actions(warnings: Sequence[str]) -> list[str]:
         actions.append("prefer a more task-specific finalist")
     actions.append("run repository-owned verification before editing")
     return actions
+
+
+def _repo_signal_requests(warnings: Sequence[str]) -> list[str]:
+    requests: list[str] = []
+    ordered_warnings = (
+        "missing_required_terms",
+        "missing_operational_field",
+        "generic_title",
+        "generic_mechanism",
+    )
+    warning_set = set(warnings)
+    for warning in ordered_warnings:
+        if warning not in warning_set:
+            continue
+        request = REPO_SIGNAL_REQUESTS.get(warning)
+        if request and request not in requests:
+            requests.append(request)
+    return requests

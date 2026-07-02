@@ -94,6 +94,35 @@ def test_runner_returns_quality_action_policy_for_warning_results() -> None:
     assert policy == result["agent_guidance"]["quality_action_policy"]
 
 
+def test_runner_returns_suggested_next_call_for_warning_results() -> None:
+    result = CreativeMiddlewareRunner.deterministic().run(
+        CreativePlanRequest(
+            goal="Design a better retry strategy for AI coding agents after failed tests",
+            repo_signals={
+                "ci_logs": ("pytest failed after retry loop change",),
+                "detected_languages": ("Python",),
+                "detected_frameworks": ("pytest",),
+            },
+            seed_count=2,
+            finalist_count=1,
+            max_generations=0,
+            budget_usd=0.20,
+        )
+    )
+
+    suggestion = result["suggested_next_call"]
+
+    assert suggestion["tool"] == "creative_plan"
+    assert suggestion["automatic"] is False
+    assert suggestion["request"]["goal"] == (
+        "Design a better retry strategy for AI coding agents after failed tests"
+    )
+    assert suggestion["request"]["effort"] == "standard"
+    assert "repo_signals" not in suggestion["request"]
+    assert "test commands" in suggestion["repo_signal_requests"][0]
+    assert suggestion == result["agent_guidance"]["suggested_next_call"]
+
+
 def test_runner_uses_cheap_agent_defaults() -> None:
     request = CreativePlanRequest(goal="Design a planning hook for arbitrary repos")
 
@@ -337,6 +366,8 @@ def test_configuration_error_includes_clear_quality_action_policy() -> None:
     assert result["quality_action_policy"] == (
         result["agent_guidance"]["quality_action_policy"]
     )
+    assert result["suggested_next_call"] is None
+    assert result["agent_guidance"]["suggested_next_call"] is None
 
 
 def test_invalid_search_mode_error_preserves_response_shape() -> None:
