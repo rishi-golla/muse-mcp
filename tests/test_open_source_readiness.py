@@ -73,6 +73,14 @@ def test_env_example_documents_safe_public_configuration() -> None:
     assert "OPENAI_API_KEY=replace_me" in text
 
 
+def test_local_env_files_are_ignored_but_example_is_tracked() -> None:
+    text = _read_text(".gitignore")
+
+    assert ".env" in text
+    assert ".env.*" in text
+    assert "!.env.example" in text
+
+
 def test_openai_pricing_example_uses_current_schema() -> None:
     payload = _read_text("openai-pricing.example.json")
     pricing = PricingTable.model_validate_json(payload)
