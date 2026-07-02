@@ -85,6 +85,18 @@ creativity-layer-dogfood-quality `
 Deterministic output can intentionally fail quality gates. Treat that as a
 protocol-quality check, not a creative-quality failure of the live engine.
 
+## V4-B live prompt pressure
+
+V4-B connects the live OpenAI provider prompts to the dogfood quality gates. The
+live seed, transform, and evaluation instructions now name failures such as
+`generic_title`, `generic_mechanism`, `missing_required_terms`, and
+`missing_operational_field` before output is returned.
+
+This is live prompt pressure, not proof that a run is high quality. Keep using
+`creativity-layer-dogfood-quality` with live OpenAI when making product-quality
+claims, and compare `search-off`, `search-light`, and `search-deep` when search
+context is part of the decision.
+
 ## before-edit
 
 Call `creative_plan` before editing when the task has multiple plausible approaches, unclear boundaries, or needs a repo-agnostic workflow idea.
