@@ -263,6 +263,34 @@ def test_fastmcp_server_exposes_quality_warnings() -> None:
     asyncio.run(run_probe())
 
 
+def test_fastmcp_server_exposes_quality_action_policy() -> None:
+    async def run_probe() -> None:
+        server = build_mcp_server()
+
+        result = await server.call_tool(
+            "creative_plan",
+            {
+                "goal": "Design a retry strategy for AI coding agents",
+                "repo_signals": {
+                    "ci_logs": ("pytest failed after retry loop change",),
+                    "detected_languages": ("Python",),
+                    "detected_frameworks": ("pytest",),
+                },
+                "provider_mode": "deterministic",
+            },
+        )
+        _content_blocks, structured_result = result
+
+        assert isinstance(structured_result, dict)
+        assert structured_result["quality_action_policy"]["status"] == "needs_retry"
+        assert (
+            structured_result["quality_action_policy"]
+            == structured_result["agent_guidance"]["quality_action_policy"]
+        )
+
+    asyncio.run(run_probe())
+
+
 def test_creative_plan_live_mode_returns_structured_configuration_error(
     monkeypatch,
 ) -> None:
