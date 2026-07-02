@@ -182,6 +182,24 @@ def test_live_openai_mode_returns_structured_configuration_error(
     assert result["errors"][0]["category"] == "configuration_error"
     assert "OPENAI_API_KEY" in result["errors"][0]["message"]
     assert result["agent_guidance"]["effort"] == "deep"
+    assert result["config"]["search_mode"] == "off"
+    assert result["search_context"]["mode"] == "off"
+    assert result["search_context"]["used"] is False
+
+
+def test_invalid_search_mode_error_preserves_response_shape() -> None:
+    result = run_creative_plan(
+        {
+            "goal": "Design a retry strategy for AI coding agents",
+            "provider_mode": "deterministic",
+            "search_mode": "wide-open",
+        }
+    )
+
+    assert result["stopped_reason"] == "configuration_error"
+    assert result["config"]["search_mode"] == "wide-open"
+    assert result["search_context"]["mode"] == "wide-open"
+    assert result["search_context"]["used"] is False
 
 
 def test_live_openai_runner_uses_injected_provider() -> None:

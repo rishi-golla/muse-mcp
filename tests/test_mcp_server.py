@@ -131,6 +131,39 @@ def test_creative_plan_tool_forwards_explicit_search_mode(monkeypatch) -> None:
     assert result["search_context"]["mode"] == "off"
 
 
+def test_creative_plan_tool_uses_approved_search_context(monkeypatch) -> None:
+    monkeypatch.setenv("CREATIVITY_LAYER_LIVE_SEARCH_APPROVED", "1")
+
+    result = creative_plan(
+        goal="reversible team decisions",
+        search_mode="light",
+        provider_mode="deterministic",
+        seed_count=2,
+        finalist_count=1,
+        max_generations=0,
+        budget_usd=0.20,
+    )
+
+    assert result["search_context"]["used"] is True
+    assert result["search_context"]["provider"] == "deterministic-search"
+    assert "search/deterministic-search/src-1" in result["context_sources"]
+
+
+def test_creative_plan_configuration_error_includes_search_context(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    result = creative_plan(
+        goal="Design a backend middleware planning hook for arbitrary repos",
+        provider_mode="live_openai",
+        search_mode="light",
+    )
+
+    assert result["stopped_reason"] == "configuration_error"
+    assert result["config"]["search_mode"] == "light"
+    assert result["search_context"]["mode"] == "light"
+    assert result["search_context"]["used"] is False
+
+
 def test_creative_plan_tool_preserves_old_positional_numeric_arguments() -> None:
     result = creative_plan(
         "Design a backend middleware planning hook for arbitrary repos",

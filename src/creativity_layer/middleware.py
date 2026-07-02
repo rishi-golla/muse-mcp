@@ -9,6 +9,7 @@ from typing import Any
 from openai import OpenAI
 from pydantic import Field, ValidationError, model_validator
 
+from creativity_layer.brave_search import BraveSearchProvider
 from creativity_layer.context_provider import (
     ContextProvider,
     DeterministicContextProvider,
@@ -17,12 +18,15 @@ from creativity_layer.context_provider import (
 )
 from creativity_layer.deterministic import DeterministicCreativeProvider
 from creativity_layer.engine import CreativeEngine
+from creativity_layer.exa_search import ExaSearchProvider
 from creativity_layer.live_config import LiveModelConfig, OpenAICredentials, PrivacyMode
+from creativity_layer.live_search_config import BraveSearchCredentials, ExaSearchCredentials
 from creativity_layer.models import FrozenModel, IdeaGenome, RunConfig, RunResult, TaskContext
 from creativity_layer.openai_provider import OpenAICreativeProvider
 from creativity_layer.pricing import PricingTable
 from creativity_layer.providers import IdeaEvaluator, IdeaSeeder, IdeaTransformer, TaskFramer
 from creativity_layer.reliability import CircuitBreaker, RetryPolicy
+from creativity_layer.search import DeterministicSearchProvider, SearchProvider
 from creativity_layer.search_context import (
     SearchContextMetadata,
     SearchContextMode,
@@ -125,7 +129,8 @@ class CreativeMiddlewareRunner:
             transformer=creative_provider,
             evaluator=creative_provider,
             context_provider=DeterministicContextProvider(),
-            search_context_resolver=search_context_resolver,
+            search_context_resolver=search_context_resolver
+            or SearchContextResolver(provider=DeterministicSearchProvider()),
         )
 
     @classmethod
@@ -145,7 +150,8 @@ class CreativeMiddlewareRunner:
             transformer=creative_provider,
             evaluator=creative_provider,
             context_provider=DeterministicContextProvider(),
-            search_context_resolver=search_context_resolver,
+            search_context_resolver=search_context_resolver
+            or _build_search_context_resolver_from_environment(),
         )
 
     def run(self, request: CreativePlanRequest | Mapping[str, object]) -> dict[str, Any]:
@@ -233,12 +239,18 @@ def run_creative_plan(request: CreativePlanRequest | Mapping[str, object]) -> di
         return _configuration_error_result(
             provider_mode=_provider_mode_from_raw(request),
             message=str(error),
+            search_mode=_search_mode_from_raw(request),
         )
     except ConfigurationError as error:
         return _configuration_error_result(
             provider_mode=_provider_mode_from_raw(request),
             message=str(error),
             effort=parsed_request.effort if parsed_request else EffortPreset.QUICK,
+            search_mode=(
+                parsed_request.search_mode.value
+                if parsed_request
+                else _search_mode_from_raw(request)
+            ),
         )
 
 
@@ -247,11 +259,13 @@ def configuration_error_result(
     provider_mode: str,
     message: str,
     effort: EffortPreset = EffortPreset.QUICK,
+    search_mode: str = SearchContextMode.OFF.value,
 ) -> dict[str, Any]:
     return _configuration_error_result(
         provider_mode=provider_mode,
         message=message,
         effort=effort,
+        search_mode=search_mode,
     )
 
 
@@ -261,6 +275,18 @@ def _runner_for_request(request: CreativePlanRequest) -> CreativeMiddlewareRunne
     if request.provider_mode is ProviderMode.LIVE_OPENAI:
         return CreativeMiddlewareRunner.live_openai(privacy=request.privacy)
     raise ConfigurationError(f"unsupported provider mode: {request.provider_mode}")
+
+
+def _build_search_context_resolver_from_environment() -> SearchContextResolver:
+    return SearchContextResolver(provider=_build_search_provider_from_environment())
+
+
+def _build_search_provider_from_environment() -> SearchProvider | None:
+    if os.getenv("EXA_API_KEY", "").strip():
+        return ExaSearchProvider(credentials=ExaSearchCredentials.from_environment())
+    if os.getenv("BRAVE_SEARCH_API_KEY", "").strip():
+        return BraveSearchProvider(credentials=BraveSearchCredentials.from_environment())
+    return None
 
 
 def _build_openai_provider_from_environment(
@@ -322,11 +348,19 @@ def _provider_mode_from_raw(request: CreativePlanRequest | Mapping[str, object])
     return str(raw_mode or ProviderMode.DETERMINISTIC.value)
 
 
+def _search_mode_from_raw(request: CreativePlanRequest | Mapping[str, object]) -> str:
+    if isinstance(request, CreativePlanRequest):
+        return request.search_mode.value
+    raw_mode = request.get("search_mode") if isinstance(request, Mapping) else None
+    return str(raw_mode or SearchContextMode.OFF.value)
+
+
 def _configuration_error_result(
     *,
     provider_mode: str,
     message: str,
     effort: EffortPreset = EffortPreset.QUICK,
+    search_mode: str = SearchContextMode.OFF.value,
 ) -> dict[str, Any]:
     return {
         "run_id": None,
@@ -336,7 +370,13 @@ def _configuration_error_result(
         "finalist_count": 0,
         "context_tags": [],
         "context_sources": [],
-        "config": {},
+        "config": {"search_mode": search_mode},
+        "search_context": SearchContextMetadata(
+            mode=search_mode,
+            used=False,
+            skipped_reason="configuration_error",
+            errors=(message,),
+        ).model_dump(mode="json"),
         "agent_guidance": _agent_guidance(effort),
         "spend_usd": 0.0,
         "errors": [
