@@ -121,6 +121,22 @@ finalist. If `escalate_effort_to` is set, the host may call `creative_plan`
 again with that effort, but creativity-layer does not automatically spend that
 budget.
 
+## V4-E suggested next call
+
+V4-E adds advisory `suggested_next_call` output when `quality_action_policy`
+recommends review or retry. The same object is mirrored inside
+`agent_guidance.suggested_next_call`.
+
+The suggestion names `creative_plan`, sets `automatic` to `false`, carries safe
+request fields such as goal, provider mode, privacy, effort, and search policy,
+and includes `repo_signal_requests` describing which observed facts the host
+should pass again or improve. It does not copy raw `repo_signals`, logs, or
+failure excerpts into the suggestion.
+
+Use it as a prepared follow-up payload, not as permission to spend more money.
+If it is `null`, continue with the current result and repository-owned
+verification.
+
 ## before-edit
 
 Call `creative_plan` before editing when the task has multiple plausible approaches, unclear boundaries, or needs a repo-agnostic workflow idea.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from creativity_layer.quality_warnings import (
+    build_suggested_next_call,
     finalist_quality_warnings,
     quality_action_policy,
     summarize_quality_warnings,
@@ -94,3 +95,61 @@ def test_quality_action_policy_stops_effort_escalation_at_deep() -> None:
 
     assert policy["status"] == "review"
     assert policy["escalate_effort_to"] is None
+
+
+def test_suggested_next_call_is_none_when_quality_policy_is_clear() -> None:
+    policy = quality_action_policy((), effort="quick")
+
+    assert (
+        build_suggested_next_call(
+            policy,
+            goal="Design a retry strategy",
+            provider_mode="live_openai",
+            privacy="research",
+            effort="quick",
+            search_mode="off",
+            search_provider="auto",
+            search_strict=False,
+            max_context_snippets=8,
+        )
+        is None
+    )
+
+
+def test_suggested_next_call_escalates_without_copying_repo_signals() -> None:
+    policy = quality_action_policy(
+        ("generic_title", "missing_required_terms"),
+        effort="quick",
+    )
+
+    suggestion = build_suggested_next_call(
+        policy,
+        goal="Design a retry strategy for AI coding agents",
+        provider_mode="live_openai",
+        privacy="research",
+        effort="quick",
+        search_mode="light",
+        search_provider="brave",
+        search_strict=True,
+        max_context_snippets=6,
+    )
+
+    assert suggestion == {
+        "tool": "creative_plan",
+        "automatic": False,
+        "reason": "quality_action_policy",
+        "request": {
+            "goal": "Design a retry strategy for AI coding agents",
+            "provider_mode": "live_openai",
+            "privacy": "research",
+            "effort": "standard",
+            "search_mode": "light",
+            "search_provider": "brave",
+            "search_strict": True,
+            "max_context_snippets": 6,
+        },
+        "repo_signal_requests": [
+            "include observed stack, changed files, test commands, and failure excerpts",
+            "ask for task-specific title and mechanism before editing",
+        ],
+    }
