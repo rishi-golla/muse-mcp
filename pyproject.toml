@@ -27,6 +27,7 @@ creativity-layer = "creativity_layer.cli:main"
 creativity-layer-mcp = "creativity_layer.mcp_server:main"
 creativity-layer-mcp-smoke = "creativity_layer.mcp_smoke:main"
 creativity-layer-agent-proof = "creativity_layer.agent_loop_proof:main"
+creativity-layer-dogfood-quality = "creativity_layer.dogfood_quality_cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/creativity_layer"]
