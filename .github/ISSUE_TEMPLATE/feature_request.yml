@@ -1,0 +1,26 @@
+name: Feature request
+description: Propose a repo-agnostic improvement to creativity-layer.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What agent workflow problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+      description: Describe the middleware, MCP, or quality-suite behavior you want.
+    validations:
+      required: true
+  - type: textarea
+    id: quality
+    attributes:
+      label: Quality and verification
+      description: Which creativity-layer-dogfood-quality case or quality gate should prove this works?
+    validations:
+      required: false
