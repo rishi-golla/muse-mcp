@@ -233,6 +233,12 @@ specific, operational finalist when warnings such as `generic_title`,
 `generic_mechanism`, or `missing_operational_field` appear, then still run
 repository-owned verification.
 
+V4-D adds `quality_action_policy`, also mirrored inside `agent_guidance`. The
+policy turns warning names into `status`, `escalate_effort_to`,
+`recommended_actions`, and per-warning remediation hints. It recommends actions
+such as adding repo signals or moving from `quick` to `standard`, but it does
+not automatically perform another provider call.
+
 Set runtime defaults in the agent host environment when you want every omitted
 tool field to use the same posture:
 

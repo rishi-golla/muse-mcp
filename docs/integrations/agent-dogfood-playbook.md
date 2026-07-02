@@ -109,6 +109,18 @@ Warnings are not hard failures. They flag review pressure such as generic titles
 or missing operational fields; the coding agent still owns the final judgment and
 repository verification.
 
+## V4-D quality action policy
+
+V4-D adds `quality_action_policy` to `creative_plan` output and mirrors it inside
+`agent_guidance`. The policy includes `status`, `escalate_effort_to`,
+`recommended_actions`, and `warning_actions`.
+
+Use it as routing guidance. If `status` is `needs_retry`, the agent should add
+repo signals or request the recommended effort level before relying on the
+finalist. If `escalate_effort_to` is set, the host may call `creative_plan`
+again with that effort, but creativity-layer does not automatically spend that
+budget.
+
 ## before-edit
 
 Call `creative_plan` before editing when the task has multiple plausible approaches, unclear boundaries, or needs a repo-agnostic workflow idea.

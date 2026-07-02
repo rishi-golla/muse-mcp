@@ -188,3 +188,14 @@ def test_docs_describe_v4c_quality_warning_fields() -> None:
     assert "quality_warnings" in combined
     assert "quality_summary" in combined
     assert "advisory" in combined
+
+
+def test_docs_describe_v4d_quality_action_policy() -> None:
+    readme = _read_text(ROOT / "README.md")
+    playbook = _read_text(ROOT / "docs" / "integrations" / "agent-dogfood-playbook.md")
+    combined = "\n".join((readme, playbook)).casefold()
+
+    assert "v4-d" in combined
+    assert "quality_action_policy" in combined
+    assert "escalate_effort_to" in combined
+    assert "recommended_actions" in combined
