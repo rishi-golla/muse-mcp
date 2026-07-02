@@ -74,8 +74,9 @@ def test_docs_describe_live_first_provider_posture() -> None:
     assert "muse_effort" in combined
     assert "muse_privacy" in combined
     assert "muse_budget_usd" in combined
-    assert "deterministic test provider" in combined
-    assert "--provider-mode deterministic" in combined
+    assert "internal maintainer fixture" in combined
+    assert "muse_enable_test_provider" in combined
+    assert "--provider-mode deterministic" not in combined
 
 
 def test_docs_describe_opt_in_search_context() -> None:

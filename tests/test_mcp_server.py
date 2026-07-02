@@ -4,7 +4,14 @@ import asyncio
 import tomllib
 from pathlib import Path
 
+import pytest
+
 from muse.mcp_server import build_mcp_server, muse_plan
+
+
+@pytest.fixture(autouse=True)
+def enable_internal_test_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MUSE_ENABLE_TEST_PROVIDER", "1")
 
 
 def test_muse_plan_tool_delegates_to_middleware_runner() -> None:
@@ -33,6 +40,7 @@ def test_muse_plan_tool_defaults_to_live_openai_when_provider_is_omitted(
         "OPENAI_STRONG_MODEL",
         "OPENAI_PRICING_FILE",
         "MUSE_PROVIDER_MODE",
+        "MUSE_ENABLE_TEST_PROVIDER",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -70,6 +78,7 @@ def test_muse_plan_tool_reports_invalid_runtime_default_environment(
     monkeypatch,
 ) -> None:
     monkeypatch.delenv("MUSE_PROVIDER_MODE", raising=False)
+    monkeypatch.delenv("MUSE_ENABLE_TEST_PROVIDER", raising=False)
     monkeypatch.setenv("MUSE_BUDGET_USD", "not-money")
 
     result = muse_plan(
@@ -171,6 +180,7 @@ def test_muse_plan_tool_uses_approved_search_context(monkeypatch) -> None:
 
 def test_muse_plan_configuration_error_includes_search_context(monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("MUSE_ENABLE_TEST_PROVIDER", raising=False)
 
     result = muse_plan(
         goal="Design a backend middleware planning hook for arbitrary repos",
@@ -355,6 +365,7 @@ def test_muse_plan_live_mode_returns_structured_configuration_error(
         "OPENAI_ECONOMY_MODEL",
         "OPENAI_STRONG_MODEL",
         "OPENAI_PRICING_FILE",
+        "MUSE_ENABLE_TEST_PROVIDER",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -380,6 +391,20 @@ def test_muse_plan_invalid_provider_mode_returns_structured_error() -> None:
     assert result["stopped_reason"] == "configuration_error"
     assert result["finalist_count"] == 0
     assert result["errors"][0]["category"] == "configuration_error"
+
+
+def test_muse_plan_rejects_public_deterministic_provider(monkeypatch) -> None:
+    monkeypatch.delenv("MUSE_ENABLE_TEST_PROVIDER", raising=False)
+
+    result = muse_plan(
+        goal="Design a retry strategy for AI coding agents",
+        provider_mode="deterministic",
+    )
+
+    assert result["provider_mode"] == "deterministic"
+    assert result["stopped_reason"] == "configuration_error"
+    assert result["finalist_count"] == 0
+    assert "MUSE_ENABLE_TEST_PROVIDER" in result["errors"][0]["message"]
 
 
 def test_fastmcp_invalid_provider_mode_returns_structured_error() -> None:

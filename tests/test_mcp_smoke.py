@@ -4,7 +4,14 @@ import json
 import tomllib
 from pathlib import Path
 
+import pytest
+
 from muse.mcp_smoke import run_smoke
+
+
+@pytest.fixture(autouse=True)
+def enable_internal_test_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MUSE_ENABLE_TEST_PROVIDER", "1")
 
 
 def test_mcp_smoke_invokes_fastmcp_tool_and_prints_json(capsys) -> None:
@@ -44,6 +51,7 @@ def test_mcp_smoke_defaults_to_live_openai_when_provider_is_omitted(
         "OPENAI_STRONG_MODEL",
         "OPENAI_PRICING_FILE",
         "MUSE_PROVIDER_MODE",
+        "MUSE_ENABLE_TEST_PROVIDER",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -111,6 +119,7 @@ def test_mcp_smoke_reports_invalid_runtime_default_environment(
     monkeypatch,
 ) -> None:
     monkeypatch.delenv("MUSE_PROVIDER_MODE", raising=False)
+    monkeypatch.delenv("MUSE_ENABLE_TEST_PROVIDER", raising=False)
     monkeypatch.setenv("MUSE_BUDGET_USD", "not-money")
 
     exit_code = run_smoke(
@@ -152,6 +161,29 @@ def test_mcp_smoke_explicit_budget_overrides_invalid_runtime_default(
     assert payload["provider_mode"] == "deterministic"
     assert payload["config"]["budget_usd"] == 0.20
     assert payload["finalist_count"] == 1
+
+
+def test_mcp_smoke_rejects_public_deterministic_provider(
+    capsys,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("MUSE_ENABLE_TEST_PROVIDER", raising=False)
+
+    exit_code = run_smoke(
+        [
+            "Design a retry strategy for AI coding agents",
+            "--provider-mode",
+            "deterministic",
+            "--repo-language",
+            "Python",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["provider_mode"] == "deterministic"
+    assert payload["stopped_reason"] == "configuration_error"
+    assert "MUSE_ENABLE_TEST_PROVIDER" in payload["errors"][0]["message"]
 
 
 def test_mcp_smoke_forwards_explicit_search_mode(capsys, monkeypatch) -> None:
