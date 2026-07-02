@@ -41,6 +41,15 @@ FINALIST_TEXT_FIELDS = (
     "verification_strategy",
 )
 
+WARNING_ACTIONS = {
+    "generic_title": "prefer a finalist with a task-specific title before editing",
+    "generic_mechanism": "ask for a more concrete mechanism tied to the task",
+    "missing_operational_field": "retry with instructions to fill every operational contract field",
+    "missing_required_terms": (
+        "supply more repo signals or choose a finalist that uses observed context"
+    ),
+}
+
 
 def finalist_quality_warnings(
     finalist: Mapping[str, Any],
@@ -84,6 +93,38 @@ def summarize_quality_warnings(
     }
 
 
+def quality_action_policy(
+    warnings: Sequence[str],
+    *,
+    effort: str,
+) -> dict[str, object]:
+    unique_warnings = tuple(dict.fromkeys(warnings))
+    if not unique_warnings:
+        return {
+            "status": "clear",
+            "escalate_effort_to": None,
+            "recommended_actions": [],
+            "warning_actions": {},
+        }
+
+    retry_warnings = {"missing_operational_field", "missing_required_terms"}
+    status = (
+        "needs_retry"
+        if any(warning in retry_warnings for warning in unique_warnings)
+        else "review"
+    )
+    return {
+        "status": status,
+        "escalate_effort_to": _next_effort(effort),
+        "recommended_actions": _recommended_actions(unique_warnings),
+        "warning_actions": {
+            warning: WARNING_ACTIONS[warning]
+            for warning in unique_warnings
+            if warning in WARNING_ACTIONS
+        },
+    }
+
+
 def missing_operational_fields(finalist: Mapping[str, Any]) -> bool:
     for field in OPERATIONAL_FIELDS:
         value = finalist.get(field)
@@ -105,3 +146,24 @@ def missing_required_terms(
     matches = sum(1 for term in required_terms if term.casefold() in haystack)
     required_match_count = min(2, len(required_terms))
     return matches < required_match_count
+
+
+def _next_effort(effort: str) -> str | None:
+    effort = effort.strip().casefold()
+    if effort == "quick":
+        return "standard"
+    if effort == "standard":
+        return "deep"
+    return None
+
+
+def _recommended_actions(warnings: Sequence[str]) -> list[str]:
+    actions: list[str] = []
+    if "missing_required_terms" in warnings:
+        actions.append("supply more repo signals")
+    if "missing_operational_field" in warnings:
+        actions.append("retry for complete operational contract")
+    if "generic_mechanism" in warnings or "generic_title" in warnings:
+        actions.append("prefer a more task-specific finalist")
+    actions.append("run repository-owned verification before editing")
+    return actions
