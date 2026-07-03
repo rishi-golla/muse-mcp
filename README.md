@@ -73,6 +73,20 @@ This does not spend provider budget. It writes a marked sample repo, reports
 `ready_for_manual_agent_test`, and tells you whether `muse-mcp-doctor --json`
 still needs live OpenAI environment variables.
 
+When the sample looks right, initialize the actual project repo:
+
+```powershell
+muse-project-init `
+  --project C:\path\to\your\repo `
+  --host generic-json `
+  --instruction-target agents-md `
+  --json
+```
+
+Use `--dry-run` first to preview files, and `--force` only when you intend to
+replace existing `.mcp.json`, `.codex/config.toml`, `AGENTS.md`, or Cursor rule
+targets. The command writes no real secrets and makes no provider calls.
+
 Then run the MCP smoke path. Omit `provider_mode`; public Muse is live-only by
 default:
 
@@ -242,6 +256,8 @@ For host-specific config packs and setup notes, see
 `docs/integrations/mcp-agent-hosts.md`.
 For a throwaway external repo that proves the onboarding files before touching a
 real codebase, run `muse-external-dogfood`.
+To write the same files into a real project with overwrite protection, run
+`muse-project-init`.
 For a deterministic local proof that an agent loop can consume the MCP output
 and apply a bounded repair, see `docs/integrations/agent-loop-proof.md`.
 For when to call the tool during normal coding in another repo, see

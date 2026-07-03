@@ -69,6 +69,23 @@ agent instruction file, runs local live preflight checks, and reports
 `ready_for_manual_agent_test`. Use `--strict-live` when CI or release checks
 should fail until `muse-mcp-doctor --json` is clean.
 
+After the external proof looks right, initialize a real project repo with the
+same generated files:
+
+```powershell
+muse-project-init `
+  --project C:\path\to\your\repo `
+  --host generic-json `
+  --instruction-target agents-md `
+  --json
+```
+
+Use `--dry-run` to preview the files before writing. By default
+`muse-project-init` refuses to overwrite existing target files; pass `--force`
+only when replacing `.mcp.json`, `.codex/config.toml`, `AGENTS.md`, or
+`.cursor/rules/muse.mdc` is intentional. The command writes placeholders, not
+real secrets, and performs only local live preflight checks.
+
 ```powershell
 muse-mcp-smoke "Design a retry strategy for AI coding agents" `
   --repo-language Python `

@@ -43,6 +43,7 @@ muse-agent-proof = "muse.agent_loop_proof:main"
 muse-agent-instructions = "muse.agent_instructions_cli:main"
 muse-dogfood-quality = "muse.dogfood_quality_cli:main"
 muse-external-dogfood = "muse.external_dogfood_cli:main"
+muse-project-init = "muse.project_bootstrap_cli:main"
 
 [project.urls]
 Repository = "https://github.com/rishi-golla/muse"
