@@ -131,6 +131,8 @@ def test_agent_host_guide_links_config_packs_and_smoke_workflow() -> None:
     assert "muse-mcp-config --host claude-code --include-env" in guide
     assert "muse-agent-instructions --target agents-md" in guide
     assert "muse-agent-instructions --target cursor-rules" in guide
+    assert "muse-external-dogfood" in guide
+    assert "ready_for_manual_agent_test" in guide
     assert "docs/integrations/agent-dogfood-playbook.md" in guide
     assert "muse-mcp-smoke" in guide
     assert '"provider_mode": "live_openai"' in guide
@@ -144,6 +146,7 @@ def test_readme_links_agent_host_guide() -> None:
     assert "docs/integrations/agent-dogfood-playbook.md" in readme
     assert "muse-mcp-config --host codex" in readme
     assert "muse-agent-instructions --target agents-md" in readme
+    assert "muse-external-dogfood" in readme
 
 
 def test_agent_dogfood_playbook_describes_coding_loop_usage() -> None:

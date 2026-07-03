@@ -58,6 +58,21 @@ For Cursor rules:
 muse-agent-instructions --target cursor-rules
 ```
 
+Before touching a real repo, create a throwaway external dogfood repo with the
+same MCP config and project instructions:
+
+```powershell
+muse-external-dogfood `
+  --workspace ..\muse-external-dogfood-sample `
+  --host generic-json `
+  --instruction-target agents-md `
+  --json
+```
+
+This does not spend provider budget. It writes a marked sample repo, reports
+`ready_for_manual_agent_test`, and tells you whether `muse-mcp-doctor --json`
+still needs live OpenAI environment variables.
+
 Then run the MCP smoke path. Omit `provider_mode`; public Muse is live-only by
 default:
 
@@ -225,6 +240,8 @@ agent at the stdio server:
 
 For host-specific config packs and setup notes, see
 `docs/integrations/mcp-agent-hosts.md`.
+For a throwaway external repo that proves the onboarding files before touching a
+real codebase, run `muse-external-dogfood`.
 For a deterministic local proof that an agent loop can consume the MCP output
 and apply a bounded repair, see `docs/integrations/agent-loop-proof.md`.
 For when to call the tool during normal coding in another repo, see
