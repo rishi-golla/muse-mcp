@@ -52,6 +52,23 @@ For Cursor rules:
 muse-agent-instructions --target cursor-rules
 ```
 
+Before editing a real repository, generate a marked throwaway repo with the same
+MCP config and agent instructions:
+
+```powershell
+muse-external-dogfood `
+  --workspace ..\muse-external-dogfood-sample `
+  --host generic-json `
+  --instruction-target agents-md `
+  --json
+```
+
+`muse-external-dogfood` is a no-spend onboarding proof. It creates a small
+sample project, writes `.mcp.json` or `.codex/config.toml`, writes the selected
+agent instruction file, runs local live preflight checks, and reports
+`ready_for_manual_agent_test`. Use `--strict-live` when CI or release checks
+should fail until `muse-mcp-doctor --json` is clean.
+
 ```powershell
 muse-mcp-smoke "Design a retry strategy for AI coding agents" `
   --repo-language Python `
