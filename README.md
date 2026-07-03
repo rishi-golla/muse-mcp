@@ -34,6 +34,18 @@ Check local MCP live configuration without making provider calls:
 muse-mcp-doctor --json
 ```
 
+Generate the host config snippet you need. For Codex:
+
+```powershell
+muse-mcp-config --host codex
+```
+
+For Claude Code or Cursor-style JSON MCP clients:
+
+```powershell
+muse-mcp-config --host claude-code --include-env
+```
+
 Then run the MCP smoke path. Omit `provider_mode`; public Muse is live-only by
 default:
 

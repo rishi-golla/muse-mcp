@@ -27,6 +27,18 @@ The doctor command performs local live OpenAI preflight checks without making
 provider calls. It reports missing env vars, selected model ids, and pricing
 coverage using redacted output.
 
+Generate the host config you need instead of hand-copying the static examples:
+
+```powershell
+muse-mcp-config --host codex
+```
+
+For Claude Code or Cursor-style JSON MCP clients:
+
+```powershell
+muse-mcp-config --host claude-code --include-env
+```
+
 ```powershell
 muse-mcp-smoke "Design a retry strategy for AI coding agents" `
   --repo-language Python `

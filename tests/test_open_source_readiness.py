@@ -101,6 +101,7 @@ def test_public_docs_include_copy_pasteable_first_run_path() -> None:
         'python -m pip install -e ".[dev]"',
         "muse-mcp-smoke",
         "muse-mcp-doctor",
+        "muse-mcp-config",
         "muse-dogfood-quality",
         "--provider-mode live_openai",
         "public muse is live-only",
