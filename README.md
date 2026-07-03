@@ -87,25 +87,9 @@ Use `--dry-run` first to preview files, and `--force` only when you intend to
 replace existing `.mcp.json`, `.codex/config.toml`, `AGENTS.md`, or Cursor rule
 targets. The command writes no real secrets and makes no provider calls.
 
-Then run the MCP smoke path. Omit `provider_mode`; public Muse is live-only by
-default:
-
-```powershell
-muse-mcp-smoke "Design a retry strategy for AI coding agents" `
-  --repo-language Python `
-  --effort quick `
-  --budget-usd 0.20
-```
-
-Run the dogfood quality harness against the same live path:
-
-```powershell
-muse-dogfood-quality `
-  --provider-mode live_openai `
-  --case agent-retry-python `
-  --variant search-off `
-  --json
-```
+Restart the MCP-capable agent host, then ask the agent for a creative planning
+task in that project. The agent should observe repo facts and call `muse_plan`
+in the backend with `mode: "normal"` or `mode: "extensive"`.
 
 For local setup, copy `.env.example` to a local environment file or shell setup
 and set real provider values outside the repo. `openai-pricing.example.json`
@@ -280,7 +264,7 @@ observed instead of asking muse to crawl the repository:
 ```json
 {
   "goal": "Design a better retry strategy for AI coding agents after failed tests",
-  "effort": "quick",
+  "mode": "normal",
   "repo_signals": {
     "file_paths": ["pnpm-workspace.yaml", "apps/web/package.json"],
     "changed_files": ["packages/ui/src/Button.tsx"],
@@ -311,17 +295,17 @@ repository-owned verification.
 V4-D adds `quality_action_policy`, also mirrored inside `agent_guidance`. The
 policy turns warning names into `status`, `escalate_effort_to`,
 `recommended_actions`, and per-warning remediation hints. It recommends actions
-such as adding repo signals or moving from `quick` to `standard`, but it does
-not automatically perform another provider call.
+such as adding repo signals or moving from `mode: "normal"` to
+`mode: "extensive"`, but it does not automatically perform another provider
+call.
 
 Set runtime defaults in the agent host environment when you want every omitted
 tool field to use the same posture:
 
 ```powershell
 $env:MUSE_PROVIDER_MODE = "live_openai"
-$env:MUSE_EFFORT = "quick"
+$env:MUSE_MODE = "normal"
 $env:MUSE_PRIVACY = "research"
-$env:MUSE_BUDGET_USD = "0.25"
 $env:MUSE_SEARCH_MODE = "off"
 $env:MUSE_SEARCH_PROVIDER = "auto"
 $env:MUSE_SEARCH_STRICT = "false"
@@ -330,18 +314,6 @@ $env:MUSE_SEARCH_STRICT = "false"
 The deterministic provider is an internal maintainer fixture for no-network CI,
 protocol checks, and transport regression tests. Public MCP usage is live-only;
 internal tests that need the fixture must set `MUSE_ENABLE_TEST_PROVIDER=1`.
-
-To smoke-test the actual MCP tool registration without an agent host:
-
-```powershell
-muse-mcp-smoke "Design a retry strategy for AI coding agents" `
-  --search-mode off `
-  --repo-language Python `
-  --seed-count 2 `
-  --finalist-count 1 `
-  --generations 0 `
-  --budget-usd 0.20
-```
 
 ### V3-L dogfood quality suite
 
@@ -395,12 +367,8 @@ Example live MCP payload:
 ```json
 {
   "goal": "Design a better retry strategy for AI coding agents after failed tests",
-  "provider_mode": "live_openai",
   "privacy": "private",
-  "budget_usd": 0.25,
-  "seed_count": 4,
-  "finalist_count": 2,
-  "max_generations": 1,
+  "mode": "normal",
   "repo_signals": {
     "changed_files": ["src/agent/runner.py"],
     "test_commands": ["python -m pytest tests/test_runner.py"],
@@ -418,7 +386,7 @@ instead of charging provider calls.
 ### Opt-in search context
 
 MCP search context is explicit. The default is `off`, so `quick`, `standard`,
-and `deep` effort levels do not trigger search by themselves. Set
+and `deep` internal effort levels do not trigger search by themselves. Set
 `"search_mode": "light"` for bounded context or `"search_mode": "deep"` for a
 broader bounded pass. `search_provider` selects `auto`, `exa`, or `brave`;
 `auto` chooses a configured live search provider when one is
@@ -428,7 +396,7 @@ requested search cannot run:
 ```json
 {
   "goal": "Design a better retry strategy for AI coding agents after failed tests",
-  "provider_mode": "live_openai",
+  "mode": "extensive",
   "search_mode": "light",
   "search_provider": "auto",
   "search_strict": false,

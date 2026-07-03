@@ -48,7 +48,7 @@ def test_agent_loop_proof_calls_mcp_and_repairs_sample_repo(
     assert result["final_verification"]["exit_code"] == 0
     assert result["mcp_result"]["provider_mode"] == "deterministic"
     assert result["mcp_result"]["errors"] == []
-    assert result["mcp_result"]["finalist_count"] == 1
+    assert result["mcp_result"]["finalist_count"] == 2
     assert "python" in result["mcp_result"]["context_tags"]
     assert "pytest" in result["mcp_result"]["context_tags"]
     assert result["repo_signals"]["changed_files"] == ["retry_policy.py"]

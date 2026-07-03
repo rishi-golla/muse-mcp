@@ -5,6 +5,7 @@ import json
 from muse import middleware as middleware_module
 from muse.deterministic import DeterministicCreativeProvider
 from muse.middleware import (
+    AgentMode,
     CreativeMiddlewareRunner,
     CreativePlanRequest,
     EffortPreset,
@@ -90,7 +91,7 @@ def test_runner_returns_quality_action_policy_for_warning_results() -> None:
     policy = result["quality_action_policy"]
 
     assert policy["status"] == "needs_retry"
-    assert policy["escalate_effort_to"] == "standard"
+    assert policy["escalate_effort_to"] == "deep"
     assert "supply more repo signals" in policy["recommended_actions"]
     assert policy == result["agent_guidance"]["quality_action_policy"]
 
@@ -118,7 +119,8 @@ def test_runner_returns_suggested_next_call_for_warning_results() -> None:
     assert suggestion["request"]["goal"] == (
         "Design a better retry strategy for AI coding agents after failed tests"
     )
-    assert suggestion["request"]["effort"] == "standard"
+    assert suggestion["request"]["mode"] == "extensive"
+    assert "effort" not in suggestion["request"]
     assert "repo_signals" not in suggestion["request"]
     assert "test commands" in suggestion["repo_signal_requests"][0]
     assert suggestion == result["agent_guidance"]["suggested_next_call"]
@@ -178,20 +180,41 @@ def test_runner_uses_cheap_agent_defaults() -> None:
     result = CreativeMiddlewareRunner.deterministic().run(request)
 
     assert request.provider_mode is ProviderMode.DETERMINISTIC
-    assert request.effort is EffortPreset.QUICK
+    assert request.mode is AgentMode.NORMAL
+    assert request.effort is EffortPreset.STANDARD
     assert result["provider_mode"] == "deterministic"
-    assert result["config"]["effort"] == "quick"
-    assert result["config"]["budget_usd"] == 0.20
-    assert result["config"]["seed_count"] == 2
-    assert result["config"]["finalist_count"] == 1
-    assert result["config"]["max_generations"] == 0
+    assert result["config"]["mode"] == "normal"
+    assert result["config"]["effort"] == "standard"
+    assert result["config"]["budget_usd"] == 0.35
+    assert result["config"]["seed_count"] == 4
+    assert result["config"]["finalist_count"] == 2
+    assert result["config"]["max_generations"] == 1
     assert result["config"]["search_mode"] == "off"
     assert result["config"]["search_provider"] == "auto"
     assert result["config"]["search_strict"] is False
     assert result["search_context"]["mode"] == "off"
     assert result["search_context"]["provider_policy"] == "deterministic"
     assert result["search_context"]["used"] is False
-    assert result["finalist_count"] == 1
+    assert result["finalist_count"] == 2
+
+
+def test_runner_extensive_mode_resolves_deeper_internal_run_shape() -> None:
+    request = CreativePlanRequest(
+        goal="Design an architecture strategy for a risky migration",
+        mode="extensive",
+    )
+
+    result = CreativeMiddlewareRunner.deterministic().run(request)
+
+    assert request.mode is AgentMode.EXTENSIVE
+    assert request.effort is EffortPreset.DEEP
+    assert result["config"]["mode"] == "extensive"
+    assert result["config"]["effort"] == "deep"
+    assert result["config"]["budget_usd"] == 0.75
+    assert result["config"]["seed_count"] == 6
+    assert result["config"]["finalist_count"] == 3
+    assert result["config"]["max_generations"] == 2
+    assert result["agent_guidance"]["mode"] == "extensive"
 
 
 def test_runner_resolves_standard_and_deep_effort_presets() -> None:
@@ -212,6 +235,20 @@ def test_runner_resolves_standard_and_deep_effort_presets() -> None:
     assert deep.seed_count == 6
     assert deep.finalist_count == 3
     assert deep.max_generations == 2
+
+
+def test_runner_inferrs_agent_mode_from_internal_effort_override() -> None:
+    standard = CreativePlanRequest(
+        goal="Design a planning hook for arbitrary repos",
+        effort="standard",
+    )
+    deep = CreativePlanRequest(
+        goal="Design a planning hook for arbitrary repos",
+        effort="deep",
+    )
+
+    assert standard.mode is AgentMode.NORMAL
+    assert deep.mode is AgentMode.EXTENSIVE
 
 
 def test_runner_explicit_values_override_effort_presets() -> None:

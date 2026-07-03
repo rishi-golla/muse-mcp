@@ -36,8 +36,9 @@ def test_mcp_smoke_invokes_fastmcp_tool_and_prints_json(capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["provider_mode"] == "deterministic"
-    assert payload["config"]["effort"] == "quick"
-    assert payload["finalist_count"] == 1
+    assert payload["config"]["mode"] == "normal"
+    assert payload["config"]["effort"] == "standard"
+    assert payload["finalist_count"] == 2
     assert payload["context_tags"] == ["python"]
 
 
@@ -93,7 +94,7 @@ def test_mcp_smoke_forwards_effort_preset(capsys, monkeypatch) -> None:
 
 def test_mcp_smoke_uses_runtime_default_environment(capsys, monkeypatch) -> None:
     monkeypatch.setenv("MUSE_PROVIDER_MODE", "deterministic")
-    monkeypatch.setenv("MUSE_EFFORT", "standard")
+    monkeypatch.setenv("MUSE_MODE", "extensive")
     monkeypatch.setenv("MUSE_BUDGET_USD", "0.23")
     monkeypatch.setenv("MUSE_SEARCH_MODE", "light")
 
@@ -108,8 +109,9 @@ def test_mcp_smoke_uses_runtime_default_environment(capsys, monkeypatch) -> None
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["provider_mode"] == "deterministic"
-    assert payload["config"]["effort"] == "standard"
-    assert payload["config"]["budget_usd"] == 0.23
+    assert payload["config"]["mode"] == "extensive"
+    assert payload["config"]["effort"] == "deep"
+    assert payload["config"]["budget_usd"] == 0.75
     assert payload["config"]["search_mode"] == "light"
     assert payload["search_context"]["skipped_reason"] == "approval_required"
 
@@ -134,7 +136,7 @@ def test_mcp_smoke_reports_invalid_runtime_default_environment(
     assert exit_code == 1
     assert payload["provider_mode"] == "live_openai"
     assert payload["stopped_reason"] == "configuration_error"
-    assert "MUSE_BUDGET_USD" in payload["errors"][0]["message"]
+    assert "OPENAI_API_KEY" in payload["errors"][0]["message"]
 
 
 def test_mcp_smoke_explicit_budget_overrides_invalid_runtime_default(
@@ -159,8 +161,8 @@ def test_mcp_smoke_explicit_budget_overrides_invalid_runtime_default(
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["provider_mode"] == "deterministic"
-    assert payload["config"]["budget_usd"] == 0.20
-    assert payload["finalist_count"] == 1
+    assert payload["config"]["budget_usd"] == 0.35
+    assert payload["finalist_count"] == 2
 
 
 def test_mcp_smoke_rejects_public_deterministic_provider(

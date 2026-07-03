@@ -86,18 +86,6 @@ only when replacing `.mcp.json`, `.codex/config.toml`, `AGENTS.md`, or
 `.cursor/rules/muse.mdc` is intentional. The command writes placeholders, not
 real secrets, and performs only local live preflight checks.
 
-```powershell
-muse-mcp-smoke "Design a retry strategy for AI coding agents" `
-  --repo-language Python `
-  --effort quick `
-  --budget-usd 0.20
-```
-
-The smoke command invokes the FastMCP server in-process and prints the
-structured payload returned by `muse_plan`. If live config is missing, it
-returns a structured `configuration_error`; with valid OpenAI config, it runs
-the actual live planning path.
-
 For live runs, copy `.env.example` into your local shell or agent-host
 environment. Muse includes packaged default pricing for the documented example
 models; use `openai-pricing.example.json` as the safe schema example only when
@@ -190,7 +178,7 @@ configured:
 ```json
 {
   "goal": "Design a better retry strategy for AI coding agents after failed tests",
-  "effort": "quick",
+  "mode": "normal",
   "repo_signals": {
     "changed_files": ["src/agent/runner.py"],
     "test_commands": ["python -m pytest tests/test_runner.py"],
@@ -201,63 +189,52 @@ configured:
 }
 ```
 
-Use `effort: "standard"` after an initial verification failure or ambiguous repo
-context. Use `effort: "deep"` only for deliberate planning before high-impact
-edits or repeated failure loops. Explicit `budget_usd`, `seed_count`,
-`finalist_count`, and `max_generations` values override the preset.
+Use `mode: "normal"` for routine planning. Use `mode: "extensive"` after
+repeated failed verification, ambiguous repo context, or deliberate planning
+before high-impact edits. The agent should not ask the human for seed counts,
+budget values, framework flags, or generation counts.
 
 ## Provider Posture
 
-MCP and `muse-mcp-smoke` are live-first by default. If
-`provider_mode` is omitted, `muse_plan` resolves it from
-`MUSE_PROVIDER_MODE`, falling back to `live_openai`.
+MCP is live-first by default. If `provider_mode` is omitted, `muse_plan`
+resolves it from `MUSE_PROVIDER_MODE`, falling back to `live_openai`.
 
 Set these runtime defaults in the agent host environment when you want a stable
 default without repeating fields in every tool call:
 
 ```powershell
 $env:MUSE_PROVIDER_MODE = "live_openai"
-$env:MUSE_EFFORT = "quick"
+$env:MUSE_MODE = "normal"
 $env:MUSE_PRIVACY = "research"
-$env:MUSE_BUDGET_USD = "0.25"
 $env:MUSE_SEARCH_MODE = "off"
 $env:MUSE_SEARCH_PROVIDER = "auto"
 $env:MUSE_SEARCH_STRICT = "false"
 ```
 
 The deterministic provider is an internal maintainer fixture for no-network CI
-and protocol regression tests. Public MCP and smoke calls reject it unless the
-maintainer sets `MUSE_ENABLE_TEST_PROVIDER=1`.
+and protocol regression tests. Public MCP calls reject it unless the maintainer
+sets `MUSE_ENABLE_TEST_PROVIDER=1`.
 
 ## Opt-in Search Context
 
-The default is `off` for search context. `effort: "standard"` and
-`effort: "deep"` do not automatically call search providers. Agents can request
-opt-in search with `search_mode`. Use `search_provider` to select `auto`,
+The default is `off` for search context. `mode: "normal"` and
+`mode: "extensive"` do not automatically call search providers. Agents can
+request opt-in search with `search_mode`. Use `search_provider` to select `auto`,
 `exa`, or `brave`; use `search_strict` only when the agent should fail closed if
 requested search cannot run:
 
 ```json
 {
   "goal": "Design a debugging workflow for flaky CI",
-  "provider_mode": "live_openai",
-  "effort": "standard",
+  "mode": "extensive",
   "search_mode": "light",
   "search_provider": "auto",
-  "search_strict": false,
-  "budget_usd": 0.25
+  "search_strict": false
 }
 ```
 
 Use `search_mode: "deep"` only when broader bounded context is worth the extra
-latency and possible provider spend. For smoke tests:
-
-```powershell
-muse-mcp-smoke "Design a retry strategy for AI coding agents" `
-  --search-mode off `
-  --search-provider auto `
-  --repo-language Python
-```
+latency and possible provider spend.
 
 For environment-level defaults:
 
@@ -285,10 +262,8 @@ omitting `provider_mode`:
 ```json
 {
   "goal": "Design a debugging workflow for flaky CI",
-  "provider_mode": "live_openai",
   "privacy": "private",
-  "effort": "quick",
-  "budget_usd": 0.25
+  "mode": "normal"
 }
 ```
 
@@ -313,13 +288,16 @@ recovery, workflow alternatives, or repo-agnostic middleware design, call the
 muse MCP tool `muse_plan`. Pass the current task goal and repo
 signals you already observed, such as changed files, test commands, CI logs,
 dependency hints, languages, and frameworks. Treat returned finalists as planning
-options; do not execute them blindly. Pick one bounded next action and verify it
-with the narrowest relevant check.
+options; do not execute them blindly. Use mode: "normal" by default and
+mode: "extensive" only for high-impact or repeated-failure planning. Do not ask
+the human for seed counts, budgets, repo-language flags, framework flags, or
+generation counts. Pick one bounded next action and verify it with the narrowest
+relevant check.
 ```
 
 ## Troubleshooting
 
 - `configuration_error`: check env variables, model names, and pricing file path.
-- Tool does not appear: rerun `muse-mcp-smoke`, then restart the agent host.
-- Live calls spend money: lower `budget_usd`, `seed_count`, or `max_generations`.
+- Tool does not appear: rerun `muse-project-init --dry-run`, then restart the agent host.
+- Live calls spend money: use `mode: "normal"` unless the task truly needs extensive planning.
 - Weak context: pass richer `repo_signals`; the MCP server intentionally does not crawl the repo.

@@ -7,11 +7,13 @@ from dataclasses import dataclass
 INTERNAL_TEST_PROVIDER_ENV = "MUSE_ENABLE_TEST_PROVIDER"
 LIVE_PROVIDER_MODE = "live_openai"
 TEST_PROVIDER_MODE = "deterministic"
+DEFAULT_AGENT_MODE = "normal"
 
 
 @dataclass(frozen=True)
 class RuntimeDefaults:
     provider_mode: str = LIVE_PROVIDER_MODE
+    mode: str = DEFAULT_AGENT_MODE
     effort: str = "quick"
     privacy: str = "research"
     budget_usd: float | None = None
@@ -27,9 +29,10 @@ class RuntimeDefaults:
         values = os.environ if environ is None else environ
         return cls(
             provider_mode=_resolve_provider_mode(None, values),
+            mode=_env_text(values, "MUSE_MODE", DEFAULT_AGENT_MODE),
             effort=_env_text(values, "MUSE_EFFORT", "quick"),
             privacy=_env_text(values, "MUSE_PRIVACY", "research"),
-            budget_usd=_env_float(values, "MUSE_BUDGET_USD"),
+            budget_usd=None,
             search_mode=_env_text(values, "MUSE_SEARCH_MODE", "off"),
             search_provider=_env_text(
                 values,
@@ -48,6 +51,7 @@ class RuntimeDefaults:
         cls,
         *,
         provider_mode: str | None = None,
+        mode: str | None = None,
         effort: str | None = None,
         privacy: str | None = None,
         budget_usd: float | None = None,
@@ -59,11 +63,10 @@ class RuntimeDefaults:
         values = os.environ if environ is None else environ
         return cls(
             provider_mode=_resolve_provider_mode(provider_mode, values),
+            mode=mode or _env_text(values, "MUSE_MODE", DEFAULT_AGENT_MODE),
             effort=effort or _env_text(values, "MUSE_EFFORT", "quick"),
             privacy=privacy or _env_text(values, "MUSE_PRIVACY", "research"),
-            budget_usd=budget_usd
-            if budget_usd is not None
-            else _env_float(values, "MUSE_BUDGET_USD"),
+            budget_usd=budget_usd,
             search_mode=search_mode
             or _env_text(values, "MUSE_SEARCH_MODE", "off"),
             search_provider=search_provider

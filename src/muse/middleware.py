@@ -52,6 +52,11 @@ class EffortPreset(StrEnum):
     DEEP = "deep"
 
 
+class AgentMode(StrEnum):
+    NORMAL = "normal"
+    EXTENSIVE = "extensive"
+
+
 EFFORT_PRESETS: dict[EffortPreset, dict[str, float | int]] = {
     EffortPreset.QUICK: {
         "budget_usd": 0.20,
@@ -73,13 +78,25 @@ EFFORT_PRESETS: dict[EffortPreset, dict[str, float | int]] = {
     },
 }
 
+MODE_EFFORTS: dict[AgentMode, EffortPreset] = {
+    AgentMode.NORMAL: EffortPreset.STANDARD,
+    AgentMode.EXTENSIVE: EffortPreset.DEEP,
+}
+
+EFFORT_MODES: dict[EffortPreset, AgentMode] = {
+    EffortPreset.QUICK: AgentMode.NORMAL,
+    EffortPreset.STANDARD: AgentMode.NORMAL,
+    EffortPreset.DEEP: AgentMode.EXTENSIVE,
+}
+
 
 class CreativePlanRequest(FrozenModel):
     goal: str = Field(min_length=1)
     provider_mode: ProviderMode = ProviderMode.DETERMINISTIC
     privacy: PrivacyMode = PrivacyMode.RESEARCH
     repo_signals: RepoSignals | Mapping[str, object] = Field(default_factory=RepoSignals)
-    effort: EffortPreset = EffortPreset.QUICK
+    mode: AgentMode = AgentMode.NORMAL
+    effort: EffortPreset = EffortPreset.STANDARD
     budget_usd: float = Field(strict=True, gt=0)
     seed_count: int = Field(strict=True, ge=2)
     finalist_count: int = Field(strict=True, ge=1)
@@ -97,7 +114,11 @@ class CreativePlanRequest(FrozenModel):
         if not isinstance(value, Mapping):
             return value
         payload = dict(value)
-        effort = EffortPreset(str(payload.get("effort", EffortPreset.QUICK.value)))
+        if "effort" not in payload:
+            mode = AgentMode(str(payload.get("mode", AgentMode.NORMAL.value)))
+            payload["effort"] = MODE_EFFORTS[mode].value
+        effort = EffortPreset(str(payload["effort"]))
+        payload.setdefault("mode", EFFORT_MODES[effort].value)
         for field, default_value in EFFORT_PRESETS[effort].items():
             payload.setdefault(field, default_value)
         return payload
@@ -247,6 +268,7 @@ def _serialize_result(
         goal=request.goal,
         provider_mode=request.provider_mode.value,
         privacy=request.privacy.value,
+        mode=request.mode.value,
         effort=request.effort.value,
         search_mode=request.search_mode.value,
         search_provider=request.search_provider.value,
@@ -269,6 +291,7 @@ def _serialize_result(
             snippet.source for snippet in result.framed_task.context.context_bundle.snippets
         ],
         "config": {
+            "mode": request.mode.value,
             "effort": request.effort.value,
             "budget_usd": request.budget_usd,
             "seed_count": request.seed_count,
@@ -282,6 +305,7 @@ def _serialize_result(
         },
         "search_context": search_context.model_dump(mode="json"),
         "agent_guidance": _agent_guidance(
+            request.mode,
             request.effort,
             quality_action_policy=action_policy,
             suggested_next_call=suggested_next_call,
@@ -560,12 +584,14 @@ def _configuration_error_result(
         "context_tags": [],
         "context_sources": [],
         "config": {
+            "mode": EFFORT_MODES[effort].value,
             "search_mode": search_mode,
             "search_provider": search_provider,
             "search_strict": search_strict,
         },
         "search_context": metadata.model_dump(mode="json"),
         "agent_guidance": _agent_guidance(
+            EFFORT_MODES[effort],
             effort,
             quality_action_policy=_empty_quality_action_policy(effort),
             suggested_next_call=None,
@@ -591,6 +617,7 @@ def _configuration_error_result(
 
 
 def _agent_guidance(
+    mode: AgentMode,
     effort: EffortPreset,
     *,
     quality_action_policy: dict[str, object] | None = None,
@@ -599,6 +626,7 @@ def _agent_guidance(
 ) -> dict[str, Any]:
     return {
         "intended_use": "planning_middleware",
+        "mode": mode.value,
         "effort": effort.value,
         "verification_required": True,
         "quality_action_policy": quality_action_policy
@@ -613,13 +641,14 @@ def _agent_guidance(
             "stop_or_escalate_based_on_verification",
         ],
         "escalation_policy": (
-            "Start with quick. Escalate to standard when verification keeps failing or "
-            "repo context is ambiguous; use deep only for high-impact planning before edits."
+            "Start with mode normal. Escalate to mode extensive when verification "
+            "keeps failing, repo context is ambiguous, or the task is high-impact."
         ),
         "usage_warnings": [
             "Do not treat finalists as applied code.",
             "Do not skip repository-owned verification.",
             "Pass observed repo facts instead of asking muse to crawl the repo.",
+            "Do not ask the human for seed counts, budgets, or repo-language flags.",
         ],
     }
 
