@@ -46,6 +46,18 @@ For Claude Code or Cursor-style JSON MCP clients:
 muse-mcp-config --host claude-code --include-env
 ```
 
+Generate project instructions so the connected agent knows when to call Muse:
+
+```powershell
+muse-agent-instructions --target agents-md
+```
+
+For Cursor rules:
+
+```powershell
+muse-agent-instructions --target cursor-rules
+```
+
 Then run the MCP smoke path. Omit `provider_mode`; public Muse is live-only by
 default:
 

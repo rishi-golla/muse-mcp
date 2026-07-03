@@ -39,6 +39,19 @@ For Claude Code or Cursor-style JSON MCP clients:
 muse-mcp-config --host claude-code --include-env
 ```
 
+Generate project instructions so the connected agent knows when to call Muse
+and how to use `muse_plan` output:
+
+```powershell
+muse-agent-instructions --target agents-md
+```
+
+For Cursor rules:
+
+```powershell
+muse-agent-instructions --target cursor-rules
+```
+
 ```powershell
 muse-mcp-smoke "Design a retry strategy for AI coding agents" `
   --repo-language Python `

@@ -102,6 +102,7 @@ def test_public_docs_include_copy_pasteable_first_run_path() -> None:
         "muse-mcp-smoke",
         "muse-mcp-doctor",
         "muse-mcp-config",
+        "muse-agent-instructions",
         "muse-dogfood-quality",
         "--provider-mode live_openai",
         "public muse is live-only",
