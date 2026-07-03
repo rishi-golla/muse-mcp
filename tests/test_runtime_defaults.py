@@ -9,6 +9,7 @@ def test_runtime_defaults_are_live_first_when_environment_is_absent() -> None:
     defaults = RuntimeDefaults.from_environment({})
 
     assert defaults.provider_mode == "live_openai"
+    assert defaults.mode == "normal"
     assert defaults.effort == "quick"
     assert defaults.privacy == "research"
     assert defaults.budget_usd is None
@@ -18,6 +19,7 @@ def test_runtime_defaults_read_environment_overrides() -> None:
     defaults = RuntimeDefaults.from_environment(
         {
             "MUSE_PROVIDER_MODE": "live_openai",
+            "MUSE_MODE": "extensive",
             "MUSE_EFFORT": "standard",
             "MUSE_PRIVACY": "private",
             "MUSE_BUDGET_USD": "0.25",
@@ -28,9 +30,10 @@ def test_runtime_defaults_read_environment_overrides() -> None:
     )
 
     assert defaults.provider_mode == "live_openai"
+    assert defaults.mode == "extensive"
     assert defaults.effort == "standard"
     assert defaults.privacy == "private"
-    assert defaults.budget_usd == 0.25
+    assert defaults.budget_usd is None
     assert defaults.search_mode == "light"
     assert defaults.search_provider == "brave"
     assert defaults.search_strict is True
@@ -52,9 +55,10 @@ def test_runtime_defaults_ignore_blank_environment_values() -> None:
     assert defaults.budget_usd is None
 
 
-def test_runtime_defaults_reject_invalid_budget() -> None:
-    with pytest.raises(ValueError, match="MUSE_BUDGET_USD"):
-        RuntimeDefaults.from_environment({"MUSE_BUDGET_USD": "not-money"})
+def test_runtime_defaults_ignore_public_budget_environment() -> None:
+    defaults = RuntimeDefaults.from_environment({"MUSE_BUDGET_USD": "not-money"})
+
+    assert defaults.budget_usd is None
 
 
 def test_runtime_defaults_explicit_budget_overrides_invalid_environment() -> None:

@@ -15,6 +15,10 @@ def test_render_agents_md_instructions_include_muse_workflow_contract() -> None:
     assert document.recommended_file == "AGENTS.md"
     assert "muse_plan" in document.content
     assert "repo_signals" in document.content
+    assert "automatically" in document.content
+    assert 'mode: "normal"' in document.content
+    assert 'mode: "extensive"' in document.content
+    assert "Do not ask the human for seed counts" in document.content
     assert "Do not ask Muse to crawl the repo" in document.content
     assert "Do not treat finalists as applied code" in document.content
     assert "run repository-owned verification" in document.content
@@ -27,9 +31,8 @@ def test_render_cursor_rules_instructions_are_cursor_friendly() -> None:
 
     assert document.recommended_file == ".cursor/rules/muse.mdc"
     assert "Always call the Muse MCP tool" in document.content
-    assert "quick" in document.content
-    assert "standard" in document.content
-    assert "deep" in document.content
+    assert 'mode: "normal"' in document.content
+    assert 'mode: "extensive"' in document.content
 
 
 def test_render_generic_instructions_are_host_neutral() -> None:

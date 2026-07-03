@@ -140,6 +140,7 @@ def build_suggested_next_call(
     goal: str,
     provider_mode: str,
     privacy: str,
+    mode: str,
     effort: str,
     search_mode: str,
     search_provider: str,
@@ -166,7 +167,7 @@ def build_suggested_next_call(
             "goal": goal,
             "provider_mode": provider_mode,
             "privacy": privacy,
-            "effort": str(escalate_effort_to or effort),
+            "mode": _mode_for_effort(str(escalate_effort_to or effort), current_mode=mode),
             "search_mode": search_mode,
             "search_provider": search_provider,
             "search_strict": search_strict,
@@ -206,6 +207,15 @@ def _next_effort(effort: str) -> str | None:
     if effort == "standard":
         return "deep"
     return None
+
+
+def _mode_for_effort(effort: str, *, current_mode: str) -> str:
+    normalized = effort.strip().casefold()
+    if normalized == "deep":
+        return "extensive"
+    if current_mode.strip().casefold() == "extensive":
+        return "extensive"
+    return "normal"
 
 
 def _recommended_actions(warnings: Sequence[str]) -> list[str]:
