@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from enum import StrEnum
+from math import sqrt
+from random import Random
 
 from pydantic import Field, model_validator
 
@@ -11,6 +14,11 @@ class Preference(StrEnum):
     A = "a"
     B = "b"
     TIE = "tie"
+
+
+class BenchmarkSystem(StrEnum):
+    MUSE = "muse"
+    BASELINE = "baseline"
 
 
 class BenchmarkTask(FrozenModel):
@@ -32,6 +40,9 @@ class BenchmarkArtifact(FrozenModel):
         return JudgeArtifact(content=self.content)
 
 
+ArtifactGenerator = Callable[[BenchmarkTask], BenchmarkArtifact]
+
+
 class PairwiseJudgment(FrozenModel):
     preference: Preference
     confidence: float = Field(strict=True, ge=0.0, le=1.0)
@@ -40,6 +51,195 @@ class PairwiseJudgment(FrozenModel):
     usefulness: Preference
     operational_specificity: Preference
     task_fit: Preference
+
+
+PairwiseJudge = Callable[[BenchmarkTask, JudgeArtifact, JudgeArtifact], PairwiseJudgment]
+
+
+class GenerationFailure(FrozenModel):
+    system: BenchmarkSystem
+    error_type: RequiredText
+    message: RequiredText
+
+
+class GenerationAttempt(FrozenModel):
+    artifact: BenchmarkArtifact | None = None
+    failure: GenerationFailure | None = None
+
+    @model_validator(mode="after")
+    def require_exactly_one_outcome(self) -> GenerationAttempt:
+        if (self.artifact is None) == (self.failure is None):
+            raise ValueError("generation attempt requires exactly one artifact or failure")
+        return self
+
+
+class BenchmarkRecord(FrozenModel):
+    task: BenchmarkTask
+    repetition: int = Field(strict=True, ge=1)
+    muse: GenerationAttempt
+    baseline: GenerationAttempt
+    candidate_a: JudgeArtifact | None = None
+    candidate_b: JudgeArtifact | None = None
+    muse_label: Preference | None = None
+    judgment: PairwiseJudgment | None = None
+
+    @model_validator(mode="after")
+    def require_blinded_judgment_for_successful_generations(self) -> BenchmarkRecord:
+        completed_generations = (
+            self.muse.artifact is not None and self.baseline.artifact is not None
+        )
+        blinded_fields = (self.candidate_a, self.candidate_b, self.muse_label, self.judgment)
+        if completed_generations and any(value is None for value in blinded_fields):
+            raise ValueError("successful generations require a blinded judgment")
+        if not completed_generations and any(value is not None for value in blinded_fields):
+            raise ValueError("failed generations must not be scored")
+        if self.muse_label == Preference.TIE:
+            raise ValueError("muse label must identify candidate a or b")
+        return self
+
+
+class BenchmarkReport(FrozenModel):
+    records: tuple[BenchmarkRecord, ...]
+    generation_attempts: int = Field(strict=True, ge=0)
+    generation_failures: int = Field(strict=True, ge=0)
+    judged_comparisons: int = Field(strict=True, ge=0)
+    wins: int = Field(strict=True, ge=0)
+    losses: int = Field(strict=True, ge=0)
+    ties: int = Field(strict=True, ge=0)
+    decisive_comparisons: int = Field(strict=True, ge=0)
+    preference_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    wilson_lower: float | None = Field(default=None, ge=0.0, le=1.0)
+    wilson_upper: float | None = Field(default=None, ge=0.0, le=1.0)
+    total_cost_usd: float = Field(strict=True, ge=0.0)
+    total_latency_ms: float = Field(strict=True, ge=0.0)
+
+
+def _capture_generation(
+    system: BenchmarkSystem, generator: ArtifactGenerator, task: BenchmarkTask
+) -> GenerationAttempt:
+    try:
+        return GenerationAttempt(artifact=generator(task))
+    except Exception as error:
+        return GenerationAttempt(
+            failure=GenerationFailure(
+                system=system,
+                error_type=type(error).__name__,
+                message=str(error) or type(error).__name__,
+            )
+        )
+
+
+def _wilson_bounds(wins: int, decisive_comparisons: int) -> tuple[float, float] | None:
+    if decisive_comparisons == 0:
+        return None
+
+    z_score = 1.959963984540054
+    rate = wins / decisive_comparisons
+    denominator = 1 + z_score**2 / decisive_comparisons
+    center = (rate + z_score**2 / (2 * decisive_comparisons)) / denominator
+    margin = (
+        z_score
+        * sqrt(
+            (rate * (1 - rate) + z_score**2 / (4 * decisive_comparisons))
+            / decisive_comparisons
+        )
+        / denominator
+    )
+    return center - margin, center + margin
+
+
+def run_quality_benchmark(
+    corpus: BenchmarkCorpus,
+    muse_generator: ArtifactGenerator,
+    baseline_generator: ArtifactGenerator,
+    judge: PairwiseJudge,
+    *,
+    repetitions: int = 1,
+    random_seed: int = 0,
+) -> BenchmarkReport:
+    """Run reproducible, blinded pairwise comparisons over a benchmark corpus."""
+    if isinstance(repetitions, bool) or not isinstance(repetitions, int) or repetitions < 1:
+        raise ValueError("repetitions must be a positive integer")
+    if isinstance(random_seed, bool) or not isinstance(random_seed, int):
+        raise ValueError("random_seed must be an integer")
+
+    random_source = Random(random_seed)
+    records: list[BenchmarkRecord] = []
+
+    for task in corpus.tasks:
+        for repetition in range(1, repetitions + 1):
+            muse = _capture_generation(BenchmarkSystem.MUSE, muse_generator, task)
+            baseline = _capture_generation(BenchmarkSystem.BASELINE, baseline_generator, task)
+            if muse.artifact is None or baseline.artifact is None:
+                records.append(
+                    BenchmarkRecord(task=task, repetition=repetition, muse=muse, baseline=baseline)
+                )
+                continue
+
+            if random_source.getrandbits(1):
+                candidate_a = muse.artifact.for_judge()
+                candidate_b = baseline.artifact.for_judge()
+                muse_label = Preference.A
+            else:
+                candidate_a = baseline.artifact.for_judge()
+                candidate_b = muse.artifact.for_judge()
+                muse_label = Preference.B
+
+            judgment = judge(task, candidate_a, candidate_b)
+            if not isinstance(judgment, PairwiseJudgment):
+                raise TypeError("judge must return PairwiseJudgment")
+            records.append(
+                BenchmarkRecord(
+                    task=task,
+                    repetition=repetition,
+                    muse=muse,
+                    baseline=baseline,
+                    candidate_a=candidate_a,
+                    candidate_b=candidate_b,
+                    muse_label=muse_label,
+                    judgment=judgment,
+                )
+            )
+
+    wins = sum(
+        record.judgment is not None
+        and record.judgment.preference != Preference.TIE
+        and record.judgment.preference == record.muse_label
+        for record in records
+    )
+    losses = sum(
+        record.judgment is not None
+        and record.judgment.preference != Preference.TIE
+        and record.judgment.preference != record.muse_label
+        for record in records
+    )
+    ties = sum(
+        record.judgment is not None and record.judgment.preference == Preference.TIE
+        for record in records
+    )
+    decisive_comparisons = wins + losses
+    bounds = _wilson_bounds(wins, decisive_comparisons)
+    attempts = tuple(attempt for record in records for attempt in (record.muse, record.baseline))
+
+    return BenchmarkReport(
+        records=tuple(records),
+        generation_attempts=len(attempts),
+        generation_failures=sum(attempt.failure is not None for attempt in attempts),
+        judged_comparisons=wins + losses + ties,
+        wins=wins,
+        losses=losses,
+        ties=ties,
+        decisive_comparisons=decisive_comparisons,
+        preference_rate=wins / decisive_comparisons if decisive_comparisons else None,
+        wilson_lower=bounds[0] if bounds is not None else None,
+        wilson_upper=bounds[1] if bounds is not None else None,
+        total_cost_usd=sum(
+            attempt.artifact.cost_usd for attempt in attempts if attempt.artifact is not None
+        ),
+        total_latency_ms=sum(
+            attempt.artifact.latency_ms for attempt in attempts if attempt.artifact is not None
+        ),
+    )
 
 
 class BenchmarkCorpus(FrozenModel):
