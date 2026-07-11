@@ -6,6 +6,7 @@ from muse.quality_benchmark import (
     BenchmarkArtifact,
     BenchmarkCorpus,
     BenchmarkTask,
+    JudgeArtifact,
     PairwiseJudgment,
     Preference,
 )
@@ -20,6 +21,28 @@ def test_benchmark_artifact_rejects_blank_content_and_negative_telemetry() -> No
 
     with pytest.raises(ValidationError):
         BenchmarkArtifact(content="A concrete proposal.", cost_usd=0.01, latency_ms=-1.0)
+
+
+def test_judge_artifact_redacts_telemetry_and_system_identity() -> None:
+    artifact = BenchmarkArtifact(
+        content="A concrete proposal.",
+        cost_usd=0.01,
+        latency_ms=20.0,
+    )
+
+    judge_artifact = artifact.for_judge()
+
+    assert isinstance(judge_artifact, JudgeArtifact)
+    assert judge_artifact.model_dump() == {"content": "A concrete proposal."}
+    assert not hasattr(judge_artifact, "cost_usd")
+    assert not hasattr(judge_artifact, "latency_ms")
+    assert not hasattr(judge_artifact, "system_identity")
+
+    with pytest.raises(ValidationError):
+        JudgeArtifact(content="A concrete proposal.", cost_usd=0.01)
+
+    with pytest.raises(ValidationError):
+        JudgeArtifact(content="A concrete proposal.", system_identity="muse")
 
 
 def test_pairwise_judgment_rejects_unknown_preferences() -> None:

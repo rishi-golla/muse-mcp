@@ -19,10 +19,17 @@ class BenchmarkTask(FrozenModel):
     prompt: RequiredText
 
 
+class JudgeArtifact(FrozenModel):
+    content: RequiredText
+
+
 class BenchmarkArtifact(FrozenModel):
     content: RequiredText
     cost_usd: float = Field(strict=True, ge=0.0)
     latency_ms: float = Field(strict=True, ge=0.0)
+
+    def for_judge(self) -> JudgeArtifact:
+        return JudgeArtifact(content=self.content)
 
 
 class PairwiseJudgment(FrozenModel):
