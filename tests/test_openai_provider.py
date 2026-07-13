@@ -26,7 +26,6 @@ from muse.openai_schemas import (
     OpenAIEvaluation,
     OpenAIFrame,
     OpenAIIdea,
-    OpenAISeedBatch,
 )
 from muse.pricing import ModelPrice, PricingTable
 from muse.reliability import CircuitBreaker, RetryPolicy
@@ -339,7 +338,8 @@ def test_openai_provider_quotes_from_configured_ceilings() -> None:
     )
 
     assert frame_quote.max_cost_usd == 0.0052
-    assert seed_quote.max_cost_usd == 0.013
+    assert seed_quote.max_cost_usd == 0.026
+    assert seed_quote.calls == 2
     assert client.call_count == 0
 
 
@@ -422,12 +422,8 @@ def test_openai_payloads_include_context_bundle() -> None:
                 assumptions=["CI has package-level signals"],
                 obvious_solution="Retry the failed job",
             ),
-            OpenAISeedBatch(
-                ideas=[
-                    sample_openai_idea(title="First"),
-                    sample_openai_idea(title="Second"),
-                ]
-            ),
+            sample_openai_idea(title="First"),
+            sample_openai_idea(title="Second"),
             OpenAIEvaluation(
                 originality=0.8,
                 usefulness=0.7,
@@ -447,7 +443,7 @@ def test_openai_payloads_include_context_bundle() -> None:
 
     frame_payload = json.loads(client.requests[0]["input"][2]["content"])
     seed_payload = json.loads(client.requests[1]["input"][2]["content"])
-    evaluation_payload = json.loads(client.requests[2]["input"][2]["content"])
+    evaluation_payload = json.loads(client.requests[3]["input"][2]["content"])
 
     assert frame_payload["task_data"]["context_bundle"]["snippets"][0]["source"] == (
         "repo/ci-snapshot"
@@ -523,12 +519,8 @@ def test_openai_provider_seeds_and_evaluates_with_economy_model() -> None:
     )
     client = FakeOpenAIClient(
         parsed_sequence=[
-            OpenAISeedBatch(
-                ideas=[
-                    sample_openai_idea(title="First"),
-                    sample_openai_idea(title="Second"),
-                ]
-            ),
+            sample_openai_idea(title="First"),
+            sample_openai_idea(title="Second"),
             OpenAIEvaluation(
                 originality=0.8,
                 usefulness=0.7,
@@ -549,9 +541,11 @@ def test_openai_provider_seeds_and_evaluates_with_economy_model() -> None:
     assert [request["model"] for request in client.requests] == [
         "economy-test-model",
         "economy-test-model",
+        "economy-test-model",
     ]
     assert "text" in client.requests[0]
     assert "text" in client.requests[1]
+    assert "text" in client.requests[2]
     assert len(seeds.value) == 2
     assert evaluation.value.originality == 0.8
 
@@ -748,10 +742,17 @@ def test_evaluation_parse_validation_error_triggers_repair() -> None:
 def test_openai_quotes_include_possible_repair_attempts() -> None:
     provider = build_provider(FakeOpenAIClient(), repair_attempts=1)
 
-    quote = provider.quote_frame(TaskContext(goal="Improve team decisions"))
+    quote = provider.quote_seed(
+        FramedTask(
+            context=TaskContext(goal="Improve team decisions"),
+            assumptions=("Meetings are required",),
+            obvious_solution="Use a form",
+        ),
+        RunConfig(seed_count=2, finalist_count=1),
+    )
 
-    assert quote.calls == 2
-    assert quote.max_cost_usd == pytest.approx(0.0104)
+    assert quote.calls == 4
+    assert quote.max_cost_usd == pytest.approx(0.052)
 
 
 def test_refusal_triggers_bounded_repair_then_raises_sanitized_error() -> None:
@@ -769,16 +770,12 @@ def test_refusal_triggers_bounded_repair_then_raises_sanitized_error() -> None:
     assert "OpenAI response did not contain parsed structured output" in str(error.value)
 
 
-def test_domain_conversion_failure_triggers_bounded_repair() -> None:
+def test_seed_failure_triggers_bounded_repair_for_one_branch() -> None:
     client = FakeOpenAIClient(
         parsed_sequence=[
-            OpenAISeedBatch(ideas=[sample_openai_idea(title="Only one")]),
-            OpenAISeedBatch(
-                ideas=[
-                    sample_openai_idea(title="First repaired"),
-                    sample_openai_idea(title="Second repaired"),
-                ]
-            ),
+            None,
+            sample_openai_idea(title="First repaired"),
+            sample_openai_idea(title="Second repaired"),
         ]
     )
     provider = build_provider(client, repair_attempts=1)
@@ -794,8 +791,9 @@ def test_domain_conversion_failure_triggers_bounded_repair() -> None:
         "First repaired",
         "Second repaired",
     ]
-    assert client.call_count == 2
-    assert "Repair" in str(client.last_request["input"])
+    assert client.call_count == 3
+    assert response.calls == 3
+    assert "Repair" in str(client.requests[1]["input"])
 
 
 def _http_response(status_code: int) -> httpx.Response:
@@ -900,6 +898,7 @@ def test_model_output_cannot_set_local_identity_ancestry_or_cost_fields() -> Non
         "parent_ids": ["00000000-0000-0000-0000-000000000002"],
         "transformations": ["model supplied lineage"],
         "branch_cost_usd": 999.0,
+        "branch_strategy": "user_centered",
         "provider": "spoofed-provider",
     }
 
@@ -912,12 +911,10 @@ def test_model_output_cannot_set_local_identity_ancestry_or_cost_fields() -> Non
         )
 
     client = FakeOpenAIClient(
-        parsed=OpenAISeedBatch(
-            ideas=[
-                sample_openai_idea(title="First guarded output"),
-                sample_openai_idea(title="Second guarded output"),
-            ]
-        )
+        parsed_sequence=[
+            sample_openai_idea(title="First guarded output"),
+            sample_openai_idea(title="Second guarded output"),
+        ]
     )
     provider = build_provider(client)
 
@@ -937,4 +934,112 @@ def test_model_output_cannot_set_local_identity_ancestry_or_cost_fields() -> Non
     assert candidate.transformations == ()
     assert candidate.branch_cost_usd == 0.0
     assert response.provider == "openai"
-    assert response.cost_usd == 0.00026
+    assert response.cost_usd == 0.00052
+
+
+def test_openai_provider_seeds_independent_branches_with_aggregate_telemetry() -> None:
+    frame = FramedTask(
+        context=TaskContext(goal="Improve decisions"),
+        assumptions=("Meetings are required",),
+        obvious_solution="Use a form",
+    )
+    client = FakeOpenAIClient(
+        parsed_sequence=[
+            sample_openai_idea(title="Constraint inversion"),
+            sample_openai_idea(title="Failure first"),
+        ],
+        usage=FakeUsage(
+            input_tokens=100,
+            output_tokens=40,
+            input_tokens_details=FakeInputTokenDetails(cached_tokens=20),
+            output_tokens_details=FakeOutputTokenDetails(reasoning_tokens=10),
+        ),
+    )
+    provider = build_provider(client)
+
+    response = provider.seed(frame, RunConfig(seed_count=2, finalist_count=1))
+
+    payloads = [
+        json.loads(request["input"][2]["content"])
+        for request in client.requests
+    ]
+    assert client.call_count == 2
+    assert [payload["task_data"]["branch_directive"] for payload in payloads] == [
+        {
+            "branch_index": 0,
+            "instruction": (
+                "Invert a core constraint or assumption and derive a mechanism that works "
+                "under the reversed condition."
+            ),
+            "strategy": "constraint_inversion",
+        },
+        {
+            "branch_index": 1,
+            "instruction": (
+                "Start from a plausible failure mode, then design sensing, containment, and "
+                "recovery into the mechanism."
+            ),
+            "strategy": "failure_first",
+        },
+    ]
+    assert [candidate.branch_strategy.value for candidate in response.value] == [
+        "constraint_inversion",
+        "failure_first",
+    ]
+    assert response.usage.input_tokens == 200
+    assert response.usage.cached_input_tokens == 40
+    assert response.usage.output_tokens == 80
+    assert response.usage.reasoning_tokens == 20
+    assert response.cost_usd == pytest.approx(0.000484)
+    assert response.latency_ms == 250
+    assert response.calls == 2
+    assert response.request_id == "req_2"
+    assert response.operation_trace is not None
+    trace_request = json.loads(response.operation_trace.request_json)
+    trace_response = json.loads(response.operation_trace.response_json)
+    assert [branch["strategy"] for branch in trace_request["branches"]] == [
+        "constraint_inversion",
+        "failure_first",
+    ]
+    assert trace_response["request_ids"] == ["req_1", "req_2"]
+    assert [branch["request_id"] for branch in trace_response["branches"]] == [
+        "req_1",
+        "req_2",
+    ]
+
+
+def test_openai_provider_discards_partial_seed_batch_when_a_branch_fails() -> None:
+    frame = FramedTask(
+        context=TaskContext(goal="Improve decisions"),
+        assumptions=("Meetings are required",),
+        obvious_solution="Use a form",
+    )
+    client = FakeOpenAIClient(
+        parsed_sequence=[
+            sample_openai_idea(title="First branch"),
+            ValueError("branch two failed"),
+            sample_openai_idea(title="Unreachable third branch"),
+        ]
+    )
+    provider = build_provider(client)
+
+    with pytest.raises(RuntimeError, match="branch two failed"):
+        provider.seed(frame, RunConfig(seed_count=3, finalist_count=1))
+
+    assert client.call_count == 2
+
+
+def test_openai_provider_rejects_duplicate_seed_outputs_across_branches() -> None:
+    frame = FramedTask(
+        context=TaskContext(goal="Improve decisions"),
+        assumptions=("Meetings are required",),
+        obvious_solution="Use a form",
+    )
+    duplicate = sample_openai_idea(title="Duplicate branch")
+    client = FakeOpenAIClient(parsed_sequence=[duplicate, duplicate])
+    provider = build_provider(client)
+
+    with pytest.raises(RuntimeError, match="duplicate normalized ideas"):
+        provider.seed(frame, RunConfig(seed_count=2, finalist_count=1))
+
+    assert client.call_count == 2

@@ -12,6 +12,7 @@ from openai.resources.responses.responses import (
 )
 from pydantic import ValidationError
 
+from muse.branching import BranchDirective, branch_directives
 from muse.live_config import LiveModelConfig
 from muse.models import (
     EvaluationScores,
@@ -26,7 +27,6 @@ from muse.openai_schemas import (
     OpenAIEvaluation,
     OpenAIFrame,
     OpenAIIdea,
-    OpenAISeedBatch,
 )
 from muse.pricing import PricingTable
 from muse.providers import MeteredResponse, OperationQuote
@@ -166,11 +166,12 @@ class OpenAICreativeProvider:
         framed_task: FramedTask,
         config: RunConfig,
     ) -> OperationQuote:
-        del framed_task, config
+        del framed_task
         return self._quote(
             model=self._config.economy_model,
             input_tokens=self._config.seed_max_input_tokens,
             output_tokens=self._config.seed_max_output_tokens,
+            operation_count=config.seed_count,
         )
 
     def seed(
@@ -178,17 +179,26 @@ class OpenAICreativeProvider:
         framed_task: FramedTask,
         config: RunConfig,
     ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
-        return self._call_structured(
-            operation="seed",
-            model_role="economy",
-            model=self._config.economy_model,
-            schema=OpenAISeedBatch,
-            domain_payload={
-                "framed_task": framed_task.model_dump(mode="json"),
-                "seed_count": config.seed_count,
-            },
-            convert=lambda parsed: parsed.to_seeds(expected_count=config.seed_count),
+        branches = tuple(
+            (
+                directive,
+                self._call_structured(
+                    operation="seed",
+                    model_role="economy",
+                    model=self._config.economy_model,
+                    schema=OpenAIIdea,
+                    domain_payload={
+                        "framed_task": framed_task.model_dump(mode="json"),
+                        "branch_directive": directive.model_dump(mode="json"),
+                    },
+                    convert=lambda parsed, strategy=directive.strategy: parsed.to_seed(
+                        branch_strategy=strategy
+                    ),
+                ),
+            )
+            for directive in branch_directives(config.seed_count)
         )
+        return self._aggregate_seed_branches(branches)
 
     def quote_transform(
         self,
@@ -254,8 +264,9 @@ class OpenAICreativeProvider:
         model: str,
         input_tokens: int,
         output_tokens: int,
+        operation_count: int = 1,
     ) -> OperationQuote:
-        max_calls = self._config.repair_attempts + 1
+        max_calls = (self._config.repair_attempts + 1) * operation_count
         estimate = self._pricing.estimate(
             model,
             TokenUsage(input_tokens=input_tokens, output_tokens=output_tokens),
@@ -263,6 +274,78 @@ class OpenAICreativeProvider:
         return OperationQuote(
             max_cost_usd=estimate.estimated_cost_usd * max_calls,
             calls=max_calls,
+        )
+
+    def _aggregate_seed_branches(
+        self,
+        branches: tuple[tuple[BranchDirective, MeteredResponse[IdeaGenome]], ...],
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        if not branches:
+            raise RuntimeError("seed branch generation returned no branches")
+
+        seeds = tuple(response.value for _, response in branches)
+        if len({seed.id for seed in seeds}) != len(seeds):
+            raise RuntimeError("seed branches contain duplicate normalized ideas")
+
+        usage = _sum_usage(response.usage for _, response in branches)
+        request_branches: list[dict[str, object]] = []
+        response_branches: list[dict[str, object]] = []
+        request_ids: list[str | None] = []
+        for directive, response in branches:
+            trace = response.operation_trace
+            if trace is None:
+                raise RuntimeError("seed branch response is missing operation trace")
+            request_branches.append(
+                {
+                    "branch_index": directive.branch_index,
+                    "strategy": directive.strategy.value,
+                    "trace": json.loads(trace.request_json),
+                }
+            )
+            response_branches.append(
+                {
+                    "branch_index": directive.branch_index,
+                    "strategy": directive.strategy.value,
+                    "request_id": response.request_id,
+                    "trace": json.loads(trace.response_json),
+                }
+            )
+            request_ids.append(response.request_id)
+
+        last_response = branches[-1][1]
+        trace = OperationTrace.from_payload(
+            request={
+                "operation": "seed",
+                "model_role": "economy",
+                "model": self._config.economy_model,
+                "schema": OpenAIIdea.__name__,
+                "branches": request_branches,
+            },
+            response={
+                "branches": response_branches,
+                "request_ids": request_ids,
+                "usage": {
+                    "input": usage.input_tokens,
+                    "cached_input": usage.cached_input_tokens,
+                    "output": usage.output_tokens,
+                    "reasoning": usage.reasoning_tokens,
+                },
+            },
+        )
+        return MeteredResponse(
+            value=seeds,
+            provider=self.name,
+            model=self._config.economy_model,
+            cost_usd=sum(response.cost_usd for _, response in branches),
+            calls=sum(response.calls for _, response in branches),
+            latency_ms=sum(response.latency_ms for _, response in branches),
+            usage=usage,
+            pricing_version=last_response.pricing_version,
+            cost_is_estimated=any(
+                response.cost_is_estimated for _, response in branches
+            ),
+            request_id=last_response.request_id,
+            operation_trace=trace,
         )
 
     def _call_structured(
