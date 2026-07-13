@@ -12,6 +12,7 @@ from muse.quality_benchmark import (
     BenchmarkTask,
     JudgeArtifact,
     JudgeAttempt,
+    JudgeFailure,
     PairwiseJudgment,
     Preference,
     run_quality_benchmark,
@@ -479,6 +480,46 @@ def test_failure_messages_redact_secret_patterns_and_caller_secrets_from_report(
     assert report.records[1].judge_attempt is not None
     assert report.records[1].judge_attempt.failure is not None
     assert report.records[1].judge_attempt.failure.message != sdk_key
+
+
+def test_returned_judge_failure_is_redacted_without_losing_telemetry() -> None:
+    caller_secret = "returned-judge-secret"
+    sdk_key = "sk-returned-abcdefghijklmnopqrstuvwxyz"
+    corpus = BenchmarkCorpus(
+        tasks=(BenchmarkTask(name="one", domain="operations", prompt="Improve a handoff."),)
+    )
+    first_generator, second_generator = _neutral_generators()
+
+    def judge(
+        _task: BenchmarkTask, _candidate_a: JudgeArtifact, _candidate_b: JudgeArtifact
+    ) -> JudgeAttempt:
+        return JudgeAttempt(
+            failure=JudgeFailure(
+                error_type="ProviderFailure",
+                message=f"returned failure {caller_secret} {sdk_key}",
+            ),
+            cost_usd=0.6,
+            latency_ms=60.0,
+        )
+
+    report = _run_benchmark(
+        corpus,
+        first_generator,
+        second_generator,
+        judge,
+        secret_values=(caller_secret,),
+    )
+    serialized = report.model_dump_json()
+
+    assert caller_secret not in serialized
+    assert sdk_key not in serialized
+    assert report.records[0].judge_attempt is not None
+    assert report.records[0].judge_attempt.failure is not None
+    assert report.records[0].judge_attempt.failure.message == (
+        "returned failure [REDACTED] [REDACTED]"
+    )
+    assert report.judge_cost_usd == pytest.approx(0.6)
+    assert report.judge_latency_ms == pytest.approx(60.0)
 
 
 def test_runner_records_generation_failures_without_scoring_them() -> None:

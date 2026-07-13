@@ -39,10 +39,11 @@ label leakage, lost judge failures, and opaque run accounting.
 ## Error handling
 
 Generation exceptions and label leaks are sanitized to type plus a bounded,
-single-line message. Generation and judge exception messages pass through the
-repository `TraceView` redactor for Bearer values, `sk-*` values, and
-caller-supplied secret values; those values are not retained. No exception from
-an individual cell aborts the benchmark or discards records from earlier cells.
+single-line message. Generation and judge exception messages, plus returned
+`JudgeFailure` payloads, pass through the repository `TraceView` redactor for
+Bearer values, `sk-*` values, and caller-supplied secret values; those values
+are not retained. No exception from an individual cell aborts the benchmark or
+discards records from earlier cells.
 
 ## Verification
 

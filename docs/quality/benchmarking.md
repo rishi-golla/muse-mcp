@@ -30,6 +30,7 @@ artifact generator, and a pairwise judge. Each generator returns a
 `BenchmarkArtifact` with the generated content plus measured `cost_usd` and
 `latency_ms`. The judge returns a typed `JudgeAttempt`, which contains either a
 `PairwiseJudgment` or a sanitized `JudgeFailure`, plus its own cost and latency.
+Returned failure attempts are sanitized by the runner just like judge exceptions.
 
 ```python
 from datetime import UTC, datetime

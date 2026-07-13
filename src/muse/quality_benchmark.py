@@ -199,9 +199,15 @@ def _capture_generation(
 
 
 def _sanitize_failure_message(error: Exception, secret_values: tuple[str, ...]) -> str:
-    sanitized = TraceView(secret_values=secret_values).sanitize(str(error))
+    return _sanitize_failure_text(str(error), type(error).__name__, secret_values)
+
+
+def _sanitize_failure_text(
+    value: str, fallback: str, secret_values: tuple[str, ...]
+) -> str:
+    sanitized = TraceView(secret_values=secret_values).sanitize(value)
     message = " ".join(str(sanitized).split())
-    return message[:200] or type(error).__name__
+    return message[:200] or fallback
 
 
 def _label_leaks(content: str, labels: tuple[str, ...]) -> tuple[str, ...]:
@@ -260,7 +266,24 @@ def _capture_judge(
         attempt = judge(task, candidate_a, candidate_b)
         if not isinstance(attempt, JudgeAttempt):
             raise TypeError("judge must return JudgeAttempt")
-        return attempt
+        if attempt.failure is None:
+            return attempt
+        return JudgeAttempt(
+            failure=JudgeFailure(
+                error_type=_sanitize_failure_text(
+                    attempt.failure.error_type,
+                    "JudgeFailure",
+                    secret_values,
+                ),
+                message=_sanitize_failure_text(
+                    attempt.failure.message,
+                    "judge failure",
+                    secret_values,
+                ),
+            ),
+            cost_usd=attempt.cost_usd,
+            latency_ms=attempt.latency_ms,
+        )
     except Exception as error:
         return JudgeAttempt(
             failure=JudgeFailure(
