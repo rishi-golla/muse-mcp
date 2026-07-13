@@ -32,6 +32,8 @@ artifact generator, and a pairwise judge. Each generator returns a
 `PairwiseJudgment` or a sanitized `JudgeFailure`, plus its own cost and latency.
 
 ```python
+from datetime import UTC, datetime
+
 from muse.quality_benchmark import (
     DEFAULT_BENCHMARK_CORPUS,
     BenchmarkArtifact,
@@ -73,6 +75,9 @@ def judge(
     )
 
 
+configured_api_key = get_secret_from_secret_manager()
+
+
 report = run_quality_benchmark(
     DEFAULT_BENCHMARK_CORPUS,
     muse_generator,
@@ -80,10 +85,16 @@ report = run_quality_benchmark(
     judge,
     repetitions=3,
     random_seed=17,
+    run_timestamp=datetime(2026, 7, 12, 12, 0, tzinfo=UTC),
+    prompt_version="prompt-v3",
+    config_version="config-v4",
     muse_adapter="muse-live-v1",
     baseline_adapter="strong-direct-v1",
     judge_adapter="quality-judge-v1",
+    blind_labels=("muse-live-v1", "strong-direct-v1"),
+    system_identifiers=("system-alpha", "system-beta"),
     provider_labels=("provider-name", "model-name"),
+    secret_values=(configured_api_key,),
 )
 ```
 
@@ -99,18 +110,24 @@ from `random_seed`, task name, and repetition, so a failed earlier cell cannot
 shift later mappings. The judge receives only `JudgeArtifact` content;
 `for_judge()` removes cost, latency, and system identity.
 
-Before the judge call, the runner rejects and records content containing any
-configured system, adapter, or provider label. Such a cell retains its generation
-telemetry but is excluded from judging. Do not put model names, system labels,
-cost, or latency in judge input. A judge that can identify the systems is not a
-blinded pairwise comparison.
+By default, ordinary words such as `baseline` and `judge` are not treated as
+identity leaks. Before the judge call, the runner rejects and records content
+containing an explicitly configured `blind_labels`, `system_identifiers`, or
+`provider_labels` value, using identifier boundaries rather than substring
+matching. Such a cell retains its generation telemetry but is excluded from
+judging. Do not put model names, system labels, cost, or latency in judge input.
+A judge that can identify the systems is not a blinded pairwise comparison.
 
 ## Repeated runs and accounting
 
-`RunMetadata` makes each report self-describing and deterministic. It records the
-seed, repetition count, corpus version, adapter identifiers, and configured
-provider labels. Use a fixed `random_seed` when a run must be reproduced. Do not
-treat one favorable run as a stable result.
+`RunMetadata` makes each report self-describing and deterministic when the caller
+supplies stable inputs. It records the seed, repetition count, corpus version,
+aware run timestamp, prompt version, configuration version, adapter identifiers,
+and configured blind/provider labels. The timestamp is caller-supplied rather than
+generated inside the runner, so deterministic tests can use a fixed value.
+`secret_values` is used only while sanitizing generation and judge exceptions; it
+is never stored in metadata or report records. Use a fixed `random_seed` when a
+run must be reproduced. Do not treat one favorable run as a stable result.
 
 Repetitions are raw evidence, not independent Wilson trials. The runner first
 aggregates each task's decisive repetition outcomes: a task counts as a win or

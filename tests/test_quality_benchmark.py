@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 from pydantic import ValidationError
 
@@ -6,6 +8,7 @@ from muse.quality_benchmark import (
     ArtifactGenerator,
     BenchmarkArtifact,
     BenchmarkCorpus,
+    BenchmarkReport,
     BenchmarkTask,
     JudgeArtifact,
     JudgeAttempt,
@@ -13,6 +16,8 @@ from muse.quality_benchmark import (
     Preference,
     run_quality_benchmark,
 )
+
+RUN_TIMESTAMP = datetime(2026, 7, 12, 12, 0, tzinfo=UTC)
 
 
 def test_benchmark_artifact_rejects_blank_content_and_negative_telemetry() -> None:
@@ -80,6 +85,25 @@ def _neutral_generators() -> tuple[ArtifactGenerator, ArtifactGenerator]:
     return first_generator, second_generator
 
 
+def _run_benchmark(
+    corpus: object,
+    first_generator: ArtifactGenerator,
+    second_generator: ArtifactGenerator,
+    judge: object,
+    **kwargs: object,
+) -> BenchmarkReport:
+    return run_quality_benchmark(
+        corpus,
+        first_generator,
+        second_generator,
+        judge,
+        run_timestamp=RUN_TIMESTAMP,
+        prompt_version="prompt-v1",
+        config_version="config-v1",
+        **kwargs,
+    )
+
+
 def test_pairwise_judgment_rejects_unknown_preferences() -> None:
     with pytest.raises(ValidationError):
         PairwiseJudgment(
@@ -135,6 +159,72 @@ def test_default_benchmark_corpus_is_domain_varied_and_blind() -> None:
         assert not any(keyword in prompt for keyword in forbidden_keywords)
 
 
+def test_default_label_checks_allow_ordinary_baseline_and_judge_prose() -> None:
+    corpus = BenchmarkCorpus(
+        tasks=(BenchmarkTask(name="one", domain="research", prompt="Investigate a signal."),)
+    )
+
+    def first_generator(_task: BenchmarkTask) -> BenchmarkArtifact:
+        return BenchmarkArtifact(
+            content="The judge should compare a baseline proposal.", cost_usd=0.2, latency_ms=20.0
+        )
+
+    def second_generator(_task: BenchmarkTask) -> BenchmarkArtifact:
+        return BenchmarkArtifact(content="A neutral proposal.", cost_usd=0.1, latency_ms=10.0)
+
+    def judge(
+        _task: BenchmarkTask, _candidate_a: JudgeArtifact, _candidate_b: JudgeArtifact
+    ) -> JudgeAttempt:
+        return _judge_attempt(Preference.TIE)
+
+    report = _run_benchmark(corpus, first_generator, second_generator, judge)
+
+    assert report.judged_comparisons == 1
+    assert report.records[0].muse.failure is None
+
+
+def test_label_checks_use_boundaries_and_only_explicit_labels() -> None:
+    corpus = BenchmarkCorpus(
+        tasks=(BenchmarkTask(name="one", domain="research", prompt="Investigate a signal."),)
+    )
+    judge_calls = 0
+
+    def first_generator(_task: BenchmarkTask) -> BenchmarkArtifact:
+        return BenchmarkArtifact(content="baseline prose", cost_usd=0.2, latency_ms=20.0)
+
+    def second_generator(_task: BenchmarkTask) -> BenchmarkArtifact:
+        return BenchmarkArtifact(content="system-alpha result", cost_usd=0.1, latency_ms=10.0)
+
+    def judge(
+        _task: BenchmarkTask, _candidate_a: JudgeArtifact, _candidate_b: JudgeArtifact
+    ) -> JudgeAttempt:
+        nonlocal judge_calls
+        judge_calls += 1
+        return _judge_attempt(Preference.TIE)
+
+    ordinary = _run_benchmark(
+        corpus,
+        first_generator,
+        second_generator,
+        judge,
+        blind_labels=("base",),
+    )
+    explicit = _run_benchmark(
+        corpus,
+        first_generator,
+        second_generator,
+        judge,
+        blind_labels=("baseline",),
+        system_identifiers=("system-alpha",),
+    )
+
+    assert ordinary.judged_comparisons == 1
+    assert explicit.judged_comparisons == 0
+    assert explicit.records[0].baseline.failure is not None
+    assert explicit.records[0].baseline.failure.leaked_labels == ("system-alpha",)
+    assert judge_calls == 1
+
+
 def test_runner_assignment_is_independent_of_earlier_failed_cells() -> None:
     later = BenchmarkTask(name="later", domain="coding", prompt="Improve a workflow.")
     earlier = BenchmarkTask(name="earlier", domain="coding", prompt="Improve a workflow.")
@@ -150,7 +240,7 @@ def test_runner_assignment_is_independent_of_earlier_failed_cells() -> None:
     ) -> JudgeAttempt:
         return _judge_attempt(Preference.TIE)
 
-    full = run_quality_benchmark(
+    full = _run_benchmark(
         BenchmarkCorpus(tasks=(earlier, later)),
         failing_first_generator,
         second_generator,
@@ -158,7 +248,7 @@ def test_runner_assignment_is_independent_of_earlier_failed_cells() -> None:
         repetitions=2,
         random_seed=17,
     )
-    isolated = run_quality_benchmark(
+    isolated = _run_benchmark(
         BenchmarkCorpus(tasks=(later,)),
         first_generator,
         second_generator,
@@ -187,7 +277,7 @@ def test_runner_aggregates_repetitions_per_task_before_wilson() -> None:
         preference = Preference.A if candidate_a.content == preferred else Preference.B
         return _judge_attempt(preference, cost_usd=0.05, latency_ms=5.0)
 
-    report = run_quality_benchmark(
+    report = _run_benchmark(
         corpus,
         first_generator,
         second_generator,
@@ -228,7 +318,7 @@ def test_runner_records_configured_label_leaks_without_calling_judge() -> None:
         judge_calls += 1
         return _judge_attempt(Preference.TIE)
 
-    report = run_quality_benchmark(
+    report = _run_benchmark(
         corpus,
         leaking_generator,
         clean_generator,
@@ -266,7 +356,7 @@ def test_runner_preserves_partial_record_when_judge_raises_and_counts_judge_tele
             return _judge_attempt(Preference.TIE, cost_usd=0.4, latency_ms=40.0)
         raise RuntimeError("provider token\nshould not escape")
 
-    report = run_quality_benchmark(corpus, first_generator, second_generator, judge)
+    report = _run_benchmark(corpus, first_generator, second_generator, judge)
 
     assert len(report.records) == 2
     assert report.records[1].judge_attempt is not None
@@ -302,6 +392,9 @@ def test_report_metadata_is_self_describing_and_deterministic() -> None:
         "baseline_adapter": "adapter-b",
         "judge_adapter": "judge-c",
         "provider_labels": ("provider-x",),
+        "run_timestamp": RUN_TIMESTAMP,
+        "prompt_version": "prompt-v3",
+        "config_version": "config-v4",
     }
     first = run_quality_benchmark(corpus, first_generator, second_generator, judge, **arguments)
     second = run_quality_benchmark(corpus, first_generator, second_generator, judge, **arguments)
@@ -314,8 +407,78 @@ def test_report_metadata_is_self_describing_and_deterministic() -> None:
         "baseline_adapter": "adapter-b",
         "judge_adapter": "judge-c",
         "provider_labels": ("provider-x",),
+        "run_timestamp": RUN_TIMESTAMP,
+        "prompt_version": "prompt-v3",
+        "config_version": "config-v4",
+        "blind_labels": (),
+        "system_identifiers": (),
     }
     assert first.metadata == second.metadata
+
+
+def test_run_metadata_rejects_naive_run_timestamp() -> None:
+    first_generator, second_generator = _neutral_generators()
+
+    def judge(
+        _task: BenchmarkTask, _candidate_a: JudgeArtifact, _candidate_b: JudgeArtifact
+    ) -> JudgeAttempt:
+        return _judge_attempt(Preference.TIE)
+
+    with pytest.raises(ValidationError):
+        run_quality_benchmark(
+            BenchmarkCorpus(
+                tasks=(BenchmarkTask(name="one", domain="coding", prompt="Improve a workflow."),)
+            ),
+            first_generator,
+            second_generator,
+            judge,
+            run_timestamp=datetime(2026, 7, 12, 12, 0),
+            prompt_version="prompt-v1",
+            config_version="config-v1",
+        )
+
+
+def test_failure_messages_redact_secret_patterns_and_caller_secrets_from_report() -> None:
+    bearer = "Bearer abcdefghijklmnopqrstuvwxyz"
+    sdk_key = "sk-abcdefghijklmnopqrstuvwxyz123456"
+    caller_secret = "caller-secret-value"
+    corpus = BenchmarkCorpus(
+        tasks=(
+            BenchmarkTask(name="generation", domain="operations", prompt="Improve a handoff."),
+            BenchmarkTask(name="judge", domain="operations", prompt="Improve a handoff."),
+        )
+    )
+
+    def first_generator(task: BenchmarkTask) -> BenchmarkArtifact:
+        if task.name == "generation":
+            raise RuntimeError(f"generation failed: {bearer} {sdk_key} {caller_secret}")
+        return BenchmarkArtifact(content="alpha plan", cost_usd=0.2, latency_ms=20.0)
+
+    def second_generator(_task: BenchmarkTask) -> BenchmarkArtifact:
+        return BenchmarkArtifact(content="beta plan", cost_usd=0.1, latency_ms=10.0)
+
+    def judge(
+        _task: BenchmarkTask, _candidate_a: JudgeArtifact, _candidate_b: JudgeArtifact
+    ) -> JudgeAttempt:
+        raise RuntimeError(f"judge failed: {bearer} {sdk_key} {caller_secret}")
+
+    report = _run_benchmark(
+        corpus,
+        first_generator,
+        second_generator,
+        judge,
+        secret_values=(caller_secret,),
+    )
+    serialized = report.model_dump_json()
+
+    for secret in (bearer, sdk_key, caller_secret):
+        assert secret not in serialized
+    assert "[REDACTED]" in serialized
+    assert report.records[0].muse.failure is not None
+    assert report.records[0].muse.failure.message != caller_secret
+    assert report.records[1].judge_attempt is not None
+    assert report.records[1].judge_attempt.failure is not None
+    assert report.records[1].judge_attempt.failure.message != sdk_key
 
 
 def test_runner_records_generation_failures_without_scoring_them() -> None:
@@ -342,7 +505,7 @@ def test_runner_records_generation_failures_without_scoring_them() -> None:
         judge_calls += 1
         return _judge_attempt(Preference.TIE)
 
-    report = run_quality_benchmark(corpus, first_generator, second_generator, judge, random_seed=5)
+    report = _run_benchmark(corpus, first_generator, second_generator, judge, random_seed=5)
 
     failed_record = next(record for record in report.records if record.task.name == "unavailable")
     assert len(report.records) == 2
@@ -367,7 +530,7 @@ def test_runner_rejects_nonpositive_repetitions() -> None:
         return _judge_attempt(Preference.TIE)
 
     with pytest.raises(ValueError, match="repetitions"):
-        run_quality_benchmark(
+        _run_benchmark(
             BenchmarkCorpus(
                 tasks=(BenchmarkTask(name="one", domain="coding", prompt="Improve a workflow."),)
             ),

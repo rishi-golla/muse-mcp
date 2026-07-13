@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from datetime import datetime
 from enum import StrEnum
 from hashlib import sha256
 from math import sqrt
 
-from pydantic import Field, model_validator
+from pydantic import AwareDatetime, Field, model_validator
 
 from muse.models import FrozenModel, RequiredText
+from muse.privacy import TraceView
 
 
 class Preference(StrEnum):
@@ -79,9 +81,14 @@ class RunMetadata(FrozenModel):
     random_seed: int = Field(strict=True)
     repetitions: int = Field(strict=True, ge=1)
     corpus_version: RequiredText
+    run_timestamp: AwareDatetime
+    prompt_version: RequiredText
+    config_version: RequiredText
     muse_adapter: RequiredText
     baseline_adapter: RequiredText
     judge_adapter: RequiredText
+    blind_labels: tuple[RequiredText, ...] = ()
+    system_identifiers: tuple[RequiredText, ...] = ()
     provider_labels: tuple[RequiredText, ...] = ()
 
 
@@ -173,7 +180,10 @@ class BenchmarkReport(FrozenModel):
 
 
 def _capture_generation(
-    system: BenchmarkSystem, generator: ArtifactGenerator, task: BenchmarkTask
+    system: BenchmarkSystem,
+    generator: ArtifactGenerator,
+    task: BenchmarkTask,
+    secret_values: tuple[str, ...],
 ) -> GenerationAttempt:
     try:
         artifact = generator(task)
@@ -183,20 +193,21 @@ def _capture_generation(
             failure=GenerationFailure(
                 system=system,
                 error_type=type(error).__name__,
-                message=_sanitize_failure_message(error),
+                message=_sanitize_failure_message(error, secret_values),
             )
         )
 
 
-def _sanitize_failure_message(error: Exception) -> str:
-    message = " ".join(str(error).split())
+def _sanitize_failure_message(error: Exception, secret_values: tuple[str, ...]) -> str:
+    sanitized = TraceView(secret_values=secret_values).sanitize(str(error))
+    message = " ".join(str(sanitized).split())
     return message[:200] or type(error).__name__
 
 
 def _label_leaks(content: str, labels: tuple[str, ...]) -> tuple[str, ...]:
     leaks: list[str] = []
     for label in labels:
-        pattern = rf"(?<!\w){re.escape(label)}(?!\w)"
+        pattern = rf"(?<![A-Za-z0-9_]){re.escape(label)}(?![A-Za-z0-9_])"
         if re.search(pattern, content, flags=re.IGNORECASE):
             leaks.append(label)
     return tuple(leaks)
@@ -243,6 +254,7 @@ def _capture_judge(
     task: BenchmarkTask,
     candidate_a: JudgeArtifact,
     candidate_b: JudgeArtifact,
+    secret_values: tuple[str, ...],
 ) -> JudgeAttempt:
     try:
         attempt = judge(task, candidate_a, candidate_b)
@@ -253,7 +265,7 @@ def _capture_judge(
         return JudgeAttempt(
             failure=JudgeFailure(
                 error_type=type(error).__name__,
-                message=_sanitize_failure_message(error),
+                message=_sanitize_failure_message(error, secret_values),
             ),
             cost_usd=0.0,
             latency_ms=0.0,
@@ -287,10 +299,16 @@ def run_quality_benchmark(
     *,
     repetitions: int = 1,
     random_seed: int = 0,
+    run_timestamp: datetime,
+    prompt_version: str,
+    config_version: str,
     muse_adapter: str = "muse",
     baseline_adapter: str = "baseline",
     judge_adapter: str = "judge",
+    blind_labels: tuple[str, ...] = (),
+    system_identifiers: tuple[str, ...] = (),
     provider_labels: tuple[str, ...] = (),
+    secret_values: tuple[str, ...] = (),
 ) -> BenchmarkReport:
     """Run reproducible, blinded pairwise comparisons over a benchmark corpus."""
     if isinstance(repetitions, bool) or not isinstance(repetitions, int) or repetitions < 1:
@@ -302,19 +320,21 @@ def run_quality_benchmark(
         random_seed=random_seed,
         repetitions=repetitions,
         corpus_version=corpus.version,
+        run_timestamp=run_timestamp,
+        prompt_version=prompt_version,
+        config_version=config_version,
         muse_adapter=muse_adapter,
         baseline_adapter=baseline_adapter,
         judge_adapter=judge_adapter,
+        blind_labels=blind_labels,
+        system_identifiers=system_identifiers,
         provider_labels=provider_labels,
     )
     blind_labels = tuple(
         dict.fromkeys(
             (
-                BenchmarkSystem.MUSE.value,
-                BenchmarkSystem.BASELINE.value,
-                metadata.muse_adapter,
-                metadata.baseline_adapter,
-                metadata.judge_adapter,
+                *metadata.blind_labels,
+                *metadata.system_identifiers,
                 *metadata.provider_labels,
             )
         )
@@ -323,8 +343,12 @@ def run_quality_benchmark(
 
     for task in corpus.tasks:
         for repetition in range(1, repetitions + 1):
-            muse = _capture_generation(BenchmarkSystem.MUSE, muse_generator, task)
-            baseline = _capture_generation(BenchmarkSystem.BASELINE, baseline_generator, task)
+            muse = _capture_generation(
+                BenchmarkSystem.MUSE, muse_generator, task, secret_values
+            )
+            baseline = _capture_generation(
+                BenchmarkSystem.BASELINE, baseline_generator, task, secret_values
+            )
             muse = _reject_label_leak(BenchmarkSystem.MUSE, muse, blind_labels)
             baseline = _reject_label_leak(BenchmarkSystem.BASELINE, baseline, blind_labels)
             if muse.artifact is None or baseline.artifact is None:
@@ -341,7 +365,9 @@ def run_quality_benchmark(
                 candidate_a = baseline.artifact.for_judge()
                 candidate_b = muse.artifact.for_judge()
 
-            judge_attempt = _capture_judge(judge, task, candidate_a, candidate_b)
+            judge_attempt = _capture_judge(
+                judge, task, candidate_a, candidate_b, secret_values
+            )
             records.append(
                 BenchmarkRecord(
                     task=task,

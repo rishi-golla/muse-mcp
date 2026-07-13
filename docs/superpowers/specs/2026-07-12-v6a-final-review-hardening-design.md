@@ -9,17 +9,20 @@ label leakage, lost judge failures, and opaque run accounting.
 ## Contracts and data flow
 
 - `BenchmarkCorpus` carries a required deterministic version string.
-- `RunMetadata` records `random_seed`, `repetitions`, corpus version, and the
-  three adapter identifiers. It is part of every `BenchmarkReport` and contains
-  no wall-clock or generated identifiers, so the same inputs produce the same
-  metadata.
+- `RunMetadata` records `random_seed`, `repetitions`, corpus version, a
+  caller-supplied aware run timestamp, prompt version, configuration version,
+  the three adapter identifiers, and explicit blind/system/provider labels. It
+  is part of every `BenchmarkReport`; `secret_values` is never stored, and a
+  fixed timestamp makes tests deterministic.
 - Candidate assignment is a pure function of the seed, task name, and
   repetition. The runner calls it for every completed cell, so a failed earlier
   cell cannot shift any later A/B assignment.
 - `JudgeArtifact` remains content-only. Before the judge is called, each
-  generated artifact is checked against configured system/provider labels using
-  case-insensitive token matching. A leak is recorded as an artifact failure and
-  that cell is not sent to the judge.
+  generated artifact is checked against only explicitly configured
+  blind/system/provider labels using case-insensitive identifier-boundary
+  matching. Ordinary words such as `baseline` and `judge` are allowed by
+  default. A leak is recorded as an artifact failure and that cell is not sent
+  to the judge.
 - `JudgeAttempt` contains exactly one of a `PairwiseJudgment` or sanitized
   `JudgeFailure`, plus judge `cost_usd` and `latency_ms`. Exceptions are captured
   into the same typed record, preserving generation and assignment data already
@@ -36,9 +39,10 @@ label leakage, lost judge failures, and opaque run accounting.
 ## Error handling
 
 Generation exceptions and label leaks are sanitized to type plus a bounded,
-single-line message. Judge exceptions are sanitized the same way. No exception
-from an individual cell aborts the benchmark or discards records from earlier
-cells.
+single-line message. Generation and judge exception messages pass through the
+repository `TraceView` redactor for Bearer values, `sk-*` values, and
+caller-supplied secret values; those values are not retained. No exception from
+an individual cell aborts the benchmark or discards records from earlier cells.
 
 ## Verification
 

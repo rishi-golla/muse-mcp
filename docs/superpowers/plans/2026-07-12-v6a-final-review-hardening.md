@@ -27,6 +27,14 @@ records and the provider-neutral callable boundary.
 
 Run the focused tests after each coherent RED-GREEN slice.
 
+## Re-review follow-up
+
+The final review additionally requires explicit-only blind-label configuration,
+repository secret-pattern redaction for generation and judge failures, and
+caller-supplied aware timestamps plus prompt/configuration versions in
+`RunMetadata`. These follow-up contracts are covered by the regression tests in
+`tests/test_quality_benchmark.py` and the maintainer documentation.
+
 ## Task 3: Align exports and maintainer documentation
 
 Modify `src/muse/__init__.py` and `docs/quality/benchmarking.md` so the public
