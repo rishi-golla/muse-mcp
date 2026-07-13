@@ -115,6 +115,24 @@ def test_public_docs_include_copy_pasteable_first_run_path() -> None:
         assert phrase in combined
 
 
+def test_public_docs_define_library_first_quality_benchmark_evidence() -> None:
+    readme = _read_text("README.md").casefold()
+    benchmark = _read_text("docs/quality/benchmarking.md").casefold()
+    combined = "\n".join((readme, benchmark))
+
+    for phrase in (
+        "library-first",
+        "run_quality_benchmark",
+        "direct strong-model baseline",
+        "blinded pairwise",
+        "repeated runs",
+        "cost, latency, and failure",
+        "not a public cli",
+        "unit tests do not establish creative quality",
+    ):
+        assert phrase in combined
+
+
 def test_github_templates_request_quality_and_verification_evidence() -> None:
     bug = _read_text(".github/ISSUE_TEMPLATE/bug_report.yml").casefold()
     feature = _read_text(".github/ISSUE_TEMPLATE/feature_request.yml").casefold()

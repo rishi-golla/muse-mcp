@@ -108,6 +108,14 @@ python -m pytest
 python -m ruff check .
 ```
 
+### Quality benchmarking
+
+The V6-A quality benchmark is a library-first maintainer workflow for comparing
+Muse with a direct strong-model baseline. It uses blinded pairwise judgments and
+repeated runs, while preserving cost, latency, and failure accounting. Unit tests
+do not establish creative quality; follow the [benchmarking guide](docs/quality/benchmarking.md)
+for the evidence required for a quality claim. This is not a public CLI.
+
 ## Internal fixture research-spine demo
 
 ```powershell
