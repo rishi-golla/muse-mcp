@@ -19,16 +19,50 @@ from muse.models import (
     TaskContext,
 )
 from muse.openai_provider import OpenAICreativeProvider
+from muse.quality_benchmark import (
+    ArtifactGenerator,
+    BenchmarkArtifact,
+    BenchmarkCorpus,
+    BenchmarkRecord,
+    BenchmarkReport,
+    BenchmarkTask,
+    GenerationAttempt,
+    GenerationFailure,
+    JudgeArtifact,
+    JudgeAttempt,
+    JudgeFailure,
+    PairwiseJudge,
+    PairwiseJudgment,
+    Preference,
+    RunMetadata,
+    derive_candidate_assignment,
+    run_quality_benchmark,
+)
 
 __version__ = "0.1.0"
 
 __all__ = [
     "CreativeEngine",
+    "ArtifactGenerator",
+    "BenchmarkArtifact",
+    "BenchmarkCorpus",
+    "BenchmarkRecord",
+    "BenchmarkReport",
+    "BenchmarkTask",
     "EvaluationScores",
     "FramedTask",
     "IdeaGenome",
     "InspirationKind",
+    "GenerationAttempt",
+    "GenerationFailure",
+    "JudgeFailure",
+    "JudgeAttempt",
+    "JudgeArtifact",
     "OpenAICreativeProvider",
+    "PairwiseJudge",
+    "PairwiseJudgment",
+    "Preference",
+    "RunMetadata",
     "ProviderIdentity",
     "ReviewPacket",
     "ReviewPacketStore",
@@ -38,4 +72,6 @@ __all__ = [
     "RunResult",
     "TaskContext",
     "build_review_packet",
+    "derive_candidate_assignment",
+    "run_quality_benchmark",
 ]
