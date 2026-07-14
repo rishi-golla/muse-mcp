@@ -71,6 +71,20 @@ class NonLiveFixtureProvider:
 
 
 class PartiallyEvidencedBranchProvider(NonLiveFixtureProvider):
+    def __init__(
+        self,
+        *,
+        requested_branches: list[dict[str, object]] | None = None,
+        completed_branches: list[dict[str, object]] | None = None,
+    ) -> None:
+        super().__init__()
+        self._requested_branches = requested_branches or [
+            _branch_trace_entry(0, "constraint_inversion", "request")
+        ]
+        self._completed_branches = completed_branches or [
+            _branch_trace_entry(0, "constraint_inversion", "response")
+        ]
+
     def seed(self, framed_task, config):
         response = super().seed(framed_task, config)
         partial = response.model_copy(
@@ -80,22 +94,10 @@ class PartiallyEvidencedBranchProvider(NonLiveFixtureProvider):
                 "operation_trace": OperationTrace.from_payload(
                     request={
                         "operation": "seed",
-                        "branches": [
-                            {
-                                "branch_index": 0,
-                                "strategy": "constraint_inversion",
-                                "trace": {"request": "fixture"},
-                            }
-                        ],
+                        "branches": self._requested_branches,
                     },
                     response={
-                        "branches": [
-                            {
-                                "branch_index": 0,
-                                "strategy": "constraint_inversion",
-                                "trace": {"response": "fixture"},
-                            }
-                        ],
+                        "branches": self._completed_branches,
                     },
                 ),
             }
@@ -105,6 +107,18 @@ class PartiallyEvidencedBranchProvider(NonLiveFixtureProvider):
     def quote_seed(self, framed_task, config):
         del framed_task, config
         return OperationQuote(max_cost_usd=0.01, calls=3)
+
+
+def _branch_trace_entry(
+    branch_index: int,
+    strategy: str,
+    trace_kind: str,
+) -> dict[str, object]:
+    return {
+        "branch_index": branch_index,
+        "strategy": strategy,
+        "trace": {trace_kind: "fixture"},
+    }
 
 
 def test_runner_returns_json_safe_operational_plan_from_repo_signals() -> None:
@@ -203,6 +217,61 @@ def test_runner_reports_only_evidenced_completed_branches_after_seed_failure() -
     assert result["config"]["branch_generation"]["independent_call_count"] == 1
 
 
+def test_runner_rejects_forged_unknown_duplicate_and_overscheduled_branch_evidence() -> None:
+    cases = (
+        (
+            [_branch_trace_entry(0, "failure_first", "request")],
+            [_branch_trace_entry(0, "failure_first", "response")],
+            3,
+        ),
+        (
+            [_branch_trace_entry(99, "constraint_inversion", "request")],
+            [_branch_trace_entry(99, "constraint_inversion", "response")],
+            3,
+        ),
+        (
+            [_branch_trace_entry(0, "constraint_inversion", "request")],
+            [
+                _branch_trace_entry(0, "constraint_inversion", "response"),
+                _branch_trace_entry(0, "constraint_inversion", "response"),
+            ],
+            3,
+        ),
+        (
+            [
+                _branch_trace_entry(0, "constraint_inversion", "request"),
+                _branch_trace_entry(1, "failure_first", "request"),
+                _branch_trace_entry(2, "cross_domain_transfer", "request"),
+            ],
+            [
+                _branch_trace_entry(0, "constraint_inversion", "response"),
+                _branch_trace_entry(1, "failure_first", "response"),
+                _branch_trace_entry(2, "cross_domain_transfer", "response"),
+            ],
+            2,
+        ),
+    )
+
+    for requested_branches, completed_branches, seed_count in cases:
+        result = CreativeMiddlewareRunner.live_openai(
+            provider=PartiallyEvidencedBranchProvider(
+                requested_branches=requested_branches,
+                completed_branches=completed_branches,
+            ),
+        ).run(
+            CreativePlanRequest(
+                goal="Design a planning hook for arbitrary repos",
+                provider_mode="live_openai",
+                seed_count=seed_count,
+                finalist_count=1,
+                max_generations=0,
+                budget_usd=0.20,
+            )
+        )
+
+        assert result["config"]["branch_generation"]["independent_call_count"] == 0
+
+
 def test_runner_does_not_classify_custom_non_live_fixtures_as_branch_evidence() -> None:
     result = CreativeMiddlewareRunner.live_openai(
         provider=NonLiveFixtureProvider(),
@@ -226,16 +295,24 @@ def test_branch_generation_docs_distinguish_live_trajectories_from_fixtures() ->
         Path("docs/quality/benchmarking.md").read_text(encoding="utf-8").split()
     )
 
-    assert "independent live model trajectory" in readme
+    assert (
+        "`seed_count` requests an ordered schedule of independent live model trajectories"
+        in readme
+    )
     assert "does not prove a provider call" in readme
     assert "requested strategy directives" in readme
     assert "evidenced completed branches" in readme
     assert "independently completed seed branches" in readme
-    assert "independent live model trajectory" in benchmarking
+    assert "`seed_count` requests" in readme
+    assert (
+        "`seed_count` requests an ordered schedule of independent live model trajectories"
+        in benchmarking
+    )
     assert "do not report provider calls or spend" in benchmarking
     assert "requested strategy directives" in benchmarking
     assert "evidenced completed branches" in benchmarking
     assert "independently completed seed branches" in benchmarking
+    assert "`seed_count` requests" in benchmarking
 
 
 def test_runner_returns_quality_warnings_for_generic_finalists() -> None:

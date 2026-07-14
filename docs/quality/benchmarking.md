@@ -149,10 +149,10 @@ and let the runner capture generation and judge exceptions as failures. A qualit
 report that omits failed attempts, spend, latency, or deterministic metadata is
 incomplete and should not be used for a comparative claim.
 
-When a live Muse adapter requests seeds, every seed starts an independent live model
-trajectory with its own branch strategy. The MCP response exposes those strategy names and
-the number of independently completed seed branches in `config.branch_generation`; this means `seed_count` measures
-independent live trajectories, not items returned from one batched seed response.
+When a live Muse adapter requests seeds, `seed_count` requests an ordered schedule of
+independent live model trajectories with distinct branch strategies, not items from one
+batched seed response. The MCP response exposes those strategy names and the number of
+independently completed seed branches in `config.branch_generation`.
 Deterministic fixture runs do not report provider calls or spend: their
 `independent_call_count` is zero and their metadata is only contract evidence.
 The strategy names are ordered requested strategy directives; the count covers only

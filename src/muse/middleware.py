@@ -302,7 +302,10 @@ def _serialize_result(
                     directive.strategy.value
                     for directive in branch_directives(request.seed_count)
                 ],
-                "independent_call_count": _independent_branch_call_count(result),
+                "independent_call_count": _independent_branch_call_count(
+                    result,
+                    seed_count=request.seed_count,
+                ),
             },
             "finalist_count": request.finalist_count,
             "max_generations": request.max_generations,
@@ -331,38 +334,55 @@ def _serialize_result(
     }
 
 
-def _independent_branch_call_count(result: RunResult) -> int:
-    return sum(
-        _evidenced_branch_count(record.operation_trace)
-        for record in result.spend_records
-        if record.stage == "seeding" and record.operation_trace is not None
-    )
+def _independent_branch_call_count(result: RunResult, *, seed_count: int) -> int:
+    expected_strategies = {
+        directive.branch_index: directive.strategy.value
+        for directive in branch_directives(seed_count)
+    }
+    completed_indices: set[int] = set()
+    for record in result.spend_records:
+        if record.stage != "seeding" or record.operation_trace is None:
+            continue
+        evidenced_indices = _evidenced_branch_indices(
+            record.operation_trace,
+            expected_strategies=expected_strategies,
+        )
+        if evidenced_indices is None or completed_indices.intersection(
+            evidenced_indices
+        ):
+            return 0
+        completed_indices.update(evidenced_indices)
+    return len(completed_indices)
 
 
-def _evidenced_branch_count(operation_trace: object) -> int:
+def _evidenced_branch_indices(
+    operation_trace: object,
+    *,
+    expected_strategies: Mapping[int, str],
+) -> set[int] | None:
     if not hasattr(operation_trace, "request_json") or not hasattr(
         operation_trace, "response_json"
     ):
-        return 0
+        return None
     try:
         request = json.loads(operation_trace.request_json)
         response = json.loads(operation_trace.response_json)
     except (TypeError, ValueError):
-        return 0
+        return None
     if not isinstance(request, Mapping) or not isinstance(response, Mapping):
-        return 0
+        return None
     if request.get("operation") != "seed":
-        return 0
+        return None
 
     directives = request.get("branches")
     completed = response.get("branches")
     if not isinstance(directives, list) or not isinstance(completed, list):
-        return 0
+        return None
 
-    requested_strategies: dict[int, str] = {}
+    requested_indices: set[int] = set()
     for directive in directives:
         if not isinstance(directive, Mapping):
-            return 0
+            return None
         index = directive.get("branch_index")
         strategy = directive.get("strategy")
         trace = directive.get("trace")
@@ -372,15 +392,16 @@ def _evidenced_branch_count(operation_trace: object) -> int:
             or not isinstance(strategy, str)
             or not strategy
             or not isinstance(trace, Mapping)
-            or index in requested_strategies
+            or expected_strategies.get(index) != strategy
+            or index in requested_indices
         ):
-            return 0
-        requested_strategies[index] = strategy
+            return None
+        requested_indices.add(index)
 
     completed_indices: set[int] = set()
     for branch in completed:
         if not isinstance(branch, Mapping):
-            continue
+            return None
         index = branch.get("branch_index")
         strategy = branch.get("strategy")
         trace = branch.get("trace")
@@ -388,12 +409,13 @@ def _evidenced_branch_count(operation_trace: object) -> int:
             isinstance(index, bool)
             or not isinstance(index, int)
             or not isinstance(trace, Mapping)
-            or requested_strategies.get(index) != strategy
+            or index not in requested_indices
+            or expected_strategies.get(index) != strategy
             or index in completed_indices
         ):
-            continue
+            return None
         completed_indices.add(index)
-    return len(completed_indices)
+    return completed_indices
 
 
 def run_muse_plan(request: CreativePlanRequest | Mapping[str, object]) -> dict[str, Any]:

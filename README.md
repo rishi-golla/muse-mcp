@@ -393,9 +393,9 @@ instead of charging provider calls.
 
 ### Live branch evidence
 
-For `provider_mode: "live_openai"`, each requested seed begins an independent live model
-trajectory rather than sharing a batched seed response. The response records the ordered
-creative strategies and the number of independently completed seed branches in
+For `provider_mode: "live_openai"`, `seed_count` requests an ordered schedule of independent
+live model trajectories rather than one shared batched seed response. The response records
+the ordered creative strategies and the number of independently completed seed branches in
 `config.branch_generation`:
 
 ```json
