@@ -117,19 +117,43 @@ def test_public_docs_include_copy_pasteable_first_run_path() -> None:
 
 def test_readme_leads_with_agent_first_live_mcp_onboarding() -> None:
     readme = _read_text("README.md").casefold()
+    first_250_lines = "\n".join(readme.splitlines()[:250])
 
-    for phrase in (
+    onboarding_heading = "## agent-first quickstart"
+    assert onboarding_heading in first_250_lines
+    onboarding_start = first_250_lines.index(onboarding_heading)
+    next_heading = first_250_lines.find("\n## ", onboarding_start + 1)
+    onboarding_end = next_heading if next_heading != -1 else len(first_250_lines)
+    onboarding = first_250_lines[onboarding_start:onboarding_end]
+
+    steps = (
         "paste this into your coding agent",
-        "agent-first quickstart",
-        "live openai",
+        'python -m pip install -e ".[dev]"',
+        "muse-mcp-doctor --json",
+        "muse-mcp-config --host codex",
+        "muse-agent-instructions --target agents-md",
+        "restart the mcp-capable agent host",
         "muse_plan",
-        "normal",
-        "extensive",
-        "never commit secrets",
+        "first live task",
+    )
+    positions = [first_250_lines.index(step, onboarding_start) for step in steps]
+    assert positions == sorted(positions)
+    assert 'mode: "normal"' in onboarding
+    assert 'mode: "extensive"' in onboarding
+    assert "never commit secrets" in onboarding
+
+    assert not re.search(r"\bdeterministic\b|\bfixtures?\b", onboarding)
+    maintainer_positions = [
+        match.start() for match in re.finditer(r"\bmaintainer\b", first_250_lines)
+    ]
+    assert all(position >= onboarding_end for position in maintainer_positions)
+
+    for path in (
         "docs/integrations/mcp-agent-hosts.md",
         "docs/quality/benchmarking.md",
     ):
-        assert phrase in readme
+        assert (ROOT / path).is_file()
+        assert re.search(rf"\[[^\]]+\]\({re.escape(path)}\)", readme)
 
 
 def test_public_docs_define_library_first_quality_benchmark_evidence() -> None:
