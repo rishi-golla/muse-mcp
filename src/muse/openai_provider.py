@@ -4,6 +4,7 @@ import json
 import re
 import time
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from typing import Any, TypeVar
 
 from openai.resources.responses.responses import (
@@ -12,6 +13,7 @@ from openai.resources.responses.responses import (
 )
 from pydantic import ValidationError
 
+from muse.branching import BranchDirective, branch_directives
 from muse.live_config import LiveModelConfig
 from muse.models import (
     EvaluationScores,
@@ -26,10 +28,9 @@ from muse.openai_schemas import (
     OpenAIEvaluation,
     OpenAIFrame,
     OpenAIIdea,
-    OpenAISeedBatch,
 )
 from muse.pricing import PricingTable
-from muse.providers import MeteredResponse, OperationQuote
+from muse.providers import ItemMetering, MeteredProviderFailure, MeteredResponse, OperationQuote
 from muse.reliability import CircuitBreaker, RetryPolicy, execute_with_retries
 from muse.transforms import TransformationRequest
 
@@ -166,11 +167,12 @@ class OpenAICreativeProvider:
         framed_task: FramedTask,
         config: RunConfig,
     ) -> OperationQuote:
-        del framed_task, config
+        del framed_task
         return self._quote(
             model=self._config.economy_model,
             input_tokens=self._config.seed_max_input_tokens,
             output_tokens=self._config.seed_max_output_tokens,
+            operation_count=config.seed_count,
         )
 
     def seed(
@@ -178,17 +180,53 @@ class OpenAICreativeProvider:
         framed_task: FramedTask,
         config: RunConfig,
     ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
-        return self._call_structured(
-            operation="seed",
-            model_role="economy",
-            model=self._config.economy_model,
-            schema=OpenAISeedBatch,
-            domain_payload={
-                "framed_task": framed_task.model_dump(mode="json"),
-                "seed_count": config.seed_count,
-            },
-            convert=lambda parsed: parsed.to_seeds(expected_count=config.seed_count),
-        )
+        branches: list[tuple[BranchDirective, MeteredResponse[IdeaGenome]]] = []
+        try:
+            for directive in branch_directives(config.seed_count):
+                try:
+                    response = self._call_structured(
+                        operation="seed",
+                        model_role="economy",
+                        model=self._config.economy_model,
+                        schema=OpenAIIdea,
+                        domain_payload={
+                            "framed_task": framed_task.model_dump(mode="json"),
+                            "branch_directive": directive.model_dump(mode="json"),
+                        },
+                        convert=lambda parsed, strategy=directive.strategy: parsed.to_seed(
+                            branch_strategy=strategy
+                        ),
+                    )
+                except MeteredProviderFailure as error:
+                    partial_response = self._aggregate_seed_evidence(
+                        (
+                            *(
+                                (branch, branch_response, True)
+                                for branch, branch_response in branches
+                            ),
+                            (directive, error.partial_response, False),
+                        ),
+                        validate_unique=False,
+                    )
+                    raise MeteredProviderFailure(
+                        str(error),
+                        partial_response=partial_response,
+                    ) from error
+                branches.append((directive, response))
+            return self._aggregate_seed_branches(tuple(branches))
+        except MeteredProviderFailure:
+            raise
+        except Exception as error:
+            if not branches:
+                raise
+            partial_response = self._aggregate_seed_branches(
+                tuple(branches),
+                validate_unique=False,
+            )
+            raise MeteredProviderFailure(
+                str(error),
+                partial_response=partial_response,
+            ) from error
 
     def quote_transform(
         self,
@@ -254,8 +292,13 @@ class OpenAICreativeProvider:
         model: str,
         input_tokens: int,
         output_tokens: int,
+        operation_count: int = 1,
     ) -> OperationQuote:
-        max_calls = self._config.repair_attempts + 1
+        max_calls = (
+            (self._config.repair_attempts + 1)
+            * (self._retry_policy.max_retries + 1)
+            * operation_count
+        )
         estimate = self._pricing.estimate(
             model,
             TokenUsage(input_tokens=input_tokens, output_tokens=output_tokens),
@@ -263,6 +306,117 @@ class OpenAICreativeProvider:
         return OperationQuote(
             max_cost_usd=estimate.estimated_cost_usd * max_calls,
             calls=max_calls,
+        )
+
+    def _aggregate_seed_branches(
+        self,
+        branches: tuple[tuple[BranchDirective, MeteredResponse[IdeaGenome]], ...],
+        *,
+        validate_unique: bool = True,
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        return self._aggregate_seed_evidence(
+            tuple((directive, response, True) for directive, response in branches),
+            validate_unique=validate_unique,
+        )
+
+    def _aggregate_seed_evidence(
+        self,
+        branches: tuple[
+            tuple[BranchDirective, MeteredResponse[object], bool],
+            ...,
+        ],
+        *,
+        validate_unique: bool,
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        if not branches:
+            raise RuntimeError("seed branch generation returned no branches")
+
+        seeds = tuple(
+            response.value
+            for _, response, succeeded in branches
+            if succeeded and isinstance(response.value, IdeaGenome)
+        )
+        if validate_unique and len({seed.id for seed in seeds}) != len(seeds):
+            raise RuntimeError("seed branches contain duplicate normalized ideas")
+
+        usage = _sum_usage(response.usage for _, response, _ in branches)
+        request_branches: list[dict[str, object]] = []
+        response_branches: list[dict[str, object]] = []
+        request_ids: list[str | None] = []
+        for directive, response, succeeded in branches:
+            trace = response.operation_trace
+            if trace is None:
+                raise RuntimeError("seed branch response is missing operation trace")
+            request_branches.append(
+                {
+                    "branch_index": directive.branch_index,
+                    "strategy": directive.strategy.value,
+                    "trace": json.loads(trace.request_json),
+                }
+            )
+            response_branches.append(
+                {
+                    "branch_index": directive.branch_index,
+                    "strategy": directive.strategy.value,
+                    "request_id": response.request_id,
+                    "succeeded": succeeded,
+                    "trace": json.loads(trace.response_json),
+                }
+            )
+            request_ids.append(response.request_id)
+
+        last_response = branches[-1][1]
+        last_request_id = next(
+            (
+                response.request_id
+                for _, response, _ in reversed(branches)
+                if response.request_id is not None
+            ),
+            None,
+        )
+        trace = OperationTrace.from_payload(
+            request={
+                "operation": "seed",
+                "model_role": "economy",
+                "model": self._config.economy_model,
+                "schema": OpenAIIdea.__name__,
+                "branches": request_branches,
+            },
+            response={
+                "branches": response_branches,
+                "request_ids": request_ids,
+                "calls": sum(response.calls for _, response, _ in branches),
+                "usage": {
+                    "input": usage.input_tokens,
+                    "cached_input": usage.cached_input_tokens,
+                    "output": usage.output_tokens,
+                    "reasoning": usage.reasoning_tokens,
+                },
+            },
+        )
+        return MeteredResponse(
+            value=seeds,
+            provider=self.name,
+            model=self._config.economy_model,
+            cost_usd=sum(response.cost_usd for _, response, _ in branches),
+            calls=sum(response.calls for _, response, _ in branches),
+            latency_ms=sum(response.latency_ms for _, response, _ in branches),
+            usage=usage,
+            pricing_version=last_response.pricing_version,
+            cost_is_estimated=any(
+                response.cost_is_estimated for _, response, _ in branches
+            ),
+            request_id=last_request_id,
+            operation_trace=trace,
+            item_metering=tuple(
+                ItemMetering.model_validate(
+                    response.model_dump(
+                        mode="python",
+                        exclude={"value", "item_metering"},
+                    )
+                )
+                for _, response, _ in branches
+            ),
         )
 
     def _call_structured(
@@ -287,24 +441,56 @@ class OpenAICreativeProvider:
         last_error: Exception | None = None
         calls = 0
 
+        def metered_failure(error: BaseException) -> MeteredProviderFailure | RuntimeError:
+            message = _safe_error_message(operation=operation, error=error)
+            if not responses and calls == 0:
+                return RuntimeError(message)
+            partial = self._structured_metered_response(
+                operation=operation,
+                model_role=model_role,
+                model=model,
+                schema=schema,
+                domain_payload=domain_payload,
+                request_input=request_input,
+                responses=responses,
+                response=responses[-1] if responses else None,
+                parsed=None,
+                value=None,
+                calls=calls,
+                start=start,
+                error_message=message,
+            )
+            return MeteredProviderFailure(message, partial_response=partial)
+
         for attempt in range(self._config.repair_attempts + 1):
-            calls += 1
             try:
-                response = self._execute_parse(
+                executed = self._execute_parse(
                     model=model,
                     request_input=request_input,
                     schema=schema,
                 )
+                calls += executed.calls
+                response = executed.response
             except _StructuredParseValidationError as error:
+                calls += error.calls
                 last_error = error.validation_error
                 responses.append(error.response)
                 if attempt >= self._config.repair_attempts:
-                    raise RuntimeError(
-                        _safe_error_message(
-                            operation=operation,
-                            error=error.validation_error,
-                        )
-                    ) from error.validation_error
+                    raise metered_failure(error.validation_error) from error.validation_error
+                request_input = _repair_request_input(
+                    operation=operation,
+                    domain_payload=domain_payload,
+                    error=error.validation_error,
+                )
+                continue
+            except _TransportInvocationFailure as error:
+                calls += error.calls
+                raise metered_failure(error.error) from error.error
+            except _TransportValidationFailure as error:
+                calls += error.calls
+                last_error = error.validation_error
+                if attempt >= self._config.repair_attempts:
+                    raise metered_failure(error.validation_error) from error.validation_error
                 request_input = _repair_request_input(
                     operation=operation,
                     domain_payload=domain_payload,
@@ -314,9 +500,7 @@ class OpenAICreativeProvider:
             except ValidationError as error:
                 last_error = error
                 if attempt >= self._config.repair_attempts:
-                    raise RuntimeError(
-                        _safe_error_message(operation=operation, error=error)
-                    ) from error
+                    raise metered_failure(error) from error
                 request_input = _repair_request_input(
                     operation=operation,
                     domain_payload=domain_payload,
@@ -324,9 +508,7 @@ class OpenAICreativeProvider:
                 )
                 continue
             except Exception as error:
-                raise RuntimeError(
-                    _safe_error_message(operation=operation, error=error)
-                ) from error
+                raise metered_failure(error) from error
             responses.append(response)
 
             try:
@@ -336,24 +518,53 @@ class OpenAICreativeProvider:
             except ValueError as error:
                 last_error = error
                 if attempt >= self._config.repair_attempts:
-                    raise RuntimeError(
-                        _safe_error_message(operation=operation, error=error)
-                    ) from error
+                    raise metered_failure(error) from error
                 request_input = _repair_request_input(
                     operation=operation,
                     domain_payload=domain_payload,
                     error=error,
                 )
             except Exception as error:
-                raise RuntimeError(
-                    _safe_error_message(operation=operation, error=error)
-                ) from error
+                raise metered_failure(error) from error
 
         if response is None or parsed is None or value is None:
             error = last_error or ValueError(
                 "OpenAI response did not contain parsed structured output"
             )
-            raise RuntimeError(_safe_error_message(operation=operation, error=error))
+            raise metered_failure(error)
+
+        return self._structured_metered_response(
+            operation=operation,
+            model_role=model_role,
+            model=model,
+            schema=schema,
+            domain_payload=domain_payload,
+            request_input=request_input,
+            responses=responses,
+            response=response,
+            parsed=parsed,
+            value=value,
+            calls=calls,
+            start=start,
+        )
+
+    def _structured_metered_response(
+        self,
+        *,
+        operation: str,
+        model_role: str,
+        model: str,
+        schema: type[T],
+        domain_payload: dict[str, object],
+        request_input: list[dict[str, object]],
+        responses: list[object],
+        response: object | None,
+        parsed: T | None,
+        value: DomainT | None,
+        calls: int,
+        start: float,
+        error_message: str | None = None,
+    ) -> MeteredResponse[DomainT | None]:
 
         end = self._monotonic()
         usage = _sum_usage(_usage(item) for item in responses)
@@ -375,6 +586,8 @@ class OpenAICreativeProvider:
                 "request_id": _request_id(response),
                 "parsed": _redact_secrets(_model_dump(parsed)),
                 "refusal": _redact_secrets(_refusal(response)),
+                "calls": calls,
+                "error": error_message,
                 "usage": {
                     "input": usage.input_tokens,
                     "cached_input": usage.cached_input_tokens,
@@ -403,7 +616,7 @@ class OpenAICreativeProvider:
         model: str,
         request_input: list[dict[str, object]],
         schema: type[T],
-    ) -> object:
+    ) -> _ExecutedResponse:
         if hasattr(self._client.responses, "create"):
             kwargs: dict[str, object] = {
                 "model": model,
@@ -414,14 +627,17 @@ class OpenAICreativeProvider:
             def operation() -> object:
                 return self._client.responses.create(**kwargs)
 
-            raw_response = self._execute_response_operation(operation)
+            executed = self._execute_response_operation(operation)
+            raw_response = executed.response
             try:
-                return _parse_raw_response(raw_response, schema)
+                parsed_response = _parse_raw_response(raw_response, schema)
             except ValidationError as error:
                 raise _StructuredParseValidationError(
                     validation_error=error,
                     response=raw_response,
+                    calls=executed.calls,
                 ) from error
+            return _ExecutedResponse(response=parsed_response, calls=executed.calls)
 
         kwargs = {
             "model": model,
@@ -434,7 +650,10 @@ class OpenAICreativeProvider:
 
         return self._execute_response_operation(operation)
 
-    def _execute_response_operation(self, operation: Callable[[], object]) -> object:
+    def _execute_response_operation(
+        self,
+        operation: Callable[[], object],
+    ) -> _ExecutedResponse:
         retry_kwargs: dict[str, object] = {
             "policy": self._retry_policy,
             "breaker": self._breaker,
@@ -442,7 +661,23 @@ class OpenAICreativeProvider:
         }
         if self._random_value is not None:
             retry_kwargs["random_value"] = self._random_value
-        return execute_with_retries(operation, **retry_kwargs)
+        calls = 0
+
+        def counted_operation() -> object:
+            nonlocal calls
+            calls += 1
+            return operation()
+
+        try:
+            response = execute_with_retries(counted_operation, **retry_kwargs)
+        except ValidationError as error:
+            raise _TransportValidationFailure(
+                validation_error=error,
+                calls=calls,
+            ) from error
+        except Exception as error:
+            raise _TransportInvocationFailure(error=error, calls=calls) from error
+        return _ExecutedResponse(response=response, calls=calls)
 
 
 def _request_input(
@@ -468,11 +703,38 @@ def _request_input(
     ]
 
 
+@dataclass(frozen=True)
+class _ExecutedResponse:
+    response: object
+    calls: int
+
+
+class _TransportInvocationFailure(Exception):
+    def __init__(self, *, error: Exception, calls: int) -> None:
+        super().__init__(str(error))
+        self.error = error
+        self.calls = calls
+
+
+class _TransportValidationFailure(Exception):
+    def __init__(self, *, validation_error: ValidationError, calls: int) -> None:
+        super().__init__(str(validation_error))
+        self.validation_error = validation_error
+        self.calls = calls
+
+
 class _StructuredParseValidationError(Exception):
-    def __init__(self, *, validation_error: ValidationError, response: object) -> None:
+    def __init__(
+        self,
+        *,
+        validation_error: ValidationError,
+        response: object,
+        calls: int,
+    ) -> None:
         super().__init__(str(validation_error))
         self.validation_error = validation_error
         self.response = response
+        self.calls = calls
 
 
 def _repair_request_input(

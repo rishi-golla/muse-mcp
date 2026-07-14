@@ -13,11 +13,13 @@ from muse.models import (
     EvaluationScores,
     FramedTask,
     IdeaGenome,
+    OperationTrace,
     RunConfig,
     TaskContext,
+    TokenUsage,
 )
 from muse.population import PopulationManager
-from muse.providers import MeteredResponse, OperationQuote
+from muse.providers import MeteredProviderFailure, MeteredResponse, OperationQuote
 from muse.transforms import TransformationRequest
 
 
@@ -198,6 +200,239 @@ class InvalidEvaluationScaleProvider(DeterministicCreativeProvider):
         raise RuntimeError(
             "openai evaluate failed: score must be finite and between 0 and 1"
         )
+
+
+class UntrustedPartialSeedFailure(RuntimeError):
+    def __init__(self, partial_response: MeteredResponse[object]) -> None:
+        super().__init__("provider branch failed")
+        self.partial_response = partial_response
+
+
+class PartiallyFailingSeedProvider(DeterministicCreativeProvider):
+    def quote_seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> OperationQuote:
+        del framed_task, config
+        return OperationQuote(max_cost_usd=0.01, calls=2)
+
+    def seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        response = super().seed(framed_task, config)
+        partial_response = response.model_copy(
+            update={
+                "value": response.value[:1],
+                "cost_usd": 0.005,
+                "calls": 1,
+                "latency_ms": 17,
+                "request_id": "req_partial",
+                "operation_trace": OperationTrace.from_payload(
+                    request={"operation": "seed", "branches": [0]},
+                    response={"request_ids": ["req_partial"]},
+                ),
+            }
+        )
+        raise MeteredProviderFailure(
+            "provider branch failed",
+            partial_response=partial_response,
+        )
+
+
+class FirstBranchMeteredFailureProvider(DeterministicCreativeProvider):
+    def quote_seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> OperationQuote:
+        del framed_task, config
+        return OperationQuote(max_cost_usd=0.006, calls=2)
+
+    def seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        response = super().seed(framed_task, config)
+        raise MeteredProviderFailure(
+            "sanitized terminal repair failure",
+            partial_response=response.model_copy(
+                update={
+                    "value": (),
+                    "cost_usd": 0.006,
+                    "calls": 2,
+                    "latency_ms": 19,
+                    "usage": TokenUsage(input_tokens=20, output_tokens=8),
+                    "request_id": "req_failed_first",
+                    "operation_trace": OperationTrace.from_payload(
+                        request={"operation": "seed", "branches": [0]},
+                        response={"request_ids": ["req_failed_first"]},
+                    ),
+                }
+            ),
+        )
+
+
+class PerItemSeedMeteringProvider(DeterministicCreativeProvider):
+    def quote_seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> OperationQuote:
+        del framed_task, config
+        return OperationQuote(max_cost_usd=0.01, calls=2)
+
+    def seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        response = super().seed(framed_task, config)
+        first, second = response.value
+        first_meter = response.model_copy(
+            update={
+                "value": first,
+                "cost_usd": 0.002,
+                "calls": 1,
+                "latency_ms": 20,
+            }
+        )
+        second_meter = response.model_copy(
+            update={
+                "value": second,
+                "cost_usd": 0.008,
+                "calls": 1,
+                "latency_ms": 80,
+            }
+        )
+        return response.model_copy(
+            update={
+                "cost_usd": 0.01,
+                "calls": 2,
+                "latency_ms": 100,
+                "item_metering": (first_meter, second_meter),
+            }
+        )
+
+
+class FloatAggregatedItemMeteringProvider(DeterministicCreativeProvider):
+    def quote_seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> OperationQuote:
+        del framed_task, config
+        return OperationQuote(max_cost_usd=0.31, calls=2)
+
+    def seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        response = super().seed(framed_task, config)
+        first, second = response.value
+        first_meter = response.model_copy(
+            update={
+                "value": first,
+                "cost_usd": 0.1,
+                "calls": 1,
+                "latency_ms": 20,
+            }
+        )
+        second_meter = response.model_copy(
+            update={
+                "value": second,
+                "cost_usd": 0.2,
+                "calls": 1,
+                "latency_ms": 80,
+            }
+        )
+        return response.model_copy(
+            update={
+                "cost_usd": 0.1 + 0.2,
+                "calls": 2,
+                "latency_ms": 100,
+                "item_metering": (first_meter, second_meter),
+            }
+        )
+
+
+class InconsistentItemMeteringProvider(PerItemSeedMeteringProvider):
+    def seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        response = super().seed(framed_task, config)
+        return response.model_copy(update={"cost_usd": 0.009})
+
+
+class SpoofedItemMeteringProvider(PerItemSeedMeteringProvider):
+    def seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        response = super().seed(framed_task, config)
+        first, *remaining = response.item_metering
+        return response.model_copy(
+            update={
+                "item_metering": (
+                    first.model_copy(update={"provider": "spoofed-provider"}),
+                    *remaining,
+                )
+            }
+        )
+
+
+class PartialCallOverageProvider(DeterministicCreativeProvider):
+    def quote_seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> OperationQuote:
+        del framed_task, config
+        return OperationQuote(max_cost_usd=0.01, calls=1)
+
+    def seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        response = super().seed(framed_task, config)
+        partial_response = response.model_copy(
+            update={
+                "value": response.value[:1],
+                "cost_usd": 0.005,
+                "calls": 4,
+                "latency_ms": 17,
+            }
+        )
+        raise MeteredProviderFailure(
+            "provider branch failed",
+            partial_response=partial_response,
+        )
+
+
+class UntrustedPartialResponseProvider(DeterministicCreativeProvider):
+    def seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        response = super().seed(framed_task, config)
+        partial_response = response.model_copy(
+            update={
+                "value": response.value[:1],
+                "cost_usd": 0.005,
+                "calls": 1,
+                "latency_ms": 17,
+            }
+        )
+        raise UntrustedPartialSeedFailure(partial_response)
 
 
 class RecordingPopulation(PopulationManager):
@@ -454,6 +689,182 @@ def test_engine_handles_seed_exception_without_fabricating_spend() -> None:
     assert result.all_candidates == ()
     assert [record.stage for record in result.spend_records] == ["framing"]
     assert result.stopped_reason == "provider_error"
+
+
+def test_engine_charges_and_traces_partial_seed_failure() -> None:
+    result = build_engine(PartiallyFailingSeedProvider()).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert result.all_candidates == ()
+    assert [record.stage for record in result.spend_records] == ["framing", "seeding"]
+    assert result.spend_records[1].cost_usd == 0.005
+    assert result.spend_records[1].calls == 1
+    assert result.spend_records[1].latency_ms == 17
+    assert result.spend_records[1].request_id == "req_partial"
+    assert result.spend_records[1].operation_trace is not None
+    assert result.errors[-1].cost_incurred is True
+    assert result.errors[-1].message == "provider operation failed"
+    assert result.stopped_reason == "provider_error"
+
+
+def test_engine_charges_first_branch_terminal_failure_exactly_once() -> None:
+    result = build_engine(FirstBranchMeteredFailureProvider()).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert result.all_candidates == ()
+    seeding_records = [
+        record for record in result.spend_records if record.stage == "seeding"
+    ]
+    assert len(seeding_records) == 1
+    assert seeding_records[0].cost_usd == 0.006
+    assert seeding_records[0].calls == 2
+    assert seeding_records[0].usage == TokenUsage(input_tokens=20, output_tokens=8)
+    assert result.errors[-1].cost_incurred is True
+
+
+def test_engine_assigns_exact_item_metering_to_seed_candidates() -> None:
+    result = build_engine(PerItemSeedMeteringProvider()).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=2,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert [candidate.branch_cost_usd for candidate in result.all_candidates] == [
+        0.007,
+        0.013,
+    ]
+    assert [candidate.branch_latency_ms for candidate in result.all_candidates] == [21.0, 81.0]
+
+
+def test_engine_accepts_float_aggregated_item_metering() -> None:
+    result = build_engine(FloatAggregatedItemMeteringProvider()).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=2,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert [candidate.branch_cost_usd for candidate in result.all_candidates] == [
+        0.105,
+        0.205,
+    ]
+    assert result.errors == ()
+
+
+def test_engine_rejects_item_metering_with_inconsistent_aggregate_totals() -> None:
+    result = build_engine(InconsistentItemMeteringProvider()).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=2,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert result.all_candidates == ()
+    assert [record.stage for record in result.spend_records] == ["framing", "seeding"]
+    assert result.spend_records[1].cost_usd == 0.009
+    assert result.errors[-1].category == "validation_error"
+    assert result.errors[-1].cost_incurred is True
+
+
+def test_engine_rejects_item_metering_with_spoofed_provider_identity() -> None:
+    result = build_engine(SpoofedItemMeteringProvider()).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=2,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert result.all_candidates == ()
+    assert [record.stage for record in result.spend_records] == ["framing", "seeding"]
+    assert result.errors[-1].category == "validation_error"
+    assert result.errors[-1].cost_incurred is True
+
+
+def test_engine_records_partial_call_count_overage() -> None:
+    result = build_engine(PartialCallOverageProvider()).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert result.all_candidates == ()
+    assert [record.stage for record in result.spend_records] == ["framing", "seeding"]
+    assert result.spend_records[1].cost_usd == 0.005
+    assert result.spend_records[1].calls == 4
+    assert result.errors[-1].category == "overage_error"
+    assert result.errors[-1].message == "provider cost or call count exceeded quote"
+    assert result.errors[-1].cost_incurred is True
+
+
+def test_engine_ignores_untrusted_partial_response_attribute() -> None:
+    result = build_engine(UntrustedPartialResponseProvider()).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert [record.stage for record in result.spend_records] == ["framing"]
+    assert result.errors[-1].category == "provider_error"
+    assert result.errors[-1].cost_incurred is False
 
 
 def test_engine_records_seed_cost_above_quote_even_past_budget() -> None:

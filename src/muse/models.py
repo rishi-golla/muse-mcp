@@ -21,6 +21,8 @@ from pydantic import (
     model_validator,
 )
 
+from muse.branching import BranchStrategy
+
 
 def reject_blank_text(value: str) -> str:
     if not value.strip():
@@ -115,6 +117,7 @@ class IdeaGenome(FrozenModel):
     parent_ids: tuple[UUID, ...] = ()
     transformations: tuple[str, ...] = ()
     inspiration_kind: InspirationKind = InspirationKind.INDEPENDENT
+    branch_strategy: BranchStrategy = BranchStrategy.CONSTRAINT_INVERSION
     scores: EvaluationScores | None = None
     branch_cost_usd: float = Field(default=0.0, strict=True, ge=0.0)
     branch_latency_ms: float = Field(default=0.0, strict=True, ge=0.0)
@@ -333,6 +336,7 @@ class RunError(FrozenModel):
 
 FINGERPRINT_PATTERN = re.compile(r"[0-9a-fA-F]{64}\Z")
 DEFAULT_IDEA_CONTRACT_VALUES = {
+    "branch_strategy": "constraint_inversion",
     "inputs_required": [],
     "outputs_produced": [],
     "agent_workflow": [],

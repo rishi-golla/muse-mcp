@@ -391,6 +391,42 @@ If live configuration is missing or invalid, the MCP tool returns
 `stopped_reason: "configuration_error"` with a structured error and no finalists
 instead of charging provider calls.
 
+### Live branch evidence
+
+For `provider_mode: "live_openai"`, `seed_count` requests an ordered schedule of independent
+live model trajectories rather than one shared batched seed response. The response records
+the ordered creative strategies and the number of independently completed seed branches in
+`config.branch_generation`:
+
+```json
+{
+  "seed_count": 4,
+  "branch_generation": {
+    "strategies": [
+      "constraint_inversion",
+      "failure_first",
+      "cross_domain_transfer",
+      "systems_effects"
+    ],
+    "independent_call_count": 4
+  }
+}
+```
+
+`strategies` lists the ordered requested strategy directives. `independent_call_count`
+counts only evidenced completed branches from the run's metered seed trace, so it can be
+lower than `seed_count` after a branch failure and is zero when seeding never starts.
+Evidence is accepted only when the requested branches are an ordered prefix of the exact
+strategy schedule, each nested request contains the complete canonical branch directive
+including its exact instruction, every branch has non-empty structurally valid nested request
+and response traces, and their calls and token usage exactly reconcile with the charged
+seeding spend record. Placeholders, reordered or forged branches, duplicates, and
+inconsistent accounting produce a zero count.
+
+The deterministic provider remains a no-network test fixture. Its metadata
+uses `independent_call_count: 0`, so a fixture result does not prove a provider
+call or provider spend.
+
 ### Opt-in search context
 
 MCP search context is explicit. The default is `off`, so `quick`, `standard`,

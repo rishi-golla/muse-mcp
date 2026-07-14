@@ -149,6 +149,21 @@ and let the runner capture generation and judge exceptions as failures. A qualit
 report that omits failed attempts, spend, latency, or deterministic metadata is
 incomplete and should not be used for a comparative claim.
 
+When a live Muse adapter requests seeds, `seed_count` requests an ordered schedule of
+independent live model trajectories with distinct branch strategies, not items from one
+batched seed response. The MCP response exposes those strategy names and the number of
+independently completed seed branches in `config.branch_generation`.
+Deterministic fixture runs do not report provider calls or spend: their
+`independent_call_count` is zero and their metadata is only contract evidence.
+The strategy names are ordered requested strategy directives; the count covers only
+evidenced completed branches from the metered seed trace, not planned branches.
+Evidence qualifies only when the requested branches are an ordered prefix of the exact
+strategy schedule, each nested request contains the complete canonical branch directive
+including its exact instruction, each branch contains non-empty structurally valid nested
+request and response traces, and the nested calls and token usage exactly reconcile with the
+charged seeding spend record. Placeholder, reordered, duplicate, forged, or inconsistently
+metered entries report zero completed branches.
+
 ## Quality-claim rule
 
 Unit tests do not establish creative quality. They establish that contracts,

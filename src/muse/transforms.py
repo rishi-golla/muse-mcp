@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import Field, model_validator
 
+from muse.branching import BranchStrategy
 from muse.models import FrozenModel, IdeaGenome, RequiredText
 
 
@@ -48,6 +49,14 @@ def expected_transformation_history(
             merged.append(transformation)
             seen.add(transformation)
     return (*merged, operator.value)
+
+
+def transformed_branch_strategy(
+    parents: tuple[IdeaGenome, ...],
+) -> BranchStrategy:
+    if not parents:
+        raise ValueError("transform requires at least one parent")
+    return parents[0].branch_strategy
 
 
 class TransformationRequest(FrozenModel):

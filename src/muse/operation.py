@@ -16,6 +16,7 @@ from muse.providers import MeteredResponse, OperationQuote
 from muse.transforms import (
     TransformationRequest,
     expected_transformation_history,
+    transformed_branch_strategy,
 )
 
 
@@ -97,6 +98,8 @@ def validate_transform_payload(
     expected_history = expected_transformation_history(request.operator, parents)
     if candidate.transformations != expected_history:
         raise ValueError("transform history does not exactly match its ancestry")
+    if candidate.branch_strategy is not transformed_branch_strategy(parents):
+        raise ValueError("transform branch strategy does not match its ancestry")
     if candidate.id in candidate_ids:
         raise ValueError("transform output ID must be new")
     return candidate
