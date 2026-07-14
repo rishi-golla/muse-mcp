@@ -115,6 +115,23 @@ def test_public_docs_include_copy_pasteable_first_run_path() -> None:
         assert phrase in combined
 
 
+def test_readme_leads_with_agent_first_live_mcp_onboarding() -> None:
+    readme = _read_text("README.md").casefold()
+
+    for phrase in (
+        "paste this into your coding agent",
+        "agent-first quickstart",
+        "live openai",
+        "muse_plan",
+        "normal",
+        "extensive",
+        "never commit secrets",
+        "docs/integrations/mcp-agent-hosts.md",
+        "docs/quality/benchmarking.md",
+    ):
+        assert phrase in readme
+
+
 def test_public_docs_define_library_first_quality_benchmark_evidence() -> None:
     readme = _read_text("README.md").casefold()
     benchmark = _read_text("docs/quality/benchmarking.md").casefold()
