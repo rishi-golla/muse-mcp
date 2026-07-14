@@ -13,6 +13,7 @@ from muse.models import (
     EvaluationScores,
     FramedTask,
     IdeaGenome,
+    OperationTrace,
     RunConfig,
     TaskContext,
 )
@@ -197,6 +198,85 @@ class InvalidEvaluationScaleProvider(DeterministicCreativeProvider):
     ) -> MeteredResponse[EvaluationScores]:
         raise RuntimeError(
             "openai evaluate failed: score must be finite and between 0 and 1"
+        )
+
+
+class PartialSeedFailure(RuntimeError):
+    def __init__(self, partial_response: MeteredResponse[object]) -> None:
+        super().__init__("provider branch failed")
+        self.partial_response = partial_response
+
+
+class PartiallyFailingSeedProvider(DeterministicCreativeProvider):
+    def quote_seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> OperationQuote:
+        del framed_task, config
+        return OperationQuote(max_cost_usd=0.01, calls=2)
+
+    def seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        response = super().seed(framed_task, config)
+        partial_response = response.model_copy(
+            update={
+                "value": response.value[:1],
+                "cost_usd": 0.005,
+                "calls": 1,
+                "latency_ms": 17,
+                "request_id": "req_partial",
+                "operation_trace": OperationTrace.from_payload(
+                    request={"operation": "seed", "branches": [0]},
+                    response={"request_ids": ["req_partial"]},
+                ),
+            }
+        )
+        raise PartialSeedFailure(partial_response)
+
+
+class PerItemSeedMeteringProvider(DeterministicCreativeProvider):
+    def quote_seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> OperationQuote:
+        del framed_task, config
+        return OperationQuote(max_cost_usd=0.01, calls=2)
+
+    def seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        response = super().seed(framed_task, config)
+        first, second = response.value
+        first_meter = response.model_copy(
+            update={
+                "value": first,
+                "cost_usd": 0.002,
+                "calls": 1,
+                "latency_ms": 20,
+            }
+        )
+        second_meter = response.model_copy(
+            update={
+                "value": second,
+                "cost_usd": 0.008,
+                "calls": 1,
+                "latency_ms": 80,
+            }
+        )
+        return response.model_copy(
+            update={
+                "cost_usd": 0.01,
+                "calls": 2,
+                "latency_ms": 100,
+                "item_metering": (first_meter, second_meter),
+            }
         )
 
 
@@ -454,6 +534,53 @@ def test_engine_handles_seed_exception_without_fabricating_spend() -> None:
     assert result.all_candidates == ()
     assert [record.stage for record in result.spend_records] == ["framing"]
     assert result.stopped_reason == "provider_error"
+
+
+def test_engine_charges_and_traces_partial_seed_failure() -> None:
+    result = build_engine(PartiallyFailingSeedProvider()).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert result.all_candidates == ()
+    assert [record.stage for record in result.spend_records] == ["framing", "seeding"]
+    assert result.spend_records[1].cost_usd == 0.005
+    assert result.spend_records[1].calls == 1
+    assert result.spend_records[1].latency_ms == 17
+    assert result.spend_records[1].request_id == "req_partial"
+    assert result.spend_records[1].operation_trace is not None
+    assert result.errors[-1].cost_incurred is True
+    assert result.errors[-1].message == "provider operation failed"
+    assert result.stopped_reason == "provider_error"
+
+
+def test_engine_assigns_exact_item_metering_to_seed_candidates() -> None:
+    result = build_engine(PerItemSeedMeteringProvider()).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=2,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert [candidate.branch_cost_usd for candidate in result.all_candidates] == [
+        0.007,
+        0.013,
+    ]
+    assert [candidate.branch_latency_ms for candidate in result.all_candidates] == [21.0, 81.0]
 
 
 def test_engine_records_seed_cost_above_quote_even_past_budget() -> None:

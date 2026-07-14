@@ -29,7 +29,7 @@ from muse.openai_schemas import (
     OpenAIIdea,
 )
 from muse.pricing import PricingTable
-from muse.providers import MeteredResponse, OperationQuote
+from muse.providers import ItemMetering, MeteredProviderFailure, MeteredResponse, OperationQuote
 from muse.reliability import CircuitBreaker, RetryPolicy, execute_with_retries
 from muse.transforms import TransformationRequest
 
@@ -179,26 +179,39 @@ class OpenAICreativeProvider:
         framed_task: FramedTask,
         config: RunConfig,
     ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
-        branches = tuple(
-            (
-                directive,
-                self._call_structured(
-                    operation="seed",
-                    model_role="economy",
-                    model=self._config.economy_model,
-                    schema=OpenAIIdea,
-                    domain_payload={
-                        "framed_task": framed_task.model_dump(mode="json"),
-                        "branch_directive": directive.model_dump(mode="json"),
-                    },
-                    convert=lambda parsed, strategy=directive.strategy: parsed.to_seed(
-                        branch_strategy=strategy
-                    ),
-                ),
+        branches: list[tuple[BranchDirective, MeteredResponse[IdeaGenome]]] = []
+        try:
+            for directive in branch_directives(config.seed_count):
+                branches.append(
+                    (
+                        directive,
+                        self._call_structured(
+                            operation="seed",
+                            model_role="economy",
+                            model=self._config.economy_model,
+                            schema=OpenAIIdea,
+                            domain_payload={
+                                "framed_task": framed_task.model_dump(mode="json"),
+                                "branch_directive": directive.model_dump(mode="json"),
+                            },
+                            convert=lambda parsed, strategy=directive.strategy: parsed.to_seed(
+                                branch_strategy=strategy
+                            ),
+                        ),
+                    )
+                )
+            return self._aggregate_seed_branches(tuple(branches))
+        except Exception as error:
+            if not branches:
+                raise
+            partial_response = self._aggregate_seed_branches(
+                tuple(branches),
+                validate_unique=False,
             )
-            for directive in branch_directives(config.seed_count)
-        )
-        return self._aggregate_seed_branches(branches)
+            raise MeteredProviderFailure(
+                str(error),
+                partial_response=partial_response,
+            ) from error
 
     def quote_transform(
         self,
@@ -279,12 +292,14 @@ class OpenAICreativeProvider:
     def _aggregate_seed_branches(
         self,
         branches: tuple[tuple[BranchDirective, MeteredResponse[IdeaGenome]], ...],
+        *,
+        validate_unique: bool = True,
     ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
         if not branches:
             raise RuntimeError("seed branch generation returned no branches")
 
         seeds = tuple(response.value for _, response in branches)
-        if len({seed.id for seed in seeds}) != len(seeds):
+        if validate_unique and len({seed.id for seed in seeds}) != len(seeds):
             raise RuntimeError("seed branches contain duplicate normalized ideas")
 
         usage = _sum_usage(response.usage for _, response in branches)
@@ -346,6 +361,15 @@ class OpenAICreativeProvider:
             ),
             request_id=last_response.request_id,
             operation_trace=trace,
+            item_metering=tuple(
+                ItemMetering.model_validate(
+                    response.model_dump(
+                        mode="python",
+                        exclude={"value", "item_metering"},
+                    )
+                )
+                for _, response in branches
+            ),
         )
 
     def _call_structured(

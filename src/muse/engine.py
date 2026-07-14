@@ -403,7 +403,40 @@ class CreativeEngine:
                     cost_incurred=False,
                 )
                 return [], "provider_error"
-            except Exception:
+            except Exception as error:
+                partial_response = getattr(error, "partial_response", None)
+                if partial_response is not None:
+                    try:
+                        partial = validate_metered_envelope(partial_response)
+                    except ValidationError:
+                        _error(
+                            errors,
+                            stage="seeding",
+                            provider=providers.seeder.name,
+                            category="validation_error",
+                            message="provider returned invalid metered response",
+                            cost_incurred=False,
+                        )
+                        return [], "provider_error"
+                    if not self._charge_response(
+                        partial,
+                        seed_quote,
+                        reservation,
+                        budget,
+                        stage="seeding",
+                        expected_provider=providers.seeder.name,
+                        errors=errors,
+                    ):
+                        return [], "provider_error"
+                    _error(
+                        errors,
+                        stage="seeding",
+                        provider=providers.seeder.name,
+                        category="provider_error",
+                        message="provider operation failed",
+                        cost_incurred=True,
+                    )
+                    return [], "provider_error"
                 _error(
                     errors,
                     stage="seeding",
@@ -443,11 +476,22 @@ class CreativeEngine:
                 )
                 return [], "provider_error"
 
-            seed_cost = Decimal(str(seeded.cost_usd)) / Decimal(len(seeds))
-            seed_latency = Decimal(str(seeded.latency_ms)) / Decimal(len(seeds))
+            if seeded.item_metering and len(seeded.item_metering) == len(seeds):
+                seed_metering = tuple(
+                    (
+                        Decimal(str(item.cost_usd)),
+                        Decimal(str(item.latency_ms)),
+                    )
+                    for item in seeded.item_metering
+                )
+            else:
+                seed_cost = Decimal(str(seeded.cost_usd)) / Decimal(len(seeds))
+                seed_latency = Decimal(str(seeded.latency_ms)) / Decimal(len(seeds))
+                seed_metering = tuple((seed_cost, seed_latency) for _ in seeds)
             evaluated: list[IdeaGenome] = []
             had_evaluation_failure = False
             for index, candidate in enumerate(seeds):
+                seed_cost, seed_latency = seed_metering[index]
                 attributed = _validated_candidate(
                     candidate,
                     branch_cost=seed_cost,
@@ -469,11 +513,14 @@ class CreativeEngine:
                     evaluated.append(attributed)
                     if not continue_evaluating:
                         for remaining in seeds[index + 1 :]:
+                            remaining_cost, remaining_latency = seed_metering[
+                                len(evaluated)
+                            ]
                             evaluated.append(
                                 _validated_candidate(
                                     remaining,
-                                    branch_cost=seed_cost,
-                                    branch_latency=seed_latency,
+                                    branch_cost=remaining_cost,
+                                    branch_latency=remaining_latency,
                                 )
                             )
                         break

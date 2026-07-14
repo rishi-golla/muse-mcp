@@ -994,6 +994,13 @@ def test_openai_provider_seeds_independent_branches_with_aggregate_telemetry() -
     assert response.latency_ms == 250
     assert response.calls == 2
     assert response.request_id == "req_2"
+    assert [
+        (item.cost_usd, item.calls, item.latency_ms, item.request_id)
+        for item in response.item_metering
+    ] == [
+        (pytest.approx(0.000242), 1, 125, "req_1"),
+        (pytest.approx(0.000242), 1, 125, "req_2"),
+    ]
     assert response.operation_trace is not None
     trace_request = json.loads(response.operation_trace.request_json)
     trace_response = json.loads(response.operation_trace.response_json)
@@ -1008,7 +1015,7 @@ def test_openai_provider_seeds_independent_branches_with_aggregate_telemetry() -
     ]
 
 
-def test_openai_provider_discards_partial_seed_batch_when_a_branch_fails() -> None:
+def test_openai_provider_preserves_partial_seed_metering_when_a_branch_fails() -> None:
     frame = FramedTask(
         context=TaskContext(goal="Improve decisions"),
         assumptions=("Meetings are required",),
@@ -1023,13 +1030,23 @@ def test_openai_provider_discards_partial_seed_batch_when_a_branch_fails() -> No
     )
     provider = build_provider(client)
 
-    with pytest.raises(RuntimeError, match="branch two failed"):
+    with pytest.raises(RuntimeError, match="branch two failed") as error:
         provider.seed(frame, RunConfig(seed_count=3, finalist_count=1))
 
     assert client.call_count == 2
+    assert type(error.value).__name__ == "MeteredProviderFailure"
+    partial_response = error.value.partial_response
+    assert len(partial_response.value) == 1
+    assert partial_response.cost_usd == pytest.approx(0.00026)
+    assert partial_response.calls == 1
+    assert partial_response.latency_ms == 125
+    assert partial_response.request_id == "req_1"
+    assert partial_response.operation_trace is not None
+    trace_response = json.loads(partial_response.operation_trace.response_json)
+    assert trace_response["request_ids"] == ["req_1"]
 
 
-def test_openai_provider_rejects_duplicate_seed_outputs_across_branches() -> None:
+def test_openai_provider_preserves_completed_metering_when_seed_outputs_duplicate() -> None:
     frame = FramedTask(
         context=TaskContext(goal="Improve decisions"),
         assumptions=("Meetings are required",),
@@ -1039,7 +1056,16 @@ def test_openai_provider_rejects_duplicate_seed_outputs_across_branches() -> Non
     client = FakeOpenAIClient(parsed_sequence=[duplicate, duplicate])
     provider = build_provider(client)
 
-    with pytest.raises(RuntimeError, match="duplicate normalized ideas"):
+    with pytest.raises(RuntimeError, match="duplicate normalized ideas") as error:
         provider.seed(frame, RunConfig(seed_count=2, finalist_count=1))
 
     assert client.call_count == 2
+    assert type(error.value).__name__ == "MeteredProviderFailure"
+    partial_response = error.value.partial_response
+    assert len(partial_response.value) == 2
+    assert partial_response.cost_usd == pytest.approx(0.00052)
+    assert partial_response.calls == 2
+    assert partial_response.latency_ms == 250
+    assert partial_response.operation_trace is not None
+    trace_response = json.loads(partial_response.operation_trace.response_json)
+    assert trace_response["request_ids"] == ["req_1", "req_2"]
