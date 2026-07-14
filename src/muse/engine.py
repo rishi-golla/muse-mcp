@@ -48,6 +48,7 @@ OPERATOR_SCHEDULE = (
     OperatorName.SUBTRACT,
     OperatorName.CONTRADICT,
 )
+MONEY_TOLERANCE = Decimal("0.000000000001")
 
 
 def _exceeds_quote(response: MeteredResponse[object], quote: OperationQuote) -> bool:
@@ -124,8 +125,9 @@ def _validated_seed_item_metering(
         output_tokens=sum(item.usage.output_tokens for item in items),
         reasoning_tokens=sum(item.usage.reasoning_tokens for item in items),
     )
+    # Provider costs cross this boundary as floats; allow only binary-rounding noise.
     if (
-        total_cost != Decimal(str(response.cost_usd))
+        abs(total_cost - Decimal(str(response.cost_usd))) > MONEY_TOLERANCE
         or total_latency != response.latency_ms
         or total_calls != response.calls
         or total_usage != response.usage
@@ -860,7 +862,7 @@ class CreativeEngine:
                 stage=stage,
                 provider=expected_provider,
                 category="overage_error",
-                message="provider cost exceeded quote",
+                message="provider cost or call count exceeded quote",
                 cost_incurred=True,
             )
             return False

@@ -283,6 +283,48 @@ class PerItemSeedMeteringProvider(DeterministicCreativeProvider):
         )
 
 
+class FloatAggregatedItemMeteringProvider(DeterministicCreativeProvider):
+    def quote_seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> OperationQuote:
+        del framed_task, config
+        return OperationQuote(max_cost_usd=0.31, calls=2)
+
+    def seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        response = super().seed(framed_task, config)
+        first, second = response.value
+        first_meter = response.model_copy(
+            update={
+                "value": first,
+                "cost_usd": 0.1,
+                "calls": 1,
+                "latency_ms": 20,
+            }
+        )
+        second_meter = response.model_copy(
+            update={
+                "value": second,
+                "cost_usd": 0.2,
+                "calls": 1,
+                "latency_ms": 80,
+            }
+        )
+        return response.model_copy(
+            update={
+                "cost_usd": 0.1 + 0.2,
+                "calls": 2,
+                "latency_ms": 100,
+                "item_metering": (first_meter, second_meter),
+            }
+        )
+
+
 class InconsistentItemMeteringProvider(PerItemSeedMeteringProvider):
     def seed(
         self,
@@ -661,6 +703,27 @@ def test_engine_assigns_exact_item_metering_to_seed_candidates() -> None:
     assert [candidate.branch_latency_ms for candidate in result.all_candidates] == [21.0, 81.0]
 
 
+def test_engine_accepts_float_aggregated_item_metering() -> None:
+    result = build_engine(FloatAggregatedItemMeteringProvider()).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=2,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert [candidate.branch_cost_usd for candidate in result.all_candidates] == [
+        0.105,
+        0.205,
+    ]
+    assert result.errors == ()
+
+
 def test_engine_rejects_item_metering_with_inconsistent_aggregate_totals() -> None:
     result = build_engine(InconsistentItemMeteringProvider()).run(
         TaskContext(goal="Invent a new decision process."),
@@ -721,6 +784,7 @@ def test_engine_records_partial_call_count_overage() -> None:
     assert result.spend_records[1].cost_usd == 0.005
     assert result.spend_records[1].calls == 4
     assert result.errors[-1].category == "overage_error"
+    assert result.errors[-1].message == "provider cost or call count exceeded quote"
     assert result.errors[-1].cost_incurred is True
 
 
