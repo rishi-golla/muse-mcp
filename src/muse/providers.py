@@ -18,6 +18,19 @@ from muse.models import (
 from muse.transforms import TransformationRequest
 
 
+class ItemMetering(FrozenModel):
+    provider: RequiredText
+    model: RequiredText | None = None
+    cost_usd: float = Field(strict=True, ge=0)
+    calls: int = Field(default=1, strict=True, ge=1)
+    latency_ms: int = Field(strict=True, ge=0)
+    usage: TokenUsage = Field(default_factory=TokenUsage)
+    pricing_version: RequiredText | None = None
+    cost_is_estimated: bool = Field(default=False, strict=True)
+    request_id: RequiredText | None = None
+    operation_trace: OperationTrace | None = None
+
+
 class MeteredResponse[T](FrozenModel):
     value: T
     provider: RequiredText
@@ -30,6 +43,20 @@ class MeteredResponse[T](FrozenModel):
     cost_is_estimated: bool = Field(default=False, strict=True)
     request_id: RequiredText | None = None
     operation_trace: OperationTrace | None = None
+    item_metering: tuple[ItemMetering, ...] = ()
+
+
+class MeteredProviderFailure(RuntimeError):
+    """A sanitized provider failure with metering for completed work."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        partial_response: MeteredResponse[object],
+    ) -> None:
+        super().__init__(message)
+        self.partial_response = partial_response
 
 
 class OperationQuote(FrozenModel):

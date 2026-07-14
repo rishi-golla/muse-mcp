@@ -25,7 +25,7 @@ def test_live_openai_smoke(tmp_path) -> None:
             "live",
             "Invent one reversible way to coordinate a two-person decision.",
             "--budget-usd",
-            "0.03",
+            "0.04",
             "--seed-count",
             "2",
             "--finalist-count",

@@ -18,6 +18,7 @@ from muse.transforms import (
     OperatorName,
     TransformationRequest,
     expected_transformation_history,
+    transformed_branch_strategy,
 )
 
 DETERMINISTIC_NAMESPACE = UUID("5c174f20-7173-54ec-8a72-10d7217bc63d")
@@ -382,6 +383,7 @@ class DeterministicCreativeProvider:
                 parents,
             ),
             inspiration_kind=InspirationKind.SYNTHESIZED,
+            branch_strategy=transformed_branch_strategy(parents),
         )
         return MeteredResponse(
             value=child,

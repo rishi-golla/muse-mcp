@@ -1,14 +1,19 @@
 # Agent Dogfood Playbook
 
-This playbook is for using muse while coding normally in another repository. The integration surface is the MCP tool `muse_plan`; CLI commands are only smoke tests.
+This playbook is for using muse while coding normally in another repository.
+The integration surface is the MCP tool `muse_plan`; users should not run
+smoke-test commands during normal work.
 
-## Effort Presets
+## Agent Modes
 
-- `quick`: default for normal coding loops. Cheap, one finalist, no generations.
-- `standard`: use after the first verification failure or when repo context is ambiguous.
-- `deep`: use before high-impact edits, architecture choices, or repeated failure loops.
+- `mode: "normal"`: default for most creative planning and failed-test recovery.
+- `mode: "extensive"`: use after repeated failed verification, ambiguous repo
+  context, high-impact architecture choices, or planning where a weak answer
+  would be expensive.
 
-Explicit values such as `budget_usd`, `seed_count`, `finalist_count`, and `max_generations` override the preset for that call.
+The agent should gather repo facts itself and should not ask the human for
+budget values, seed counts, repo-language flags, framework flags, or generation
+counts.
 
 ## Provider Posture
 
@@ -19,27 +24,25 @@ settings to every call:
 
 ```powershell
 $env:MUSE_PROVIDER_MODE = "live_openai"
-$env:MUSE_EFFORT = "quick"
+$env:MUSE_MODE = "normal"
 $env:MUSE_PRIVACY = "research"
-$env:MUSE_BUDGET_USD = "0.25"
 $env:MUSE_SEARCH_MODE = "off"
 $env:MUSE_SEARCH_PROVIDER = "auto"
 $env:MUSE_SEARCH_STRICT = "false"
 ```
 
-The deterministic test provider is only for no-network CI, smoke tests, and
-protocol checks. Use `--provider-mode deterministic` or
-`MUSE_PROVIDER_MODE=deterministic` when you need that mode, but do
-not judge creative quality from it.
+The deterministic provider is an internal maintainer fixture for no-network CI
+and protocol regression tests. Public MCP calls reject it unless the maintainer
+sets `MUSE_ENABLE_TEST_PROVIDER=1`.
 
 ## Opt-in Search Context
 
 Search context is off by default. Use `search_mode: "light"` when a task would
 benefit from bounded outside context, and `search_mode: "deep"` only before
 important planning decisions where the extra latency and possible provider cost
-are justified. Use `search_provider` to choose `auto`, `deterministic`, `exa`,
-or `brave`. Use strict search only when the agent should fail closed instead of
-continuing without search context. This is opt-in search, not repo crawling.
+are justified. Use `search_provider` to choose `auto`, `exa`, or `brave`. Use
+strict search only when the agent should fail closed instead of continuing
+without search context. This is opt-in search, not repo crawling.
 
 ```powershell
 $env:MUSE_SEARCH_MODE = "off"
@@ -62,7 +65,7 @@ prompts, evaluator pressure, search policy, or agent guidance.
 
 ```powershell
 muse-dogfood-quality `
-  --provider-mode deterministic `
+  --provider-mode live_openai `
   --case agent-retry-python `
   --variant search-off `
   --json
@@ -101,7 +104,7 @@ context is part of the decision.
 
 V4-C surfaces advisory warning fields in every normal `muse_plan` response.
 Use top-level `quality_warnings` and `quality_summary` to decide whether an
-agent should ask for a stronger effort level, add more repo signals, or choose a
+agent should ask for `mode: "extensive"`, add more repo signals, or choose a
 different finalist. Each finalist also includes `quality_warnings` so agents can
 avoid generic options without running the separate dogfood CLI.
 
@@ -116,10 +119,9 @@ V4-D adds `quality_action_policy` to `muse_plan` output and mirrors it inside
 `recommended_actions`, and `warning_actions`.
 
 Use it as routing guidance. If `status` is `needs_retry`, the agent should add
-repo signals or request the recommended effort level before relying on the
-finalist. If `escalate_effort_to` is set, the host may call `muse_plan`
-again with that effort, but muse does not automatically spend that
-budget.
+repo signals or request the recommended mode before relying on the finalist.
+If retry is needed, the host may call `muse_plan` again with
+`mode: "extensive"`, but muse does not automatically spend again.
 
 ## V4-E suggested next call
 
@@ -128,7 +130,7 @@ recommends review or retry. The same object is mirrored inside
 `agent_guidance.suggested_next_call`.
 
 The suggestion names `muse_plan`, sets `automatic` to `false`, carries safe
-request fields such as goal, provider mode, privacy, effort, and search policy,
+request fields such as goal, privacy, mode, and search policy,
 and includes `repo_signal_requests` describing which observed facts the host
 should pass again or improve. It does not copy raw `repo_signals`, logs, or
 failure excerpts into the suggestion.
@@ -158,7 +160,7 @@ Call `muse_plan` before editing when the task has multiple plausible approaches,
 ```json
 {
   "goal": "Design a bounded fix plan for the failing retry tests",
-  "effort": "quick",
+  "mode": "normal",
   "repo_signals": {
     "changed_files": ["src/agent/retry.py"],
     "test_commands": ["python -m pytest tests/test_retry.py"],
@@ -183,7 +185,7 @@ Call `muse_plan` after a failed test when the next action is not obvious. Includ
 ```json
 {
   "goal": "Recover from failed tests after changing retry backoff behavior",
-  "effort": "standard",
+  "mode": "extensive",
   "repo_signals": {
     "changed_files": ["src/agent/retry.py"],
     "test_commands": ["python -m pytest tests/test_retry.py -q"],
@@ -194,7 +196,8 @@ Call `muse_plan` after a failed test when the next action is not obvious. Includ
 }
 ```
 
-Use `deep` only after repeated failures, broad architectural uncertainty, or when a wrong fix would be expensive to unwind.
+Use `mode: "extensive"` only after repeated failures, broad architectural
+uncertainty, or when a wrong fix would be expensive to unwind.
 
 ## after-fix
 
@@ -203,7 +206,7 @@ Call `muse_plan` after a fix only when you need a verification strategy, follow-
 ```json
 {
   "goal": "Choose the next verification step after retry tests passed",
-  "effort": "quick",
+  "mode": "normal",
   "repo_signals": {
     "changed_files": ["src/agent/retry.py", "tests/test_retry.py"],
     "test_commands": ["python -m pytest tests/test_retry.py -q"],

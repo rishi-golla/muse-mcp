@@ -37,8 +37,13 @@ dev = [
 muse = "muse.cli:main"
 muse-mcp = "muse.mcp_server:main"
 muse-mcp-smoke = "muse.mcp_smoke:main"
+muse-mcp-doctor = "muse.mcp_doctor:main"
+muse-mcp-config = "muse.mcp_config_cli:main"
 muse-agent-proof = "muse.agent_loop_proof:main"
+muse-agent-instructions = "muse.agent_instructions_cli:main"
 muse-dogfood-quality = "muse.dogfood_quality_cli:main"
+muse-external-dogfood = "muse.external_dogfood_cli:main"
+muse-project-init = "muse.project_bootstrap_cli:main"
 
 [project.urls]
 Repository = "https://github.com/rishi-golla/muse"

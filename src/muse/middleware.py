@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping
 from enum import StrEnum
-from pathlib import Path
 from typing import Any
 
 from openai import OpenAI
 from pydantic import Field, ValidationError, model_validator
 
+from muse.branching import BranchDirective, branch_directives
 from muse.brave_search import BraveSearchProvider
 from muse.context_provider import (
     ContextProvider,
@@ -19,9 +20,23 @@ from muse.context_provider import (
 from muse.deterministic import DeterministicCreativeProvider
 from muse.engine import CreativeEngine
 from muse.exa_search import ExaSearchProvider
-from muse.live_config import LiveModelConfig, OpenAICredentials, PrivacyMode
+from muse.live_config import (
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_REPAIR_ATTEMPTS,
+    LiveModelConfig,
+    OpenAICredentials,
+    PrivacyMode,
+)
+from muse.live_preflight import resolve_openai_pricing_table
 from muse.live_search_config import BraveSearchCredentials, ExaSearchCredentials
-from muse.models import FrozenModel, IdeaGenome, RunConfig, RunResult, TaskContext
+from muse.models import (
+    FrozenModel,
+    IdeaGenome,
+    RunConfig,
+    RunResult,
+    SpendRecord,
+    TaskContext,
+)
 from muse.openai_provider import OpenAICreativeProvider
 from muse.pricing import PricingTable
 from muse.providers import IdeaEvaluator, IdeaSeeder, IdeaTransformer, TaskFramer
@@ -52,25 +67,52 @@ class EffortPreset(StrEnum):
     DEEP = "deep"
 
 
+class AgentMode(StrEnum):
+    NORMAL = "normal"
+    EXTENSIVE = "extensive"
+
+
+def _default_run_call_ceiling(*, seed_count: int, max_generations: int) -> int:
+    calls_per_operation = (DEFAULT_REPAIR_ATTEMPTS + 1) * (
+        DEFAULT_MAX_RETRIES + 1
+    )
+    logical_operations = 1 + 2 * seed_count * (max_generations + 1)
+    return logical_operations * calls_per_operation
+
+
 EFFORT_PRESETS: dict[EffortPreset, dict[str, float | int]] = {
     EffortPreset.QUICK: {
         "budget_usd": 0.20,
         "seed_count": 2,
         "finalist_count": 1,
         "max_generations": 0,
+        "max_calls": _default_run_call_ceiling(seed_count=2, max_generations=0),
     },
     EffortPreset.STANDARD: {
         "budget_usd": 0.35,
         "seed_count": 4,
         "finalist_count": 2,
         "max_generations": 1,
+        "max_calls": _default_run_call_ceiling(seed_count=4, max_generations=1),
     },
     EffortPreset.DEEP: {
         "budget_usd": 0.75,
         "seed_count": 6,
         "finalist_count": 3,
         "max_generations": 2,
+        "max_calls": _default_run_call_ceiling(seed_count=6, max_generations=2),
     },
+}
+
+MODE_EFFORTS: dict[AgentMode, EffortPreset] = {
+    AgentMode.NORMAL: EffortPreset.STANDARD,
+    AgentMode.EXTENSIVE: EffortPreset.DEEP,
+}
+
+EFFORT_MODES: dict[EffortPreset, AgentMode] = {
+    EffortPreset.QUICK: AgentMode.NORMAL,
+    EffortPreset.STANDARD: AgentMode.NORMAL,
+    EffortPreset.DEEP: AgentMode.EXTENSIVE,
 }
 
 
@@ -79,7 +121,8 @@ class CreativePlanRequest(FrozenModel):
     provider_mode: ProviderMode = ProviderMode.DETERMINISTIC
     privacy: PrivacyMode = PrivacyMode.RESEARCH
     repo_signals: RepoSignals | Mapping[str, object] = Field(default_factory=RepoSignals)
-    effort: EffortPreset = EffortPreset.QUICK
+    mode: AgentMode = AgentMode.NORMAL
+    effort: EffortPreset = EffortPreset.STANDARD
     budget_usd: float = Field(strict=True, gt=0)
     seed_count: int = Field(strict=True, ge=2)
     finalist_count: int = Field(strict=True, ge=1)
@@ -97,7 +140,11 @@ class CreativePlanRequest(FrozenModel):
         if not isinstance(value, Mapping):
             return value
         payload = dict(value)
-        effort = EffortPreset(str(payload.get("effort", EffortPreset.QUICK.value)))
+        if "effort" not in payload:
+            mode = AgentMode(str(payload.get("mode", AgentMode.NORMAL.value)))
+            payload["effort"] = MODE_EFFORTS[mode].value
+        effort = EffortPreset(str(payload["effort"]))
+        payload.setdefault("mode", EFFORT_MODES[effort].value)
         for field, default_value in EFFORT_PRESETS[effort].items():
             payload.setdefault(field, default_value)
         return payload
@@ -247,6 +294,7 @@ def _serialize_result(
         goal=request.goal,
         provider_mode=request.provider_mode.value,
         privacy=request.privacy.value,
+        mode=request.mode.value,
         effort=request.effort.value,
         search_mode=request.search_mode.value,
         search_provider=request.search_provider.value,
@@ -269,9 +317,20 @@ def _serialize_result(
             snippet.source for snippet in result.framed_task.context.context_bundle.snippets
         ],
         "config": {
+            "mode": request.mode.value,
             "effort": request.effort.value,
             "budget_usd": request.budget_usd,
             "seed_count": request.seed_count,
+            "branch_generation": {
+                "strategies": [
+                    directive.strategy.value
+                    for directive in branch_directives(request.seed_count)
+                ],
+                "independent_call_count": _independent_branch_call_count(
+                    result,
+                    seed_count=request.seed_count,
+                ),
+            },
             "finalist_count": request.finalist_count,
             "max_generations": request.max_generations,
             "max_calls": request.max_calls,
@@ -282,6 +341,7 @@ def _serialize_result(
         },
         "search_context": search_context.model_dump(mode="json"),
         "agent_guidance": _agent_guidance(
+            request.mode,
             request.effort,
             quality_action_policy=action_policy,
             suggested_next_call=suggested_next_call,
@@ -296,6 +356,228 @@ def _serialize_result(
         "agent_handoff": agent_handoff,
         "finalists": finalists,
     }
+
+
+def _independent_branch_call_count(result: RunResult, *, seed_count: int) -> int:
+    expected_schedule = branch_directives(seed_count)
+    completed_indices: set[int] = set()
+    for record in result.spend_records:
+        if record.stage != "seeding" or record.operation_trace is None:
+            continue
+        evidenced_indices = _evidenced_branch_indices(
+            record,
+            expected_schedule=expected_schedule,
+        )
+        if evidenced_indices is None or completed_indices.intersection(
+            evidenced_indices
+        ):
+            return 0
+        completed_indices.update(evidenced_indices)
+    return len(completed_indices)
+
+
+def _evidenced_branch_indices(
+    record: SpendRecord,
+    *,
+    expected_schedule: tuple[BranchDirective, ...],
+) -> set[int] | None:
+    operation_trace = record.operation_trace
+    if operation_trace is None:
+        return None
+    if not hasattr(operation_trace, "request_json") or not hasattr(
+        operation_trace, "response_json"
+    ):
+        return None
+    try:
+        request = json.loads(operation_trace.request_json)
+        response = json.loads(operation_trace.response_json)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(request, Mapping) or not isinstance(response, Mapping):
+        return None
+    if request.get("operation") != "seed":
+        return None
+
+    directives = request.get("branches")
+    completed = response.get("branches")
+    if (
+        not isinstance(directives, list)
+        or not directives
+        or len(directives) > len(expected_schedule)
+        or not isinstance(completed, list)
+        or len(completed) != len(directives)
+    ):
+        return None
+
+    requested: list[BranchDirective] = []
+    for position, directive in enumerate(directives):
+        if not isinstance(directive, Mapping) or not _valid_branch_request(
+            directive,
+            expected=expected_schedule[position],
+        ):
+            return None
+        requested.append(expected_schedule[position])
+
+    completed_indices: set[int] = set()
+    nested_calls = 0
+    nested_usage = (0, 0, 0, 0)
+    failure_seen = False
+    request_ids: list[str | None] = []
+    for position, branch in enumerate(completed):
+        if not isinstance(branch, Mapping):
+            return None
+        expected = requested[position]
+        validated = _validated_branch_response(branch, expected=expected)
+        if validated is None:
+            return None
+        succeeded, calls, usage, request_id = validated
+        if failure_seen or (not succeeded and position != len(completed) - 1):
+            return None
+        if succeeded:
+            completed_indices.add(expected.branch_index)
+        else:
+            failure_seen = True
+        nested_calls += calls
+        nested_usage = tuple(
+            left + right for left, right in zip(nested_usage, usage, strict=True)
+        )
+        request_ids.append(request_id)
+
+    record_usage = (
+        record.usage.input_tokens,
+        record.usage.cached_input_tokens,
+        record.usage.output_tokens,
+        record.usage.reasoning_tokens,
+    )
+    aggregate_calls = response.get("calls")
+    if (
+        isinstance(aggregate_calls, bool)
+        or not isinstance(aggregate_calls, int)
+        or aggregate_calls != record.calls
+        or _trace_usage(response.get("usage")) != record_usage
+        or response.get("request_ids") != request_ids
+        or nested_calls != record.calls
+        or nested_usage != record_usage
+    ):
+        return None
+    return completed_indices
+
+
+def _valid_branch_request(
+    branch: Mapping[str, object],
+    *,
+    expected: BranchDirective,
+) -> bool:
+    branch_index = branch.get("branch_index")
+    trace = branch.get("trace")
+    if (
+        isinstance(branch_index, bool)
+        or not isinstance(branch_index, int)
+        or branch_index != expected.branch_index
+        or branch.get("strategy") != expected.strategy.value
+        or not isinstance(trace, Mapping)
+        or not trace
+        or trace.get("operation") != "seed"
+    ):
+        return False
+    domain = trace.get("domain")
+    if not isinstance(domain, Mapping):
+        return False
+    directive = domain.get("branch_directive")
+    if not isinstance(directive, Mapping):
+        return False
+    try:
+        traced_directive = BranchDirective.model_validate(directive)
+    except ValidationError:
+        return False
+    return traced_directive == expected
+
+
+def _validated_branch_response(
+    branch: Mapping[str, object],
+    *,
+    expected: BranchDirective,
+) -> tuple[bool, int, tuple[int, int, int, int], str | None] | None:
+    branch_index = branch.get("branch_index")
+    trace = branch.get("trace")
+    succeeded = branch.get("succeeded")
+    request_id = branch.get("request_id")
+    if (
+        isinstance(branch_index, bool)
+        or not isinstance(branch_index, int)
+        or branch_index != expected.branch_index
+        or branch.get("strategy") != expected.strategy.value
+        or not isinstance(succeeded, bool)
+        or not isinstance(trace, Mapping)
+        or not trace
+        or (request_id is not None and not isinstance(request_id, str))
+        or trace.get("request_id") != request_id
+    ):
+        return None
+    calls = trace.get("calls")
+    usage = _trace_usage(trace.get("usage"))
+    attempts = trace.get("attempts")
+    if (
+        isinstance(calls, bool)
+        or not isinstance(calls, int)
+        or calls < 1
+        or usage is None
+        or not isinstance(attempts, list)
+        or len(attempts) > calls
+    ):
+        return None
+    attempt_usage = (0, 0, 0, 0)
+    for position, attempt in enumerate(attempts, start=1):
+        if not isinstance(attempt, Mapping) or attempt.get("attempt") != position:
+            return None
+        attempt_request_id = attempt.get("request_id")
+        if attempt_request_id is not None and not isinstance(attempt_request_id, str):
+            return None
+        item_usage = _trace_usage(attempt.get("usage"))
+        if item_usage is None:
+            return None
+        attempt_usage = tuple(
+            left + right
+            for left, right in zip(attempt_usage, item_usage, strict=True)
+        )
+    error = trace.get("error")
+    parsed = trace.get("parsed")
+    if (
+        attempt_usage != usage
+        or (
+            succeeded
+            and (
+                not attempts
+                or error is not None
+                or not isinstance(parsed, Mapping)
+                or not parsed
+            )
+        )
+        or (
+            not succeeded
+            and (not isinstance(error, str) or not error.strip() or parsed is not None)
+        )
+    ):
+        return None
+    return succeeded, calls, usage, request_id
+
+
+def _trace_usage(value: object) -> tuple[int, int, int, int] | None:
+    if not isinstance(value, Mapping):
+        return None
+    metrics = tuple(
+        value.get(key)
+        for key in ("input", "cached_input", "output", "reasoning")
+    )
+    if any(
+        isinstance(metric, bool) or not isinstance(metric, int) or metric < 0
+        for metric in metrics
+    ):
+        return None
+    input_tokens, cached_input_tokens, output_tokens, reasoning_tokens = metrics
+    if cached_input_tokens > input_tokens:
+        return None
+    return input_tokens, cached_input_tokens, output_tokens, reasoning_tokens
 
 
 def run_muse_plan(request: CreativePlanRequest | Mapping[str, object]) -> dict[str, Any]:
@@ -473,18 +755,8 @@ def _build_openai_provider_from_environment(
 
 
 def _load_pricing_table_from_environment() -> PricingTable:
-    raw_path = os.getenv("OPENAI_PRICING_FILE")
-    if raw_path is None:
-        raise ValueError("OPENAI_PRICING_FILE is required")
-    path = Path(raw_path)
-    try:
-        payload = path.read_text(encoding="utf-8")
-    except OSError as error:
-        raise ValueError(f"could not read pricing config {path}: {error}") from error
-    try:
-        return PricingTable.model_validate_json(payload)
-    except ValueError as error:
-        raise ValueError(f"invalid pricing config {path}: {error}") from error
+    pricing, _source = resolve_openai_pricing_table()
+    return pricing
 
 
 def _validate_live_pricing(config: LiveModelConfig, pricing: PricingTable) -> None:
@@ -570,12 +842,14 @@ def _configuration_error_result(
         "context_tags": [],
         "context_sources": [],
         "config": {
+            "mode": EFFORT_MODES[effort].value,
             "search_mode": search_mode,
             "search_provider": search_provider,
             "search_strict": search_strict,
         },
         "search_context": metadata.model_dump(mode="json"),
         "agent_guidance": _agent_guidance(
+            EFFORT_MODES[effort],
             effort,
             quality_action_policy=_empty_quality_action_policy(effort),
             suggested_next_call=None,
@@ -601,6 +875,7 @@ def _configuration_error_result(
 
 
 def _agent_guidance(
+    mode: AgentMode,
     effort: EffortPreset,
     *,
     quality_action_policy: dict[str, object] | None = None,
@@ -609,6 +884,7 @@ def _agent_guidance(
 ) -> dict[str, Any]:
     return {
         "intended_use": "planning_middleware",
+        "mode": mode.value,
         "effort": effort.value,
         "verification_required": True,
         "quality_action_policy": quality_action_policy
@@ -623,13 +899,14 @@ def _agent_guidance(
             "stop_or_escalate_based_on_verification",
         ],
         "escalation_policy": (
-            "Start with quick. Escalate to standard when verification keeps failing or "
-            "repo context is ambiguous; use deep only for high-impact planning before edits."
+            "Start with mode normal. Escalate to mode extensive when verification "
+            "keeps failing, repo context is ambiguous, or the task is high-impact."
         ),
         "usage_warnings": [
             "Do not treat finalists as applied code.",
             "Do not skip repository-owned verification.",
             "Pass observed repo facts instead of asking muse to crawl the repo.",
+            "Do not ask the human for seed counts, budgets, or repo-language flags.",
         ],
     }
 

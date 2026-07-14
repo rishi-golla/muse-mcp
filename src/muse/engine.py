@@ -19,6 +19,7 @@ from muse.models import (
     RunProviders,
     RunResult,
     TaskContext,
+    TokenUsage,
 )
 from muse.operation import (
     provider_identity,
@@ -34,6 +35,7 @@ from muse.providers import (
     IdeaEvaluator,
     IdeaSeeder,
     IdeaTransformer,
+    MeteredProviderFailure,
     MeteredResponse,
     OperationQuote,
     TaskFramer,
@@ -46,10 +48,14 @@ OPERATOR_SCHEDULE = (
     OperatorName.SUBTRACT,
     OperatorName.CONTRADICT,
 )
+MONEY_TOLERANCE = Decimal("0.000000000001")
 
 
 def _exceeds_quote(response: MeteredResponse[object], quote: OperationQuote) -> bool:
-    return Decimal(str(response.cost_usd)) > Decimal(str(quote.max_cost_usd))
+    return (
+        Decimal(str(response.cost_usd)) > Decimal(str(quote.max_cost_usd))
+        or response.calls > quote.calls
+    )
 
 
 def _error(
@@ -92,6 +98,45 @@ def _validated_candidate(
     payload["branch_cost_usd"] = float(branch_cost)
     payload["branch_latency_ms"] = float(branch_latency)
     return IdeaGenome.model_validate(payload)
+
+
+def _validated_seed_item_metering(
+    response: MeteredResponse[object],
+    *,
+    seed_count: int,
+) -> tuple[tuple[Decimal, Decimal], ...] | None:
+    items = response.item_metering
+    if not items:
+        return None
+    if len(items) != seed_count:
+        raise ValueError("item metering cardinality does not match seed count")
+    if any(item.provider != response.provider for item in items):
+        raise ValueError("item metering provider does not match aggregate provider")
+
+    total_cost = sum(
+        (Decimal(str(item.cost_usd)) for item in items),
+        start=Decimal("0"),
+    )
+    total_latency = sum(item.latency_ms for item in items)
+    total_calls = sum(item.calls for item in items)
+    total_usage = TokenUsage(
+        input_tokens=sum(item.usage.input_tokens for item in items),
+        cached_input_tokens=sum(item.usage.cached_input_tokens for item in items),
+        output_tokens=sum(item.usage.output_tokens for item in items),
+        reasoning_tokens=sum(item.usage.reasoning_tokens for item in items),
+    )
+    # Provider costs cross this boundary as floats; allow only binary-rounding noise.
+    if (
+        abs(total_cost - Decimal(str(response.cost_usd))) > MONEY_TOLERANCE
+        or total_latency != response.latency_ms
+        or total_calls != response.calls
+        or total_usage != response.usage
+    ):
+        raise ValueError("item metering does not match aggregate response")
+    return tuple(
+        (Decimal(str(item.cost_usd)), Decimal(str(item.latency_ms)))
+        for item in items
+    )
 
 
 class CreativeEngine:
@@ -403,6 +448,38 @@ class CreativeEngine:
                     cost_incurred=False,
                 )
                 return [], "provider_error"
+            except MeteredProviderFailure as error:
+                try:
+                    partial = validate_metered_envelope(error.partial_response)
+                except ValidationError:
+                    _error(
+                        errors,
+                        stage="seeding",
+                        provider=providers.seeder.name,
+                        category="validation_error",
+                        message="provider returned invalid metered response",
+                        cost_incurred=False,
+                    )
+                    return [], "provider_error"
+                if not self._charge_response(
+                    partial,
+                    seed_quote,
+                    reservation,
+                    budget,
+                    stage="seeding",
+                    expected_provider=providers.seeder.name,
+                    errors=errors,
+                ):
+                    return [], "provider_error"
+                _error(
+                    errors,
+                    stage="seeding",
+                    provider=providers.seeder.name,
+                    category="provider_error",
+                    message="provider operation failed",
+                    cost_incurred=True,
+                )
+                return [], "provider_error"
             except Exception:
                 _error(
                     errors,
@@ -427,6 +504,10 @@ class CreativeEngine:
 
             try:
                 seeds = validate_seed_payload(seeded, config=config)
+                seed_metering = _validated_seed_item_metering(
+                    seeded,
+                    seed_count=len(seeds),
+                )
             except (ValidationError, ValueError) as error:
                 category = (
                     "cardinality_error"
@@ -443,11 +524,14 @@ class CreativeEngine:
                 )
                 return [], "provider_error"
 
-            seed_cost = Decimal(str(seeded.cost_usd)) / Decimal(len(seeds))
-            seed_latency = Decimal(str(seeded.latency_ms)) / Decimal(len(seeds))
+            if seed_metering is None:
+                seed_cost = Decimal(str(seeded.cost_usd)) / Decimal(len(seeds))
+                seed_latency = Decimal(str(seeded.latency_ms)) / Decimal(len(seeds))
+                seed_metering = tuple((seed_cost, seed_latency) for _ in seeds)
             evaluated: list[IdeaGenome] = []
             had_evaluation_failure = False
             for index, candidate in enumerate(seeds):
+                seed_cost, seed_latency = seed_metering[index]
                 attributed = _validated_candidate(
                     candidate,
                     branch_cost=seed_cost,
@@ -469,11 +553,14 @@ class CreativeEngine:
                     evaluated.append(attributed)
                     if not continue_evaluating:
                         for remaining in seeds[index + 1 :]:
+                            remaining_cost, remaining_latency = seed_metering[
+                                len(evaluated)
+                            ]
                             evaluated.append(
                                 _validated_candidate(
                                     remaining,
-                                    branch_cost=seed_cost,
-                                    branch_latency=seed_latency,
+                                    branch_cost=remaining_cost,
+                                    branch_latency=remaining_latency,
                                 )
                             )
                         break
@@ -715,6 +802,7 @@ class CreativeEngine:
                     response.cost_usd,
                     response.latency_ms,
                     quoted_cost_usd=quote.max_cost_usd,
+                    quoted_calls=quote.calls,
                     model=response.model,
                     usage=response.usage,
                     pricing_version=response.pricing_version,
@@ -774,7 +862,7 @@ class CreativeEngine:
                 stage=stage,
                 provider=expected_provider,
                 category="overage_error",
-                message="provider cost exceeded quote",
+                message="provider cost or call count exceeded quote",
                 cost_incurred=True,
             )
             return False

@@ -15,30 +15,24 @@ SERVER_NAME = "muse"
 def muse_plan(
     goal: str,
     repo_signals: Mapping[str, object] | None = None,
+    mode: str | None = None,
     provider_mode: str | None = None,
     privacy: str | None = None,
-    budget_usd: float | None = None,
-    seed_count: int | None = None,
-    finalist_count: int | None = None,
-    max_generations: int | None = None,
-    max_calls: int = 20,
     max_context_snippets: int = 8,
-    effort: str | None = None,
     search_mode: str | None = None,
     search_provider: str | None = None,
     search_strict: bool | None = None,
 ) -> dict[str, Any]:
     """Generate an operational creative plan for an agent's current task.
 
-    Use quick for cheap normal coding loops, standard when a first repair fails,
-    and deep for deliberate planning before high-impact edits.
+    Use mode normal for most planning calls and extensive for high-impact or
+    repeated-failure planning. Gather repo facts yourself and pass repo_signals.
     """
     try:
         defaults = RuntimeDefaults.resolve(
             provider_mode=provider_mode,
             privacy=privacy,
-            budget_usd=budget_usd,
-            effort=effort,
+            mode=mode,
             search_mode=search_mode,
             search_provider=search_provider,
             search_strict=search_strict,
@@ -58,23 +52,13 @@ def muse_plan(
         "goal": goal,
         "provider_mode": defaults.provider_mode,
         "privacy": defaults.privacy,
-        "effort": defaults.effort,
+        "mode": defaults.mode,
         "search_mode": defaults.search_mode,
         "search_provider": defaults.search_provider,
         "search_strict": defaults.search_strict,
         "repo_signals": repo_signals or {},
-        "max_calls": max_calls,
         "max_context_snippets": max_context_snippets,
     }
-    budget_usd = defaults.budget_usd
-    for key, value in (
-        ("budget_usd", budget_usd),
-        ("seed_count", seed_count),
-        ("finalist_count", finalist_count),
-        ("max_generations", max_generations),
-    ):
-        if value is not None:
-            request[key] = value
     return run_muse_plan(request)
 
 

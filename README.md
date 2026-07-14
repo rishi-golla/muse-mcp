@@ -15,34 +15,90 @@ Install from a fresh clone:
 python -m pip install -e ".[dev]"
 ```
 
-Run the no-key deterministic MCP smoke path:
+Set live OpenAI configuration in your shell or agent-host environment:
 
 ```powershell
-muse-mcp-smoke "Design a retry strategy for AI coding agents" `
-  --provider-mode deterministic `
-  --repo-language Python `
-  --effort quick
+$env:OPENAI_API_KEY = "replace_me"
+$env:OPENAI_ECONOMY_MODEL = "gpt-5.4-mini"
+$env:OPENAI_STRONG_MODEL = "gpt-5.4"
+$env:OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
 ```
 
-Run the dogfood quality harness:
+Muse includes packaged default pricing for the example models above. Set
+`OPENAI_PRICING_FILE` only when you choose different models or want to override
+the bundled pricing table.
+
+Check local MCP live configuration without making provider calls:
 
 ```powershell
-muse-dogfood-quality `
-  --provider-mode deterministic `
-  --case agent-retry-python `
-  --variant search-off `
+muse-mcp-doctor --json
+```
+
+Generate the host config snippet you need. For Codex:
+
+```powershell
+muse-mcp-config --host codex
+```
+
+For Claude Code or Cursor-style JSON MCP clients:
+
+```powershell
+muse-mcp-config --host claude-code --include-env
+```
+
+Generate project instructions so the connected agent knows when to call Muse:
+
+```powershell
+muse-agent-instructions --target agents-md
+```
+
+For Cursor rules:
+
+```powershell
+muse-agent-instructions --target cursor-rules
+```
+
+Before touching a real repo, create a throwaway external dogfood repo with the
+same MCP config and project instructions:
+
+```powershell
+muse-external-dogfood `
+  --workspace ..\muse-external-dogfood-sample `
+  --host generic-json `
+  --instruction-target agents-md `
   --json
 ```
 
-Deterministic mode is intentionally cheap and repeatable; it proves install,
-MCP transport, and contract shape. For live quality reads, copy `.env.example`
-to a local environment file or shell setup, copy `openai-pricing.example.json`
-to your own pricing config if needed, then set real provider values outside the
-repo.
+This does not spend provider budget. It writes a marked sample repo, reports
+`ready_for_manual_agent_test`, and tells you whether `muse-mcp-doctor --json`
+still needs live OpenAI environment variables.
 
-The first implementation milestone is intentionally deterministic. It validates the
-core orchestration, data contracts, budget accounting, selection behavior, and trace
-reproducibility before paid model and search providers are introduced.
+When the sample looks right, initialize the actual project repo:
+
+```powershell
+muse-project-init `
+  --project C:\path\to\your\repo `
+  --host generic-json `
+  --instruction-target agents-md `
+  --json
+```
+
+Use `--dry-run` first to preview files, and `--force` only when you intend to
+replace existing `.mcp.json`, `.codex/config.toml`, `AGENTS.md`, or Cursor rule
+targets. The command writes no real secrets and makes no provider calls.
+
+Restart the MCP-capable agent host, then ask the agent for a creative planning
+task in that project. The agent should observe repo facts and call `muse_plan`
+in the backend with `mode: "normal"` or `mode: "extensive"`.
+
+For local setup, copy `.env.example` to a local environment file or shell setup
+and set real provider values outside the repo. `openai-pricing.example.json`
+shows the packaged default pricing schema for overrides.
+
+Historical note: the first implementation milestone used deterministic fixtures
+to validate orchestration, data contracts, budget accounting, selection
+behavior, and trace reproducibility before paid model and search providers were
+introduced. Public MCP usage now starts with live OpenAI.
 
 ## Development
 
@@ -52,7 +108,15 @@ python -m pytest
 python -m ruff check .
 ```
 
-## Deterministic research-spine demo
+### Quality benchmarking
+
+The V6-A quality benchmark is a library-first maintainer workflow for comparing
+Muse with a direct strong-model baseline. It uses blinded pairwise judgments and
+repeated runs, while preserving cost, latency, and failure accounting. Unit tests
+do not establish creative quality; follow the [benchmarking guide](docs/quality/benchmarking.md)
+for the evidence required for a quality claim. This is not a public CLI.
+
+## Internal fixture research-spine demo
 
 ```powershell
 muse "Invent a calmer way for distributed teams to make decisions" `
@@ -68,7 +132,7 @@ means at least one scored finalist is usable, including a valid frontier returne
 after budget exhaustion. Provider failures, empty frontiers, and trace-write failures
 return status `1`; invalid command input returns status `2`.
 
-Deterministic mode uses local providers; it makes no external model or search
+This maintainer fixture uses local providers; it makes no external model or search
 calls. Its CLI sets both framing and finalization reserves to zero because
 framing is unmetered and finalization is not implemented in this milestone.
 `RunConfig` retains nonzero library defaults as future-provider policy; those
@@ -110,7 +174,6 @@ $env:OPENAI_API_KEY = "<OPENAI_API_KEY>"
 $env:OPENAI_ECONOMY_MODEL = "<explicit model id>"
 $env:OPENAI_STRONG_MODEL = "<explicit model id>"
 $env:OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
-$env:OPENAI_PRICING_FILE = "path\to\pricing.json"
 ```
 
 Run:
@@ -183,6 +246,10 @@ agent at the stdio server:
 
 For host-specific config packs and setup notes, see
 `docs/integrations/mcp-agent-hosts.md`.
+For a throwaway external repo that proves the onboarding files before touching a
+real codebase, run `muse-external-dogfood`.
+To write the same files into a real project with overwrite protection, run
+`muse-project-init`.
 For a deterministic local proof that an agent loop can consume the MCP output
 and apply a bounded repair, see `docs/integrations/agent-loop-proof.md`.
 For when to call the tool during normal coding in another repo, see
@@ -205,7 +272,7 @@ observed instead of asking muse to crawl the repository:
 ```json
 {
   "goal": "Design a better retry strategy for AI coding agents after failed tests",
-  "effort": "quick",
+  "mode": "normal",
   "repo_signals": {
     "file_paths": ["pnpm-workspace.yaml", "apps/web/package.json"],
     "changed_files": ["packages/ui/src/Button.tsx"],
@@ -236,39 +303,25 @@ repository-owned verification.
 V4-D adds `quality_action_policy`, also mirrored inside `agent_guidance`. The
 policy turns warning names into `status`, `escalate_effort_to`,
 `recommended_actions`, and per-warning remediation hints. It recommends actions
-such as adding repo signals or moving from `quick` to `standard`, but it does
-not automatically perform another provider call.
+such as adding repo signals or moving from `mode: "normal"` to
+`mode: "extensive"`, but it does not automatically perform another provider
+call.
 
 Set runtime defaults in the agent host environment when you want every omitted
 tool field to use the same posture:
 
 ```powershell
 $env:MUSE_PROVIDER_MODE = "live_openai"
-$env:MUSE_EFFORT = "quick"
+$env:MUSE_MODE = "normal"
 $env:MUSE_PRIVACY = "research"
-$env:MUSE_BUDGET_USD = "0.25"
 $env:MUSE_SEARCH_MODE = "off"
 $env:MUSE_SEARCH_PROVIDER = "auto"
 $env:MUSE_SEARCH_STRICT = "false"
 ```
 
-The deterministic test provider exists for no-network CI, protocol checks, and
-transport smoke tests. Use it explicitly with `--provider-mode deterministic`
-or `MUSE_PROVIDER_MODE=deterministic`; do not treat deterministic
-output as product-quality creative planning.
-
-To smoke-test the actual MCP tool registration without an agent host:
-
-```powershell
-muse-mcp-smoke "Design a retry strategy for AI coding agents" `
-  --provider-mode deterministic `
-  --search-mode off `
-  --repo-language Python `
-  --seed-count 2 `
-  --finalist-count 1 `
-  --generations 0 `
-  --budget-usd 0.20
-```
+The deterministic provider is an internal maintainer fixture for no-network CI,
+protocol checks, and transport regression tests. Public MCP usage is live-only;
+internal tests that need the fixture must set `MUSE_ENABLE_TEST_PROVIDER=1`.
 
 ### V3-L dogfood quality suite
 
@@ -277,11 +330,11 @@ repeatable MCP quality harness, not a new product surface. Use it to compare
 `search-off`, `search-light`, and `search-deep` runs across built-in dogfood
 cases and to catch weak output before it reaches an agent workflow.
 
-Cheap deterministic run:
+Cheap live quality run:
 
 ```powershell
 muse-dogfood-quality `
-  --provider-mode deterministic `
+  --provider-mode live_openai `
   --case agent-retry-python `
   --variant search-off `
   --json
@@ -291,18 +344,16 @@ CI-style quality gate:
 
 ```powershell
 muse-dogfood-quality `
-  --provider-mode deterministic `
+  --provider-mode live_openai `
   --case agent-retry-python `
   --variant search-off `
   --fail-on-gates `
   --json
 ```
 
-Deterministic output can intentionally fail quality gates. That is useful: it
-proves the harness can flag generic fixture-style ideas instead of treating
-protocol success as product quality. Use live OpenAI configuration for real
-quality reads, then compare `search-off`, `search-light`, and `search-deep`
-before changing prompts or evaluator pressure.
+Quality gates are calibrated for live output. Compare `search-off`,
+`search-light`, and `search-deep` before changing prompts or evaluator
+pressure.
 
 For live OpenAI MCP calls, keep the same MCP server command and either omit
 `provider_mode` or pass `"provider_mode": "live_openai"` in the tool payload.
@@ -313,20 +364,19 @@ $env:OPENAI_API_KEY = "<OPENAI_API_KEY>"
 $env:OPENAI_ECONOMY_MODEL = "<cheap-model-id>"
 $env:OPENAI_STRONG_MODEL = "<stronger-model-id>"
 $env:OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
-$env:OPENAI_PRICING_FILE = "C:\path\to\openai-pricing.json"
 ```
+
+`OPENAI_PRICING_FILE` is optional when the selected models are covered by the
+packaged default pricing. Set it to a local JSON file when using different
+models or pricing.
 
 Example live MCP payload:
 
 ```json
 {
   "goal": "Design a better retry strategy for AI coding agents after failed tests",
-  "provider_mode": "live_openai",
   "privacy": "private",
-  "budget_usd": 0.25,
-  "seed_count": 4,
-  "finalist_count": 2,
-  "max_generations": 1,
+  "mode": "normal",
   "repo_signals": {
     "changed_files": ["src/agent/runner.py"],
     "test_commands": ["python -m pytest tests/test_runner.py"],
@@ -341,20 +391,56 @@ If live configuration is missing or invalid, the MCP tool returns
 `stopped_reason: "configuration_error"` with a structured error and no finalists
 instead of charging provider calls.
 
+### Live branch evidence
+
+For `provider_mode: "live_openai"`, `seed_count` requests an ordered schedule of independent
+live model trajectories rather than one shared batched seed response. The response records
+the ordered creative strategies and the number of independently completed seed branches in
+`config.branch_generation`:
+
+```json
+{
+  "seed_count": 4,
+  "branch_generation": {
+    "strategies": [
+      "constraint_inversion",
+      "failure_first",
+      "cross_domain_transfer",
+      "systems_effects"
+    ],
+    "independent_call_count": 4
+  }
+}
+```
+
+`strategies` lists the ordered requested strategy directives. `independent_call_count`
+counts only evidenced completed branches from the run's metered seed trace, so it can be
+lower than `seed_count` after a branch failure and is zero when seeding never starts.
+Evidence is accepted only when the requested branches are an ordered prefix of the exact
+strategy schedule, each nested request contains the complete canonical branch directive
+including its exact instruction, every branch has non-empty structurally valid nested request
+and response traces, and their calls and token usage exactly reconcile with the charged
+seeding spend record. Placeholders, reordered or forged branches, duplicates, and
+inconsistent accounting produce a zero count.
+
+The deterministic provider remains a no-network test fixture. Its metadata
+uses `independent_call_count: 0`, so a fixture result does not prove a provider
+call or provider spend.
+
 ### Opt-in search context
 
 MCP search context is explicit. The default is `off`, so `quick`, `standard`,
-and `deep` effort levels do not trigger search by themselves. Set
+and `deep` internal effort levels do not trigger search by themselves. Set
 `"search_mode": "light"` for bounded context or `"search_mode": "deep"` for a
-broader bounded pass. `search_provider` selects `auto`, `deterministic`, `exa`,
-or `brave`; `auto` chooses a configured live search provider when one is
+broader bounded pass. `search_provider` selects `auto`, `exa`, or `brave`;
+`auto` chooses a configured live search provider when one is
 available. Set `search_strict: true` only when the agent should fail closed if
 requested search cannot run:
 
 ```json
 {
   "goal": "Design a better retry strategy for AI coding agents after failed tests",
-  "provider_mode": "live_openai",
+  "mode": "extensive",
   "search_mode": "light",
   "search_provider": "auto",
   "search_strict": false,

@@ -3,6 +3,8 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
+from muse.branching import BranchStrategy
+from muse.deterministic import DeterministicCreativeProvider
 from muse.models import IdeaGenome
 from muse.operation import validate_transform_payload
 from muse.providers import MeteredResponse
@@ -44,6 +46,83 @@ def test_transformation_request_records_structural_intent() -> None:
     assert request.parent_ids == (source.id,)
     assert "Reverse a foundational assumption" in request.instruction
     assert "Do not merely rename" in request.instruction
+
+
+def test_deterministic_unary_transform_preserves_parent_branch_strategy() -> None:
+    source = parent().model_copy(
+        update={"branch_strategy": BranchStrategy.FAILURE_FIRST}
+    )
+    request = TransformationRequest.for_operator(
+        operator=OperatorName.REFRAME,
+        parents=(source,),
+        task_goal="Improve access.",
+    )
+
+    response = DeterministicCreativeProvider().transform(request, (source,))
+
+    assert response.value.branch_strategy is BranchStrategy.FAILURE_FIRST
+
+
+def test_deterministic_combine_uses_first_parent_branch_strategy() -> None:
+    first = parent("First").model_copy(
+        update={"branch_strategy": BranchStrategy.USER_CENTERED}
+    )
+    second = parent("Second").model_copy(
+        update={"branch_strategy": BranchStrategy.SYSTEMS_EFFECTS}
+    )
+    provider = DeterministicCreativeProvider()
+
+    forward = provider.transform(
+        TransformationRequest.for_operator(
+            operator=OperatorName.COMBINE,
+            parents=(first, second),
+            task_goal="Improve access.",
+        ),
+        (first, second),
+    )
+    reversed_order = provider.transform(
+        TransformationRequest.for_operator(
+            operator=OperatorName.COMBINE,
+            parents=(second, first),
+            task_goal="Improve access.",
+        ),
+        (second, first),
+    )
+
+    assert forward.value.branch_strategy is BranchStrategy.USER_CENTERED
+    assert reversed_order.value.branch_strategy is BranchStrategy.SYSTEMS_EFFECTS
+
+
+def test_transform_validation_rejects_inconsistent_branch_provenance() -> None:
+    source = parent().model_copy(
+        update={"branch_strategy": BranchStrategy.FAILURE_FIRST}
+    )
+    request = TransformationRequest.for_operator(
+        operator=OperatorName.REFRAME,
+        parents=(source,),
+        task_goal="Improve access.",
+    )
+    candidate = parent("Child").model_copy(
+        update={
+            "generation": 1,
+            "parent_ids": (source.id,),
+            "transformations": (OperatorName.REFRAME.value,),
+            "branch_strategy": BranchStrategy.CONSTRAINT_INVERSION,
+        }
+    )
+
+    with pytest.raises(ValueError, match="branch strategy"):
+        validate_transform_payload(
+            MeteredResponse(
+                value=candidate,
+                provider="local",
+                cost_usd=0.01,
+                latency_ms=1,
+            ),
+            request=request,
+            parents=(source,),
+            candidate_ids=set(),
+        )
 
 
 @pytest.mark.parametrize(

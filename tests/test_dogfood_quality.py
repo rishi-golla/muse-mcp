@@ -78,6 +78,7 @@ def test_quality_gates_flag_requested_search_that_was_not_used() -> None:
 
 
 def test_dogfood_suite_invokes_mcp_and_returns_json_safe_report(monkeypatch) -> None:
+    monkeypatch.setenv("MUSE_ENABLE_TEST_PROVIDER", "1")
     monkeypatch.setenv("MUSE_PROVIDER_MODE", "deterministic")
 
     report = run_dogfood_quality_suite(
@@ -92,6 +93,6 @@ def test_dogfood_suite_invokes_mcp_and_returns_json_safe_report(monkeypatch) -> 
     assert report["runs"][0]["case"] == "agent-retry-python"
     assert report["runs"][0]["variant"] == "search-off"
     assert report["runs"][0]["provider_mode"] == "deterministic"
-    assert report["runs"][0]["finalist_count"] == 1
+    assert report["runs"][0]["finalist_count"] == 2
     assert "quality_gates" in report["runs"][0]
     assert json.loads(json.dumps(report)) == report

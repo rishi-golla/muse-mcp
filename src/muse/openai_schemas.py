@@ -7,6 +7,7 @@ from uuid import UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from muse.branching import BranchStrategy
 from muse.models import (
     EvaluationScores,
     FramedTask,
@@ -18,6 +19,7 @@ from muse.models import (
 from muse.transforms import (
     TransformationRequest,
     expected_transformation_history,
+    transformed_branch_strategy,
 )
 
 OPENAI_ID_NAMESPACE = UUID("e8e3f5ca-dc80-5c06-a22a-2728f62d00d9")
@@ -162,12 +164,17 @@ class OpenAIIdea(OpenAIOutputModel):
             "weaknesses": tuple(self.weaknesses),
         }
 
-    def to_seed(self) -> IdeaGenome:
+    def to_seed(
+        self,
+        *,
+        branch_strategy: BranchStrategy = BranchStrategy.CONSTRAINT_INVERSION,
+    ) -> IdeaGenome:
         return IdeaGenome(
             id=uuid5(OPENAI_ID_NAMESPACE, self.canonical_content()),
             generation=0,
             **self._domain_fields(),
             inspiration_kind=InspirationKind.INDEPENDENT,
+            branch_strategy=branch_strategy,
         )
 
     def to_transform(
@@ -197,6 +204,7 @@ class OpenAIIdea(OpenAIOutputModel):
             parent_ids=parent_ids,
             transformations=history,
             inspiration_kind=InspirationKind.SYNTHESIZED,
+            branch_strategy=transformed_branch_strategy(parents),
         )
 
 

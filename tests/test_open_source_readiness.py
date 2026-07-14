@@ -99,13 +99,43 @@ def test_public_docs_include_copy_pasteable_first_run_path() -> None:
     for phrase in (
         "open-source quickstart",
         'python -m pip install -e ".[dev]"',
-        "muse-mcp-smoke",
+        "muse-mcp-doctor",
+        "muse-mcp-config",
+        "muse-agent-instructions",
+        "muse-project-init",
         "muse-dogfood-quality",
-        "--provider-mode deterministic",
+        "mode: \"normal\"",
+        "live-only",
+        "packaged default pricing",
         ".env.example",
         "openai-pricing.example.json",
         "muse_plan",
         "mcp",
+    ):
+        assert phrase in combined
+
+
+def test_public_docs_define_library_first_quality_benchmark_evidence() -> None:
+    readme = _read_text("README.md").casefold()
+    benchmark = _read_text("docs/quality/benchmarking.md").casefold()
+    combined = "\n".join((readme, benchmark))
+
+    for phrase in (
+        "library-first",
+        "run_quality_benchmark",
+        "direct strong-model baseline",
+        "blinded pairwise",
+        "repeated runs",
+        "runmetadata",
+        "task-level",
+        "label-leak rejection",
+        "judge cost/latency",
+        "run timestamp",
+        "prompt version",
+        "secret_values",
+        "cost, latency, and failure",
+        "not a public cli",
+        "unit tests do not establish creative quality",
     ):
         assert phrase in combined
 

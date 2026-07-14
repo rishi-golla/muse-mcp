@@ -71,11 +71,11 @@ def test_docs_describe_live_first_provider_posture() -> None:
 
     assert "live-first" in combined
     assert "muse_provider_mode" in combined
-    assert "muse_effort" in combined
+    assert "muse_mode" in combined
     assert "muse_privacy" in combined
-    assert "muse_budget_usd" in combined
-    assert "deterministic test provider" in combined
-    assert "--provider-mode deterministic" in combined
+    assert "internal maintainer fixture" in combined
+    assert "muse_enable_test_provider" in combined
+    assert "--provider-mode deterministic" not in combined
 
 
 def test_docs_describe_opt_in_search_context() -> None:
@@ -120,15 +120,24 @@ def test_config_packs_do_not_contain_real_secrets() -> None:
     assert "your-api-key" not in combined.casefold()
 
 
-def test_agent_host_guide_links_config_packs_and_smoke_workflow() -> None:
+def test_agent_host_guide_links_config_packs_and_agent_native_workflow() -> None:
     guide = _read_text(ROOT / "docs" / "integrations" / "mcp-agent-hosts.md")
 
     assert "config-packs/codex/config.toml" in guide
     assert "config-packs/claude-code/.mcp.json" in guide
     assert "config-packs/generic-mcp/mcp.json" in guide
+    assert "muse-mcp-config --host codex" in guide
+    assert "muse-mcp-config --host claude-code --include-env" in guide
+    assert "muse-agent-instructions --target agents-md" in guide
+    assert "muse-agent-instructions --target cursor-rules" in guide
+    assert "muse-external-dogfood" in guide
+    assert "ready_for_manual_agent_test" in guide
+    assert "muse-project-init" in guide
     assert "docs/integrations/agent-dogfood-playbook.md" in guide
-    assert "muse-mcp-smoke" in guide
-    assert '"provider_mode": "live_openai"' in guide
+    assert 'mode: "normal"' in guide
+    assert 'mode: "extensive"' in guide
+    assert "budget_usd" not in guide
+    assert "seed_count" not in guide
     assert "muse_plan" in guide
 
 
@@ -137,14 +146,19 @@ def test_readme_links_agent_host_guide() -> None:
 
     assert "docs/integrations/mcp-agent-hosts.md" in readme
     assert "docs/integrations/agent-dogfood-playbook.md" in readme
+    assert "muse-mcp-config --host codex" in readme
+    assert "muse-agent-instructions --target agents-md" in readme
+    assert "muse-external-dogfood" in readme
+    assert "muse-project-init" in readme
 
 
 def test_agent_dogfood_playbook_describes_coding_loop_usage() -> None:
     playbook = _read_text(ROOT / "docs" / "integrations" / "agent-dogfood-playbook.md")
 
-    assert "quick" in playbook
-    assert "standard" in playbook
-    assert "deep" in playbook
+    assert 'mode: "normal"' in playbook
+    assert 'mode: "extensive"' in playbook
+    assert "budget_usd" not in playbook
+    assert "seed_count" not in playbook
     assert "before-edit" in playbook
     assert "after-failure" in playbook
     assert "after-fix" in playbook

@@ -13,27 +13,83 @@ From this repository:
 python -m pip install -e ".[dev]"
 ```
 
-For open-source quickstart setup, start with deterministic mode first. It
-requires no API keys and verifies install, MCP tool registration, and the
-`muse_plan` response contract before live provider configuration is added.
+For open-source quickstart setup, configure live OpenAI first. Public Muse is
+live-only because the MCP output should reflect the behavior agents will use in
+real coding workflows.
 
 Then verify the MCP tool without starting an agent host:
 
 ```powershell
-muse-mcp-smoke "Design a retry strategy for AI coding agents" `
-  --provider-mode deterministic `
-  --repo-language Python `
-  --effort quick
+muse-mcp-doctor --json
 ```
 
-The smoke command invokes the FastMCP server in-process and prints the
-structured payload returned by `muse_plan`. This example uses the
-deterministic test provider so install and transport problems can be isolated
-without spending money or requiring live model credentials.
+The doctor command performs local live OpenAI preflight checks without making
+provider calls. It reports missing env vars, selected model ids, and pricing
+coverage using redacted output.
+
+Generate the host config you need instead of hand-copying the static examples:
+
+```powershell
+muse-mcp-config --host codex
+```
+
+For Claude Code or Cursor-style JSON MCP clients:
+
+```powershell
+muse-mcp-config --host claude-code --include-env
+```
+
+Generate project instructions so the connected agent knows when to call Muse
+and how to use `muse_plan` output:
+
+```powershell
+muse-agent-instructions --target agents-md
+```
+
+For Cursor rules:
+
+```powershell
+muse-agent-instructions --target cursor-rules
+```
+
+Before editing a real repository, generate a marked throwaway repo with the same
+MCP config and agent instructions:
+
+```powershell
+muse-external-dogfood `
+  --workspace ..\muse-external-dogfood-sample `
+  --host generic-json `
+  --instruction-target agents-md `
+  --json
+```
+
+`muse-external-dogfood` is a no-spend onboarding proof. It creates a small
+sample project, writes `.mcp.json` or `.codex/config.toml`, writes the selected
+agent instruction file, runs local live preflight checks, and reports
+`ready_for_manual_agent_test`. Use `--strict-live` when CI or release checks
+should fail until `muse-mcp-doctor --json` is clean.
+
+After the external proof looks right, initialize a real project repo with the
+same generated files:
+
+```powershell
+muse-project-init `
+  --project C:\path\to\your\repo `
+  --host generic-json `
+  --instruction-target agents-md `
+  --json
+```
+
+Use `--dry-run` to preview the files before writing. By default
+`muse-project-init` refuses to overwrite existing target files; pass `--force`
+only when replacing `.mcp.json`, `.codex/config.toml`, `AGENTS.md`, or
+`.cursor/rules/muse.mdc` is intentional. The command writes placeholders, not
+real secrets, and performs only local live preflight checks.
 
 For live runs, copy `.env.example` into your local shell or agent-host
-environment and use `openai-pricing.example.json` as the safe pricing schema
-example. Do not commit local files with real secrets.
+environment. Muse includes packaged default pricing for the documented example
+models; use `openai-pricing.example.json` as the safe schema example only when
+you want a local override. Do not commit local files with real secrets.
 
 For when to call the tool inside a normal coding loop, see
 `docs/integrations/agent-dogfood-playbook.md`.
@@ -122,7 +178,7 @@ configured:
 ```json
 {
   "goal": "Design a better retry strategy for AI coding agents after failed tests",
-  "effort": "quick",
+  "mode": "normal",
   "repo_signals": {
     "changed_files": ["src/agent/runner.py"],
     "test_commands": ["python -m pytest tests/test_runner.py"],
@@ -133,70 +189,52 @@ configured:
 }
 ```
 
-Use `effort: "standard"` after an initial verification failure or ambiguous repo
-context. Use `effort: "deep"` only for deliberate planning before high-impact
-edits or repeated failure loops. Explicit `budget_usd`, `seed_count`,
-`finalist_count`, and `max_generations` values override the preset.
+Use `mode: "normal"` for routine planning. Use `mode: "extensive"` after
+repeated failed verification, ambiguous repo context, or deliberate planning
+before high-impact edits. The agent should not ask the human for seed counts,
+budget values, framework flags, or generation counts.
 
 ## Provider Posture
 
-MCP and `muse-mcp-smoke` are live-first by default. If
-`provider_mode` is omitted, `muse_plan` resolves it from
-`MUSE_PROVIDER_MODE`, falling back to `live_openai`.
+MCP is live-first by default. If `provider_mode` is omitted, `muse_plan`
+resolves it from `MUSE_PROVIDER_MODE`, falling back to `live_openai`.
 
 Set these runtime defaults in the agent host environment when you want a stable
 default without repeating fields in every tool call:
 
 ```powershell
 $env:MUSE_PROVIDER_MODE = "live_openai"
-$env:MUSE_EFFORT = "quick"
+$env:MUSE_MODE = "normal"
 $env:MUSE_PRIVACY = "research"
-$env:MUSE_BUDGET_USD = "0.25"
 $env:MUSE_SEARCH_MODE = "off"
 $env:MUSE_SEARCH_PROVIDER = "auto"
 $env:MUSE_SEARCH_STRICT = "false"
 ```
 
-The deterministic test provider is only for no-network CI, protocol checks, and
-local smoke tests. Use it explicitly with `--provider-mode deterministic` or:
-
-```powershell
-$env:MUSE_PROVIDER_MODE = "deterministic"
-```
-
-Do not use deterministic output to judge product quality; it is intentionally
-repeatable and cheap.
+The deterministic provider is an internal maintainer fixture for no-network CI
+and protocol regression tests. Public MCP calls reject it unless the maintainer
+sets `MUSE_ENABLE_TEST_PROVIDER=1`.
 
 ## Opt-in Search Context
 
-The default is `off` for search context. `effort: "standard"` and
-`effort: "deep"` do not automatically call search providers. Agents can request
-opt-in search with `search_mode`. Use `search_provider` to select `auto`,
-`deterministic`, `exa`, or `brave`; use `search_strict` only when the agent
-should fail closed if requested search cannot run:
+The default is `off` for search context. `mode: "normal"` and
+`mode: "extensive"` do not automatically call search providers. Agents can
+request opt-in search with `search_mode`. Use `search_provider` to select `auto`,
+`exa`, or `brave`; use `search_strict` only when the agent should fail closed if
+requested search cannot run:
 
 ```json
 {
   "goal": "Design a debugging workflow for flaky CI",
-  "provider_mode": "live_openai",
-  "effort": "standard",
+  "mode": "extensive",
   "search_mode": "light",
   "search_provider": "auto",
-  "search_strict": false,
-  "budget_usd": 0.25
+  "search_strict": false
 }
 ```
 
 Use `search_mode: "deep"` only when broader bounded context is worth the extra
-latency and possible provider spend. For smoke tests:
-
-```powershell
-muse-mcp-smoke "Design a retry strategy for AI coding agents" `
-  --provider-mode deterministic `
-  --search-mode off `
-  --search-provider deterministic `
-  --repo-language Python
-```
+latency and possible provider spend.
 
 For environment-level defaults:
 
@@ -224,19 +262,18 @@ omitting `provider_mode`:
 ```json
 {
   "goal": "Design a debugging workflow for flaky CI",
-  "provider_mode": "live_openai",
   "privacy": "private",
-  "effort": "quick",
-  "budget_usd": 0.25
+  "mode": "normal"
 }
 ```
 
 Set these environment variables in the agent host environment:
 
 Set `OPENAI_API_KEY`, `OPENAI_ECONOMY_MODEL`, `OPENAI_STRONG_MODEL`,
-`OPENAI_EMBEDDING_MODEL`, and `OPENAI_PRICING_FILE` in the shell or local
-agent-host environment before starting the MCP server. Do not commit real
-values to the repository.
+and `OPENAI_EMBEDDING_MODEL` in the shell or local agent-host environment before
+starting the MCP server. `OPENAI_PRICING_FILE` is optional when the selected
+models are covered by packaged default pricing; set it for local pricing
+overrides. Do not commit real values to the repository.
 
 If config is missing or invalid, `muse_plan` returns
 `stopped_reason: "configuration_error"` with a structured error and no finalists.
@@ -251,13 +288,16 @@ recovery, workflow alternatives, or repo-agnostic middleware design, call the
 muse MCP tool `muse_plan`. Pass the current task goal and repo
 signals you already observed, such as changed files, test commands, CI logs,
 dependency hints, languages, and frameworks. Treat returned finalists as planning
-options; do not execute them blindly. Pick one bounded next action and verify it
-with the narrowest relevant check.
+options; do not execute them blindly. Use mode: "normal" by default and
+mode: "extensive" only for high-impact or repeated-failure planning. Do not ask
+the human for seed counts, budgets, repo-language flags, framework flags, or
+generation counts. Pick one bounded next action and verify it with the narrowest
+relevant check.
 ```
 
 ## Troubleshooting
 
 - `configuration_error`: check env variables, model names, and pricing file path.
-- Tool does not appear: rerun `muse-mcp-smoke`, then restart the agent host.
-- Live calls spend money: lower `budget_usd`, `seed_count`, or `max_generations`.
+- Tool does not appear: rerun `muse-project-init --dry-run`, then restart the agent host.
+- Live calls spend money: use `mode: "normal"` unless the task truly needs extensive planning.
 - Weak context: pass richer `repo_signals`; the MCP server intentionally does not crawl the repo.
