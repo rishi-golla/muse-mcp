@@ -57,6 +57,7 @@ def test_muse_plan_public_signature_uses_modes_instead_of_low_level_run_knobs() 
     assert "seed_count" not in parameters
     assert "finalist_count" not in parameters
     assert "max_generations" not in parameters
+    assert "max_calls" not in parameters
 
 
 def test_muse_plan_tool_defaults_to_live_openai_when_provider_is_omitted(

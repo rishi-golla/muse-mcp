@@ -10,6 +10,9 @@ from pydantic import AfterValidator, Field, SecretStr
 
 from muse.models import FrozenModel
 
+DEFAULT_MAX_RETRIES = 2
+DEFAULT_REPAIR_ATTEMPTS = 1
+
 
 def reject_invalid_model_identifier(value: str) -> str:
     if any(character.isspace() for character in value):
@@ -55,8 +58,13 @@ class LiveModelConfig(FrozenModel):
     embedding_model: ModelIdentifier = "text-embedding-3-small"
     default_budget_usd: float = Field(default=0.10, strict=True, gt=0)
     timeout_seconds: float = Field(default=30.0, strict=True, gt=0)
-    max_retries: int = Field(default=2, strict=True, ge=0, le=5)
-    repair_attempts: int = Field(default=1, strict=True, ge=0, le=2)
+    max_retries: int = Field(default=DEFAULT_MAX_RETRIES, strict=True, ge=0, le=5)
+    repair_attempts: int = Field(
+        default=DEFAULT_REPAIR_ATTEMPTS,
+        strict=True,
+        ge=0,
+        le=2,
+    )
     circuit_failure_threshold: int = Field(default=3, strict=True, ge=1)
     privacy_mode: PrivacyMode = PrivacyMode.RESEARCH
     frame_max_input_tokens: int = Field(default=2_000, strict=True, ge=1)

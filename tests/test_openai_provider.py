@@ -8,6 +8,7 @@ import pytest
 from openai import APITimeoutError, AuthenticationError, RateLimitError
 from pydantic import ValidationError
 
+from muse.branching import BranchStrategy
 from muse.live_config import LiveModelConfig
 from muse.models import (
     ContextBundle,
@@ -28,6 +29,7 @@ from muse.openai_schemas import (
     OpenAIIdea,
 )
 from muse.pricing import ModelPrice, PricingTable
+from muse.providers import MeteredProviderFailure
 from muse.reliability import CircuitBreaker, RetryPolicy
 from muse.transforms import OperatorName, TransformationRequest
 
@@ -740,7 +742,11 @@ def test_evaluation_parse_validation_error_triggers_repair() -> None:
 
 
 def test_openai_quotes_include_possible_repair_attempts() -> None:
-    provider = build_provider(FakeOpenAIClient(), repair_attempts=1)
+    provider = build_provider(
+        FakeOpenAIClient(),
+        repair_attempts=1,
+        retry_policy=RetryPolicy(max_retries=2),
+    )
 
     quote = provider.quote_seed(
         FramedTask(
@@ -751,8 +757,8 @@ def test_openai_quotes_include_possible_repair_attempts() -> None:
         RunConfig(seed_count=2, finalist_count=1),
     )
 
-    assert quote.calls == 4
-    assert quote.max_cost_usd == pytest.approx(0.052)
+    assert quote.calls == 12
+    assert quote.max_cost_usd == pytest.approx(0.156)
 
 
 def test_refusal_triggers_bounded_repair_then_raises_sanitized_error() -> None:
@@ -852,6 +858,34 @@ def test_exhausted_rate_limit_is_not_retried_by_repair_loop() -> None:
     assert "RateLimitError" in str(error.value)
 
 
+def test_exhausted_transport_retries_emit_metered_failure_attempts() -> None:
+    client = FakeOpenAIClient(
+        parsed_sequence=[
+            RateLimitError("slow down", response=_http_response(429), body=None),
+            APITimeoutError(request=httpx.Request("POST", "https://api.openai.test")),
+            RateLimitError(
+                "still limited sk-secret123456",
+                response=_http_response(429),
+                body=None,
+            ),
+        ]
+    )
+    provider = build_provider(client, retry_policy=RetryPolicy(max_retries=2))
+
+    with pytest.raises(MeteredProviderFailure) as error:
+        provider.frame(TaskContext(goal="Prompt text that should not leak"))
+
+    assert client.call_count == 3
+    assert "sk-secret" not in str(error.value)
+    assert "Prompt text" not in str(error.value)
+    partial = error.value.partial_response
+    assert partial.calls == 3
+    assert partial.cost_usd == 0
+    assert partial.usage.input_tokens == 0
+    assert partial.usage.output_tokens == 0
+    assert partial.operation_trace is not None
+
+
 def test_provider_value_errors_are_not_retried_by_repair_loop() -> None:
     client = FakeOpenAIClient(
         parsed_sequence=[
@@ -889,6 +923,36 @@ def test_rate_limits_and_timeouts_use_retry_policy() -> None:
 
     assert response.value.obvious_solution == "Use asynchronous voting"
     assert client.call_count == 3
+    assert response.calls == 3
+    assert response.operation_trace is not None
+    assert json.loads(response.operation_trace.response_json)["calls"] == 3
+
+
+def test_transport_retries_and_repairs_are_counted_once_each() -> None:
+    client = FakeOpenAIClient(
+        parsed_sequence=[
+            RateLimitError("slow down", response=_http_response(429), body=None),
+            None,
+            APITimeoutError(request=httpx.Request("POST", "https://api.openai.test")),
+            OpenAIFrame(
+                assumptions=["Meetings are necessary"],
+                obvious_solution="Use asynchronous voting",
+            ),
+        ]
+    )
+    provider = build_provider(
+        client,
+        repair_attempts=1,
+        retry_policy=RetryPolicy(max_retries=1),
+    )
+
+    response = provider.frame(TaskContext(goal="Improve team decisions"))
+
+    assert client.call_count == 4
+    assert response.calls == 4
+    assert response.usage.input_tokens == 200
+    assert response.usage.output_tokens == 80
+    assert provider.quote_frame(TaskContext(goal="Improve team decisions")).calls == 4
 
 
 def test_model_output_cannot_set_local_identity_ancestry_or_cost_fields() -> None:
@@ -935,6 +999,24 @@ def test_model_output_cannot_set_local_identity_ancestry_or_cost_fields() -> Non
     assert candidate.branch_cost_usd == 0.0
     assert response.provider == "openai"
     assert response.cost_usd == 0.00052
+
+
+def test_openai_unary_transform_preserves_parent_branch_strategy() -> None:
+    source = sample_openai_idea(title="Parent").to_seed(
+        branch_strategy=BranchStrategy.CROSS_DOMAIN_TRANSFER
+    )
+    request = TransformationRequest.for_operator(
+        operator=OperatorName.REFRAME,
+        parents=(source,),
+        task_goal="Improve decisions",
+    )
+    provider = build_provider(
+        FakeOpenAIClient(parsed=sample_openai_idea(title="Transformed"))
+    )
+
+    response = provider.transform(request, (source,))
+
+    assert response.value.branch_strategy is BranchStrategy.CROSS_DOMAIN_TRANSFER
 
 
 def test_openai_provider_seeds_independent_branches_with_aggregate_telemetry() -> None:
@@ -1038,12 +1120,62 @@ def test_openai_provider_preserves_partial_seed_metering_when_a_branch_fails() -
     partial_response = error.value.partial_response
     assert len(partial_response.value) == 1
     assert partial_response.cost_usd == pytest.approx(0.00026)
-    assert partial_response.calls == 1
-    assert partial_response.latency_ms == 125
+    assert partial_response.calls == 2
+    assert partial_response.latency_ms == 250
     assert partial_response.request_id == "req_1"
     assert partial_response.operation_trace is not None
     trace_response = json.loads(partial_response.operation_trace.response_json)
-    assert trace_response["request_ids"] == ["req_1"]
+    assert trace_response["request_ids"] == ["req_1", None]
+
+
+def test_first_seed_branch_terminal_repair_failure_preserves_its_metering() -> None:
+    frame = FramedTask(
+        context=TaskContext(goal="Sensitive branch sk-secret123456"),
+        assumptions=("Meetings are required",),
+        obvious_solution="Use a form",
+    )
+    client = FakeOpenAIClient(parsed_sequence=[None, None])
+    provider = build_provider(client, repair_attempts=1)
+
+    with pytest.raises(MeteredProviderFailure) as error:
+        provider.seed(frame, RunConfig(seed_count=2, finalist_count=1))
+
+    assert client.call_count == 2
+    assert "sk-secret" not in str(error.value)
+    partial = error.value.partial_response
+    assert partial.value == ()
+    assert partial.calls == 2
+    assert partial.cost_usd == pytest.approx(0.00052)
+    assert partial.usage.input_tokens == 200
+    assert partial.usage.output_tokens == 80
+
+
+def test_later_seed_branch_terminal_repair_failure_includes_own_metering() -> None:
+    frame = FramedTask(
+        context=TaskContext(goal="Sensitive branch sk-secret123456"),
+        assumptions=("Meetings are required",),
+        obvious_solution="Use a form",
+    )
+    client = FakeOpenAIClient(
+        parsed_sequence=[
+            sample_openai_idea(title="First branch"),
+            None,
+            None,
+        ]
+    )
+    provider = build_provider(client, repair_attempts=1)
+
+    with pytest.raises(MeteredProviderFailure) as error:
+        provider.seed(frame, RunConfig(seed_count=2, finalist_count=1))
+
+    assert client.call_count == 3
+    assert "sk-secret" not in str(error.value)
+    partial = error.value.partial_response
+    assert [candidate.title for candidate in partial.value] == ["First branch"]
+    assert partial.calls == 3
+    assert partial.cost_usd == pytest.approx(0.00078)
+    assert partial.usage.input_tokens == 300
+    assert partial.usage.output_tokens == 120
 
 
 def test_openai_provider_preserves_completed_metering_when_seed_outputs_duplicate() -> None:

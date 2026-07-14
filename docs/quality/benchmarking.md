@@ -157,6 +157,11 @@ Deterministic fixture runs do not report provider calls or spend: their
 `independent_call_count` is zero and their metadata is only contract evidence.
 The strategy names are ordered requested strategy directives; the count covers only
 evidenced completed branches from the metered seed trace, not planned branches.
+Evidence qualifies only when the requested branches are an ordered prefix of the exact
+strategy schedule, each branch contains non-empty structurally valid nested request and
+response traces, and the nested calls and token usage exactly reconcile with the charged
+seeding spend record. Placeholder, reordered, duplicate, forged, or inconsistently metered
+entries report zero completed branches.
 
 ## Quality-claim rule
 

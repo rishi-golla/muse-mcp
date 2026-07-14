@@ -19,6 +19,7 @@ from muse.models import (
 from muse.transforms import (
     TransformationRequest,
     expected_transformation_history,
+    transformed_branch_strategy,
 )
 
 OPENAI_ID_NAMESPACE = UUID("e8e3f5ca-dc80-5c06-a22a-2728f62d00d9")
@@ -203,6 +204,7 @@ class OpenAIIdea(OpenAIOutputModel):
             parent_ids=parent_ids,
             transformations=history,
             inspiration_kind=InspirationKind.SYNTHESIZED,
+            branch_strategy=transformed_branch_strategy(parents),
         )
 
 

@@ -16,6 +16,7 @@ from muse.models import (
     OperationTrace,
     RunConfig,
     TaskContext,
+    TokenUsage,
 )
 from muse.population import PopulationManager
 from muse.providers import MeteredProviderFailure, MeteredResponse, OperationQuote
@@ -238,6 +239,40 @@ class PartiallyFailingSeedProvider(DeterministicCreativeProvider):
         raise MeteredProviderFailure(
             "provider branch failed",
             partial_response=partial_response,
+        )
+
+
+class FirstBranchMeteredFailureProvider(DeterministicCreativeProvider):
+    def quote_seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> OperationQuote:
+        del framed_task, config
+        return OperationQuote(max_cost_usd=0.006, calls=2)
+
+    def seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        response = super().seed(framed_task, config)
+        raise MeteredProviderFailure(
+            "sanitized terminal repair failure",
+            partial_response=response.model_copy(
+                update={
+                    "value": (),
+                    "cost_usd": 0.006,
+                    "calls": 2,
+                    "latency_ms": 19,
+                    "usage": TokenUsage(input_tokens=20, output_tokens=8),
+                    "request_id": "req_failed_first",
+                    "operation_trace": OperationTrace.from_payload(
+                        request={"operation": "seed", "branches": [0]},
+                        response={"request_ids": ["req_failed_first"]},
+                    ),
+                }
+            ),
         )
 
 
@@ -680,6 +715,31 @@ def test_engine_charges_and_traces_partial_seed_failure() -> None:
     assert result.errors[-1].cost_incurred is True
     assert result.errors[-1].message == "provider operation failed"
     assert result.stopped_reason == "provider_error"
+
+
+def test_engine_charges_first_branch_terminal_failure_exactly_once() -> None:
+    result = build_engine(FirstBranchMeteredFailureProvider()).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert result.all_candidates == ()
+    seeding_records = [
+        record for record in result.spend_records if record.stage == "seeding"
+    ]
+    assert len(seeding_records) == 1
+    assert seeding_records[0].cost_usd == 0.006
+    assert seeding_records[0].calls == 2
+    assert seeding_records[0].usage == TokenUsage(input_tokens=20, output_tokens=8)
+    assert result.errors[-1].cost_incurred is True
 
 
 def test_engine_assigns_exact_item_metering_to_seed_candidates() -> None:

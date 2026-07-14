@@ -18,7 +18,6 @@ def muse_plan(
     mode: str | None = None,
     provider_mode: str | None = None,
     privacy: str | None = None,
-    max_calls: int = 20,
     max_context_snippets: int = 8,
     search_mode: str | None = None,
     search_provider: str | None = None,
@@ -58,7 +57,6 @@ def muse_plan(
         "search_provider": defaults.search_provider,
         "search_strict": defaults.search_strict,
         "repo_signals": repo_signals or {},
-        "max_calls": max_calls,
         "max_context_snippets": max_context_snippets,
     }
     return run_muse_plan(request)

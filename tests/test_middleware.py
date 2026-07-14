@@ -70,6 +70,32 @@ class NonLiveFixtureProvider:
         return self._delegate.quote_evaluation(framed_task)
 
 
+class DefaultLiveCeilingProvider(NonLiveFixtureProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.seed_calls = 0
+
+    def quote_frame(self, task):
+        del task
+        return OperationQuote(max_cost_usd=0.0, calls=6)
+
+    def quote_seed(self, framed_task, config):
+        del framed_task
+        return OperationQuote(max_cost_usd=0.01, calls=6 * config.seed_count)
+
+    def quote_transform(self, request, parents):
+        del request, parents
+        return OperationQuote(max_cost_usd=0.01, calls=6)
+
+    def quote_evaluation(self, framed_task):
+        del framed_task
+        return OperationQuote(max_cost_usd=0.005, calls=6)
+
+    def seed(self, framed_task, config):
+        self.seed_calls += 1
+        return super().seed(framed_task, config)
+
+
 class PartiallyEvidencedBranchProvider(NonLiveFixtureProvider):
     def __init__(
         self,
@@ -98,6 +124,17 @@ class PartiallyEvidencedBranchProvider(NonLiveFixtureProvider):
                     },
                     response={
                         "branches": self._completed_branches,
+                        "request_ids": [
+                            branch.get("request_id")
+                            for branch in self._completed_branches
+                        ],
+                        "calls": 1,
+                        "usage": {
+                            "input": 0,
+                            "cached_input": 0,
+                            "output": 0,
+                            "reasoning": 0,
+                        },
                     },
                 ),
             }
@@ -113,12 +150,59 @@ def _branch_trace_entry(
     branch_index: int,
     strategy: str,
     trace_kind: str,
+    *,
+    nested_branch_index: int | None = None,
+    nested_strategy: str | None = None,
+    calls: int = 1,
+    input_tokens: int = 0,
 ) -> dict[str, object]:
-    return {
+    nested_index = branch_index if nested_branch_index is None else nested_branch_index
+    nested_branch_strategy = strategy if nested_strategy is None else nested_strategy
+    entry: dict[str, object] = {
         "branch_index": branch_index,
         "strategy": strategy,
-        "trace": {trace_kind: "fixture"},
     }
+    if trace_kind == "request":
+        entry["trace"] = {
+            "operation": "seed",
+            "domain": {
+                "branch_directive": {
+                    "branch_index": nested_index,
+                    "strategy": nested_branch_strategy,
+                    "instruction": "Exercise the fixture branch independently.",
+                }
+            },
+        }
+        return entry
+    usage = {
+        "input": input_tokens,
+        "cached_input": 0,
+        "output": 0,
+        "reasoning": 0,
+    }
+    request_id = f"req_fixture_{branch_index}"
+    entry.update(
+        {
+            "request_id": request_id,
+            "succeeded": True,
+            "trace": {
+                "attempts": [
+                    {
+                        "attempt": 1,
+                        "request_id": request_id,
+                        "usage": usage,
+                    }
+                ],
+                "request_id": request_id,
+                "parsed": {"title": f"Fixture branch {branch_index}"},
+                "refusal": None,
+                "calls": calls,
+                "error": None,
+                "usage": usage,
+            },
+        }
+    )
+    return entry
 
 
 def test_runner_returns_json_safe_operational_plan_from_repo_signals() -> None:
@@ -148,6 +232,24 @@ def test_runner_returns_json_safe_operational_plan_from_repo_signals() -> None:
     assert "test shards" in result["finalists"][0]["agent_workflow"][1]
     assert result["finalists"][0]["verification_strategy"]
     assert json.loads(json.dumps(result)) == result
+
+
+def test_extensive_public_defaults_reach_live_seeding_at_default_call_ceilings() -> None:
+    provider = DefaultLiveCeilingProvider()
+    request = CreativePlanRequest.model_validate(
+        {
+            "goal": "Design a planning hook for arbitrary repos",
+            "provider_mode": "live_openai",
+            "mode": "extensive",
+        }
+    )
+
+    result = CreativeMiddlewareRunner.live_openai(provider=provider).run(request)
+
+    assert request.max_calls == 222
+    assert provider.seed_calls == 1
+    assert result["errors"] == []
+    assert result["stopped_reason"] == "generation_limit"
 
 
 def test_runner_exposes_live_branch_metadata_without_claiming_fixture_calls() -> None:
@@ -272,6 +374,112 @@ def test_runner_rejects_forged_unknown_duplicate_and_overscheduled_branch_eviden
         assert result["config"]["branch_generation"]["independent_call_count"] == 0
 
 
+def test_runner_rejects_placeholder_reordered_and_nonprefix_branch_evidence() -> None:
+    placeholder_request = _branch_trace_entry(0, "constraint_inversion", "request")
+    placeholder_response = _branch_trace_entry(0, "constraint_inversion", "response")
+    placeholder_request["trace"] = {}
+    placeholder_response["trace"] = {}
+    boolean_request = _branch_trace_entry(0, "constraint_inversion", "request")
+    boolean_response = _branch_trace_entry(0, "constraint_inversion", "response")
+    boolean_request["branch_index"] = False
+    boolean_request["trace"]["domain"]["branch_directive"]["branch_index"] = False
+    boolean_response["branch_index"] = False
+    empty_parsed_request = _branch_trace_entry(0, "constraint_inversion", "request")
+    empty_parsed_response = _branch_trace_entry(0, "constraint_inversion", "response")
+    empty_parsed_response["trace"]["parsed"] = {}
+    cases = (
+        ([placeholder_request], [placeholder_response]),
+        ([boolean_request], [boolean_response]),
+        ([empty_parsed_request], [empty_parsed_response]),
+        (
+            [
+                _branch_trace_entry(1, "failure_first", "request"),
+                _branch_trace_entry(0, "constraint_inversion", "request"),
+            ],
+            [
+                _branch_trace_entry(1, "failure_first", "response"),
+                _branch_trace_entry(0, "constraint_inversion", "response"),
+            ],
+        ),
+        (
+            [_branch_trace_entry(1, "failure_first", "request")],
+            [_branch_trace_entry(1, "failure_first", "response")],
+        ),
+    )
+
+    for requested_branches, completed_branches in cases:
+        result = CreativeMiddlewareRunner.live_openai(
+            provider=PartiallyEvidencedBranchProvider(
+                requested_branches=requested_branches,
+                completed_branches=completed_branches,
+            ),
+        ).run(
+            CreativePlanRequest(
+                goal="Design a planning hook for arbitrary repos",
+                provider_mode="live_openai",
+                seed_count=3,
+                finalist_count=1,
+                max_generations=0,
+                budget_usd=0.20,
+            )
+        )
+
+        assert result["config"]["branch_generation"]["independent_call_count"] == 0
+
+
+def test_runner_rejects_forged_nested_branch_directive() -> None:
+    result = CreativeMiddlewareRunner.live_openai(
+        provider=PartiallyEvidencedBranchProvider(
+            requested_branches=[
+                _branch_trace_entry(
+                    0,
+                    "constraint_inversion",
+                    "request",
+                    nested_strategy="failure_first",
+                )
+            ],
+        ),
+    ).run(
+        CreativePlanRequest(
+            goal="Design a planning hook for arbitrary repos",
+            provider_mode="live_openai",
+            seed_count=3,
+            finalist_count=1,
+            max_generations=0,
+            budget_usd=0.20,
+        )
+    )
+
+    assert result["config"]["branch_generation"]["independent_call_count"] == 0
+
+
+def test_runner_rejects_branch_trace_accounting_inconsistent_with_spend() -> None:
+    result = CreativeMiddlewareRunner.live_openai(
+        provider=PartiallyEvidencedBranchProvider(
+            completed_branches=[
+                _branch_trace_entry(
+                    0,
+                    "constraint_inversion",
+                    "response",
+                    calls=2,
+                    input_tokens=10,
+                )
+            ],
+        ),
+    ).run(
+        CreativePlanRequest(
+            goal="Design a planning hook for arbitrary repos",
+            provider_mode="live_openai",
+            seed_count=3,
+            finalist_count=1,
+            max_generations=0,
+            budget_usd=0.20,
+        )
+    )
+
+    assert result["config"]["branch_generation"]["independent_call_count"] == 0
+
+
 def test_runner_does_not_classify_custom_non_live_fixtures_as_branch_evidence() -> None:
     result = CreativeMiddlewareRunner.live_openai(
         provider=NonLiveFixtureProvider(),
@@ -302,6 +510,9 @@ def test_branch_generation_docs_distinguish_live_trajectories_from_fixtures() ->
     assert "does not prove a provider call" in readme
     assert "requested strategy directives" in readme
     assert "evidenced completed branches" in readme
+    assert "ordered prefix" in readme
+    assert "nested request and response traces" in readme
+    assert "calls and token usage exactly reconcile" in readme
     assert "independently completed seed branches" in readme
     assert "`seed_count` requests" in readme
     assert (
@@ -311,6 +522,9 @@ def test_branch_generation_docs_distinguish_live_trajectories_from_fixtures() ->
     assert "do not report provider calls or spend" in benchmarking
     assert "requested strategy directives" in benchmarking
     assert "evidenced completed branches" in benchmarking
+    assert "ordered prefix" in benchmarking
+    assert "nested request and response traces" in benchmarking
+    assert "calls and token usage exactly reconcile" in benchmarking
     assert "independently completed seed branches" in benchmarking
     assert "`seed_count` requests" in benchmarking
 
