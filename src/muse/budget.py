@@ -315,6 +315,7 @@ class BudgetController:
         latency_ms: int,
         *,
         quoted_cost_usd: int | float,
+        quoted_calls: int | None = None,
         model: str | None = None,
         usage: TokenUsage | None = None,
         pricing_version: str | None = None,
@@ -326,12 +327,15 @@ class BudgetController:
         """Record an incurred provider overage without authorizing new work."""
         cost = _money(cost_usd)
         quoted_cost = _money(quoted_cost_usd)
-        if cost <= quoted_cost:
-            raise ValueError("audited overage must exceed quoted cost")
+        call_count = _call_count(calls)
+        quoted_call_count = _call_count(
+            calls if quoted_calls is None else quoted_calls
+        )
+        if cost <= quoted_cost and call_count <= quoted_call_count:
+            raise ValueError("audited overage must exceed quoted cost or call count")
 
         state = self._active_reservation_state(reservation)
-        call_count = _call_count(calls)
-        if state.remaining_calls < call_count:
+        if state.remaining_calls < quoted_call_count:
             raise BudgetExceeded("reservation call limit exceeded")
         if quoted_cost > state.remaining_cost:
             raise RuntimeError("quoted cost exceeds reservation capacity")
@@ -351,11 +355,11 @@ class BudgetController:
             operation_trace=operation_trace,
         )
         self._reserved_cost -= quoted_cost
-        self._reserved_calls -= call_count
+        self._reserved_calls -= quoted_call_count
         state.remaining_cost -= quoted_cost
-        state.remaining_calls -= call_count
+        state.remaining_calls -= quoted_call_count
         reservation._remaining_cost -= quoted_cost
-        reservation._remaining_calls -= call_count
+        reservation._remaining_calls -= quoted_call_count
         return record
 
     def _release_reservation(self, reservation: BudgetReservation) -> None:

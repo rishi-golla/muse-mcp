@@ -18,7 +18,7 @@ from muse.models import (
     TaskContext,
 )
 from muse.population import PopulationManager
-from muse.providers import MeteredResponse, OperationQuote
+from muse.providers import MeteredProviderFailure, MeteredResponse, OperationQuote
 from muse.transforms import TransformationRequest
 
 
@@ -201,7 +201,7 @@ class InvalidEvaluationScaleProvider(DeterministicCreativeProvider):
         )
 
 
-class PartialSeedFailure(RuntimeError):
+class UntrustedPartialSeedFailure(RuntimeError):
     def __init__(self, partial_response: MeteredResponse[object]) -> None:
         super().__init__("provider branch failed")
         self.partial_response = partial_response
@@ -235,7 +235,10 @@ class PartiallyFailingSeedProvider(DeterministicCreativeProvider):
                 ),
             }
         )
-        raise PartialSeedFailure(partial_response)
+        raise MeteredProviderFailure(
+            "provider branch failed",
+            partial_response=partial_response,
+        )
 
 
 class PerItemSeedMeteringProvider(DeterministicCreativeProvider):
@@ -278,6 +281,81 @@ class PerItemSeedMeteringProvider(DeterministicCreativeProvider):
                 "item_metering": (first_meter, second_meter),
             }
         )
+
+
+class InconsistentItemMeteringProvider(PerItemSeedMeteringProvider):
+    def seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        response = super().seed(framed_task, config)
+        return response.model_copy(update={"cost_usd": 0.009})
+
+
+class SpoofedItemMeteringProvider(PerItemSeedMeteringProvider):
+    def seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        response = super().seed(framed_task, config)
+        first, *remaining = response.item_metering
+        return response.model_copy(
+            update={
+                "item_metering": (
+                    first.model_copy(update={"provider": "spoofed-provider"}),
+                    *remaining,
+                )
+            }
+        )
+
+
+class PartialCallOverageProvider(DeterministicCreativeProvider):
+    def quote_seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> OperationQuote:
+        del framed_task, config
+        return OperationQuote(max_cost_usd=0.01, calls=1)
+
+    def seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        response = super().seed(framed_task, config)
+        partial_response = response.model_copy(
+            update={
+                "value": response.value[:1],
+                "cost_usd": 0.005,
+                "calls": 4,
+                "latency_ms": 17,
+            }
+        )
+        raise MeteredProviderFailure(
+            "provider branch failed",
+            partial_response=partial_response,
+        )
+
+
+class UntrustedPartialResponseProvider(DeterministicCreativeProvider):
+    def seed(
+        self,
+        framed_task: FramedTask,
+        config: RunConfig,
+    ) -> MeteredResponse[tuple[IdeaGenome, ...]]:
+        response = super().seed(framed_task, config)
+        partial_response = response.model_copy(
+            update={
+                "value": response.value[:1],
+                "cost_usd": 0.005,
+                "calls": 1,
+                "latency_ms": 17,
+            }
+        )
+        raise UntrustedPartialSeedFailure(partial_response)
 
 
 class RecordingPopulation(PopulationManager):
@@ -581,6 +659,88 @@ def test_engine_assigns_exact_item_metering_to_seed_candidates() -> None:
         0.013,
     ]
     assert [candidate.branch_latency_ms for candidate in result.all_candidates] == [21.0, 81.0]
+
+
+def test_engine_rejects_item_metering_with_inconsistent_aggregate_totals() -> None:
+    result = build_engine(InconsistentItemMeteringProvider()).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=2,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert result.all_candidates == ()
+    assert [record.stage for record in result.spend_records] == ["framing", "seeding"]
+    assert result.spend_records[1].cost_usd == 0.009
+    assert result.errors[-1].category == "validation_error"
+    assert result.errors[-1].cost_incurred is True
+
+
+def test_engine_rejects_item_metering_with_spoofed_provider_identity() -> None:
+    result = build_engine(SpoofedItemMeteringProvider()).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=2,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert result.all_candidates == ()
+    assert [record.stage for record in result.spend_records] == ["framing", "seeding"]
+    assert result.errors[-1].category == "validation_error"
+    assert result.errors[-1].cost_incurred is True
+
+
+def test_engine_records_partial_call_count_overage() -> None:
+    result = build_engine(PartialCallOverageProvider()).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert result.all_candidates == ()
+    assert [record.stage for record in result.spend_records] == ["framing", "seeding"]
+    assert result.spend_records[1].cost_usd == 0.005
+    assert result.spend_records[1].calls == 4
+    assert result.errors[-1].category == "overage_error"
+    assert result.errors[-1].cost_incurred is True
+
+
+def test_engine_ignores_untrusted_partial_response_attribute() -> None:
+    result = build_engine(UntrustedPartialResponseProvider()).run(
+        TaskContext(goal="Invent a new decision process."),
+        RunConfig(
+            max_cost_usd=1,
+            max_calls=10,
+            max_generations=0,
+            seed_count=2,
+            finalist_count=1,
+            framing_reserve_usd=0,
+            finalization_reserve_usd=0,
+        ),
+    )
+
+    assert [record.stage for record in result.spend_records] == ["framing"]
+    assert result.errors[-1].category == "provider_error"
+    assert result.errors[-1].cost_incurred is False
 
 
 def test_engine_records_seed_cost_above_quote_even_past_budget() -> None:
