@@ -149,6 +149,13 @@ and let the runner capture generation and judge exceptions as failures. A qualit
 report that omits failed attempts, spend, latency, or deterministic metadata is
 incomplete and should not be used for a comparative claim.
 
+When a live Muse adapter requests seeds, every seed starts an independent live model
+trajectory with its own branch strategy. The MCP response exposes those strategy names and
+the live branch count in `config.branch_generation`; this means `seed_count` measures
+independent live trajectories, not items returned from one batched seed response.
+Deterministic fixture runs do not report provider calls or spend: their
+`independent_call_count` is zero and their metadata is only contract evidence.
+
 ## Quality-claim rule
 
 Unit tests do not establish creative quality. They establish that contracts,

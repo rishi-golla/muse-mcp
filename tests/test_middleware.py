@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from muse import middleware as middleware_module
 from muse.deterministic import DeterministicCreativeProvider
@@ -43,6 +44,43 @@ def test_runner_returns_json_safe_operational_plan_from_repo_signals() -> None:
     assert "test shards" in result["finalists"][0]["agent_workflow"][1]
     assert result["finalists"][0]["verification_strategy"]
     assert json.loads(json.dumps(result)) == result
+
+
+def test_runner_exposes_live_branch_metadata_without_claiming_fixture_calls() -> None:
+    result = CreativeMiddlewareRunner.live_openai(
+        provider=DeterministicCreativeProvider(),
+    ).run(
+        CreativePlanRequest(
+            goal="Design a planning hook for arbitrary repos",
+            provider_mode="live_openai",
+            seed_count=4,
+            finalist_count=1,
+            max_generations=0,
+            budget_usd=0.20,
+        )
+    )
+
+    assert result["config"]["branch_generation"] == {
+        "strategies": [
+            "constraint_inversion",
+            "failure_first",
+            "cross_domain_transfer",
+            "systems_effects",
+        ],
+        "independent_call_count": 0,
+    }
+
+
+def test_branch_generation_docs_distinguish_live_trajectories_from_fixtures() -> None:
+    readme = " ".join(Path("README.md").read_text(encoding="utf-8").split())
+    benchmarking = " ".join(
+        Path("docs/quality/benchmarking.md").read_text(encoding="utf-8").split()
+    )
+
+    assert "independent live model trajectory" in readme
+    assert "does not prove a provider call" in readme
+    assert "independent live model trajectory" in benchmarking
+    assert "do not report provider calls or spend" in benchmarking
 
 
 def test_runner_returns_quality_warnings_for_generic_finalists() -> None:

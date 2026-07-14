@@ -8,6 +8,7 @@ from typing import Any
 from openai import OpenAI
 from pydantic import Field, ValidationError, model_validator
 
+from muse.branching import branch_directives
 from muse.brave_search import BraveSearchProvider
 from muse.context_provider import (
     ContextProvider,
@@ -234,6 +235,14 @@ class CreativeMiddlewareRunner:
             engine.run(task, config),
             parsed_request,
             search_context.metadata,
+            independent_call_count=(
+                parsed_request.seed_count
+                if (
+                    parsed_request.provider_mode is ProviderMode.LIVE_OPENAI
+                    and not isinstance(self._seeder, DeterministicCreativeProvider)
+                )
+                else 0
+            ),
         )
 
 
@@ -241,6 +250,8 @@ def _serialize_result(
     result: RunResult,
     request: CreativePlanRequest,
     search_context: SearchContextMetadata,
+    *,
+    independent_call_count: int,
 ) -> dict[str, Any]:
     spend_total = round(sum(record.cost_usd for record in result.spend_records), 10)
     required_terms = result.framed_task.context.context_bundle.tags
@@ -295,6 +306,13 @@ def _serialize_result(
             "effort": request.effort.value,
             "budget_usd": request.budget_usd,
             "seed_count": request.seed_count,
+            "branch_generation": {
+                "strategies": [
+                    directive.strategy.value
+                    for directive in branch_directives(request.seed_count)
+                ],
+                "independent_call_count": independent_call_count,
+            },
             "finalist_count": request.finalist_count,
             "max_generations": request.max_generations,
             "max_calls": request.max_calls,
