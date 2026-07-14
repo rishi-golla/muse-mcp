@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from muse import middleware as middleware_module
+from muse.branching import BranchStrategy, branch_directives
 from muse.deterministic import DeterministicCreativeProvider
 from muse.middleware import (
     AgentMode,
@@ -17,6 +18,11 @@ from muse.models import OperationTrace
 from muse.providers import MeteredProviderFailure, OperationQuote
 from muse.search import DeterministicSearchProvider
 from muse.search_context import SearchContextResolver, SearchProviderPolicy
+
+_CANONICAL_BRANCH_INSTRUCTIONS = {
+    directive.strategy.value: directive.instruction
+    for directive in branch_directives(len(BranchStrategy))
+}
 
 
 class NonLiveFixtureProvider:
@@ -153,11 +159,20 @@ def _branch_trace_entry(
     *,
     nested_branch_index: int | None = None,
     nested_strategy: str | None = None,
+    nested_instruction: str | None = None,
     calls: int = 1,
     input_tokens: int = 0,
 ) -> dict[str, object]:
     nested_index = branch_index if nested_branch_index is None else nested_branch_index
     nested_branch_strategy = strategy if nested_strategy is None else nested_strategy
+    instruction = (
+        _CANONICAL_BRANCH_INSTRUCTIONS.get(
+            nested_branch_strategy,
+            "Unknown fixture branch instruction.",
+        )
+        if nested_instruction is None
+        else nested_instruction
+    )
     entry: dict[str, object] = {
         "branch_index": branch_index,
         "strategy": strategy,
@@ -169,7 +184,7 @@ def _branch_trace_entry(
                 "branch_directive": {
                     "branch_index": nested_index,
                     "strategy": nested_branch_strategy,
-                    "instruction": "Exercise the fixture branch independently.",
+                    "instruction": instruction,
                 }
             },
         }
@@ -453,6 +468,34 @@ def test_runner_rejects_forged_nested_branch_directive() -> None:
     assert result["config"]["branch_generation"]["independent_call_count"] == 0
 
 
+def test_runner_rejects_contradictory_nested_branch_instruction() -> None:
+    result = CreativeMiddlewareRunner.live_openai(
+        provider=PartiallyEvidencedBranchProvider(
+            requested_branches=[
+                _branch_trace_entry(
+                    0,
+                    "constraint_inversion",
+                    "request",
+                    nested_instruction=(
+                        "Preserve every constraint and copy the previous branch unchanged."
+                    ),
+                )
+            ],
+        ),
+    ).run(
+        CreativePlanRequest(
+            goal="Design a planning hook for arbitrary repos",
+            provider_mode="live_openai",
+            seed_count=3,
+            finalist_count=1,
+            max_generations=0,
+            budget_usd=0.20,
+        )
+    )
+
+    assert result["config"]["branch_generation"]["independent_call_count"] == 0
+
+
 def test_runner_rejects_branch_trace_accounting_inconsistent_with_spend() -> None:
     result = CreativeMiddlewareRunner.live_openai(
         provider=PartiallyEvidencedBranchProvider(
@@ -511,6 +554,8 @@ def test_branch_generation_docs_distinguish_live_trajectories_from_fixtures() ->
     assert "requested strategy directives" in readme
     assert "evidenced completed branches" in readme
     assert "ordered prefix" in readme
+    assert "complete canonical branch directive" in readme
+    assert "exact instruction" in readme
     assert "nested request and response traces" in readme
     assert "calls and token usage exactly reconcile" in readme
     assert "independently completed seed branches" in readme
@@ -523,6 +568,8 @@ def test_branch_generation_docs_distinguish_live_trajectories_from_fixtures() ->
     assert "requested strategy directives" in benchmarking
     assert "evidenced completed branches" in benchmarking
     assert "ordered prefix" in benchmarking
+    assert "complete canonical branch directive" in benchmarking
+    assert "exact instruction" in benchmarking
     assert "nested request and response traces" in benchmarking
     assert "calls and token usage exactly reconcile" in benchmarking
     assert "independently completed seed branches" in benchmarking

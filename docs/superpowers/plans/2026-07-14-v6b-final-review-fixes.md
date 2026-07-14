@@ -111,3 +111,21 @@
 - [x] Review the full diff against all five findings and prior V6-B guarantees.
 - [x] Append RED/GREEN evidence, changed files, design decisions, self-review, concerns, and the final commit SHA to the report.
 - [x] Commit with a terse fix message.
+
+### Task 7: Match the complete canonical branch directive
+
+**Files:**
+- Modify: `tests/test_middleware.py`
+- Modify: `src/muse/middleware.py`
+- Modify: `README.md`
+- Modify: `docs/quality/benchmarking.md`
+- Append: `.superpowers/sdd/final-review-fix-report.md`
+
+**Interfaces:**
+- Produces: branch evidence validation against the complete canonical `BranchDirective`, including the exact instruction.
+
+- [x] Add a regression with the canonical index and strategy but a contradictory nonblank instruction, plus documentation contract assertions.
+- [x] Run the focused tests and capture RED evidence that the contradictory directive is counted and the stricter contract is undocumented.
+- [x] Preserve canonical `BranchDirective` objects through validation and require the parsed nested directive to equal the scheduled directive.
+- [x] Document the complete-directive requirement and run the focused tests to capture GREEN.
+- [x] Append evidence, run all required verification, self-review, and commit.

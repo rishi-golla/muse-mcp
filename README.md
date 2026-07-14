@@ -417,10 +417,11 @@ the ordered creative strategies and the number of independently completed seed b
 counts only evidenced completed branches from the run's metered seed trace, so it can be
 lower than `seed_count` after a branch failure and is zero when seeding never starts.
 Evidence is accepted only when the requested branches are an ordered prefix of the exact
-strategy schedule, every branch has non-empty structurally valid nested request and response
-traces, and their calls and token usage exactly reconcile with the charged seeding spend
-record. Placeholders, reordered or forged branches, duplicates, and inconsistent accounting
-produce a zero count.
+strategy schedule, each nested request contains the complete canonical branch directive
+including its exact instruction, every branch has non-empty structurally valid nested request
+and response traces, and their calls and token usage exactly reconcile with the charged
+seeding spend record. Placeholders, reordered or forged branches, duplicates, and
+inconsistent accounting produce a zero count.
 
 The deterministic provider remains a no-network test fixture. Its metadata
 uses `independent_call_count: 0`, so a fixture result does not prove a provider

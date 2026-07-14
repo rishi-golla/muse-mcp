@@ -203,3 +203,96 @@ place.
 No V6-B blocker remains. The test runs emit the repository's existing `pytest-asyncio`
 deprecation warning because `asyncio_default_fixture_loop_scope` is unset; it does not affect
 test results and is outside this fix's scope.
+
+## 2026-07-14 final re-review finding 6
+
+Requirements source: the appended `Final re-review finding` in
+`.superpowers/sdd/final-review-findings.md`.
+
+### Finding
+
+Branch request evidence compared the scheduled branch index and strategy but accepted any
+nonblank nested instruction. A trace could therefore claim the canonical
+`constraint_inversion` index and strategy while carrying a contradictory instruction and
+still increment `independent_call_count`.
+
+### RED evidence
+
+Test changes were made before production edits. Valid trace fixtures were updated to derive
+their instructions from `branch_directives`, and a regression supplied the canonical index
+and strategy with this contradictory nonblank instruction:
+`Preserve every constraint and copy the previous branch unchanged.` Documentation assertions
+also required the complete canonical directive and exact instruction contract.
+
+Command:
+
+```text
+python -m pytest -q tests/test_middleware.py::test_runner_rejects_contradictory_nested_branch_instruction tests/test_middleware.py::test_branch_generation_docs_distinguish_live_trajectories_from_fixtures
+```
+
+Result: `2 failed`. The behavior regression observed
+`independent_call_count == 1` instead of `0`, and the documentation regression could not find
+the complete canonical directive requirement.
+
+### GREEN evidence
+
+The same command after the implementation and documentation edits produced `2 passed in
+2.82s`.
+
+Focused changed-path command:
+
+```text
+python -m pytest -q tests/test_middleware.py tests/test_mcp_server.py
+```
+
+Result: `57 passed in 5.46s`.
+
+### Implementation and design decisions
+
+- `src/muse/middleware.py` now retains the scheduled `BranchDirective` objects rather than
+  reducing them to `(branch_index, strategy)` tuples.
+- The nested traced mapping is parsed through `BranchDirective.model_validate`, reusing the
+  canonical model's strict index validation, enum validation, nonblank instruction rule, and
+  `extra="forbid"` contract.
+- Evidence is accepted only when that parsed directive equals the complete scheduled
+  directive. The exact canonical instruction is therefore required, and omitted, extra,
+  contradictory, or otherwise noncanonical directive fields are rejected.
+- Response validation consumes the same canonical directive objects for outer index and
+  strategy checks, avoiding a second lossy schedule representation.
+- README and benchmarking guidance now state that nested request evidence must contain the
+  complete canonical directive, including its exact instruction.
+
+### Changed files
+
+- `src/muse/middleware.py`
+- `tests/test_middleware.py`
+- `README.md`
+- `docs/quality/benchmarking.md`
+- `docs/superpowers/plans/2026-07-14-v6b-final-review-fixes.md`
+- `.superpowers/sdd/final-review-fix-report.md`
+
+### Verification
+
+- Targeted RED: `2 failed` for the expected behavior and documentation gaps.
+- Targeted GREEN: `2 passed in 2.82s`.
+- Focused middleware/MCP suite: `57 passed in 5.46s`.
+- Full suite: `python -m pytest -q` -> `867 passed, 4 deselected in 17.56s`.
+- Ruff: `python -m ruff check .` -> `All checks passed!` after removing one extra
+  import-block blank line reported by the first Ruff run.
+- Whitespace: `git diff --check` -> exit 0.
+
+### Self-review
+
+The focused suite proves both the new contradictory-instruction rejection and the existing
+valid-prefix count, forged strategy/index rejection, placeholder rejection, and exact spend
+reconciliation. The implementation compares the complete existing domain model rather than
+duplicating today's three fields, so future `BranchDirective` fields cannot be silently
+dropped by this validation path. The change is internal to evidence classification and does
+not alter public MCP controls, provider contracts, sanitized errors, budget/quote behavior,
+spend accounting, or all-or-nothing candidate cardinality.
+
+### Concerns
+
+No V6-B re-review blocker remains. The full and focused test runs continue to emit the
+existing non-blocking `pytest-asyncio` deprecation warning because
+`asyncio_default_fixture_loop_scope` is unset.

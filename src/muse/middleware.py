@@ -9,7 +9,7 @@ from typing import Any
 from openai import OpenAI
 from pydantic import Field, ValidationError, model_validator
 
-from muse.branching import branch_directives
+from muse.branching import BranchDirective, branch_directives
 from muse.brave_search import BraveSearchProvider
 from muse.context_provider import (
     ContextProvider,
@@ -359,10 +359,7 @@ def _serialize_result(
 
 
 def _independent_branch_call_count(result: RunResult, *, seed_count: int) -> int:
-    expected_schedule = tuple(
-        (directive.branch_index, directive.strategy.value)
-        for directive in branch_directives(seed_count)
-    )
+    expected_schedule = branch_directives(seed_count)
     completed_indices: set[int] = set()
     for record in result.spend_records:
         if record.stage != "seeding" or record.operation_trace is None:
@@ -382,7 +379,7 @@ def _independent_branch_call_count(result: RunResult, *, seed_count: int) -> int
 def _evidenced_branch_indices(
     record: SpendRecord,
     *,
-    expected_schedule: tuple[tuple[int, str], ...],
+    expected_schedule: tuple[BranchDirective, ...],
 ) -> set[int] | None:
     operation_trace = record.operation_trace
     if operation_trace is None:
@@ -412,7 +409,7 @@ def _evidenced_branch_indices(
     ):
         return None
 
-    requested: list[tuple[int, str]] = []
+    requested: list[BranchDirective] = []
     for position, directive in enumerate(directives):
         if not isinstance(directive, Mapping) or not _valid_branch_request(
             directive,
@@ -437,7 +434,7 @@ def _evidenced_branch_indices(
         if failure_seen or (not succeeded and position != len(completed) - 1):
             return None
         if succeeded:
-            completed_indices.add(expected[0])
+            completed_indices.add(expected.branch_index)
         else:
             failure_seen = True
         nested_calls += calls
@@ -469,16 +466,15 @@ def _evidenced_branch_indices(
 def _valid_branch_request(
     branch: Mapping[str, object],
     *,
-    expected: tuple[int, str],
+    expected: BranchDirective,
 ) -> bool:
-    index, strategy = expected
     branch_index = branch.get("branch_index")
     trace = branch.get("trace")
     if (
         isinstance(branch_index, bool)
         or not isinstance(branch_index, int)
-        or branch_index != index
-        or branch.get("strategy") != strategy
+        or branch_index != expected.branch_index
+        or branch.get("strategy") != expected.strategy.value
         or not isinstance(trace, Mapping)
         or not trace
         or trace.get("operation") != "seed"
@@ -490,24 +486,18 @@ def _valid_branch_request(
     directive = domain.get("branch_directive")
     if not isinstance(directive, Mapping):
         return False
-    nested_index = directive.get("branch_index")
-    instruction = directive.get("instruction")
-    return (
-        not isinstance(nested_index, bool)
-        and isinstance(nested_index, int)
-        and nested_index == index
-        and directive.get("strategy") == strategy
-        and isinstance(instruction, str)
-        and bool(instruction.strip())
-    )
+    try:
+        traced_directive = BranchDirective.model_validate(directive)
+    except ValidationError:
+        return False
+    return traced_directive == expected
 
 
 def _validated_branch_response(
     branch: Mapping[str, object],
     *,
-    expected: tuple[int, str],
+    expected: BranchDirective,
 ) -> tuple[bool, int, tuple[int, int, int, int], str | None] | None:
-    index, strategy = expected
     branch_index = branch.get("branch_index")
     trace = branch.get("trace")
     succeeded = branch.get("succeeded")
@@ -515,8 +505,8 @@ def _validated_branch_response(
     if (
         isinstance(branch_index, bool)
         or not isinstance(branch_index, int)
-        or branch_index != index
-        or branch.get("strategy") != strategy
+        or branch_index != expected.branch_index
+        or branch.get("strategy") != expected.strategy.value
         or not isinstance(succeeded, bool)
         or not isinstance(trace, Mapping)
         or not trace
