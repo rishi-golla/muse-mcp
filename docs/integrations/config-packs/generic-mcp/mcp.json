@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "muse": {
-      "command": "muse-mcp",
-      "args": []
-    }
-  }
-}
