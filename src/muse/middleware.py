@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping
 from enum import StrEnum
@@ -235,14 +236,6 @@ class CreativeMiddlewareRunner:
             engine.run(task, config),
             parsed_request,
             search_context.metadata,
-            independent_call_count=(
-                parsed_request.seed_count
-                if (
-                    parsed_request.provider_mode is ProviderMode.LIVE_OPENAI
-                    and not isinstance(self._seeder, DeterministicCreativeProvider)
-                )
-                else 0
-            ),
         )
 
 
@@ -250,8 +243,6 @@ def _serialize_result(
     result: RunResult,
     request: CreativePlanRequest,
     search_context: SearchContextMetadata,
-    *,
-    independent_call_count: int,
 ) -> dict[str, Any]:
     spend_total = round(sum(record.cost_usd for record in result.spend_records), 10)
     required_terms = result.framed_task.context.context_bundle.tags
@@ -311,7 +302,7 @@ def _serialize_result(
                     directive.strategy.value
                     for directive in branch_directives(request.seed_count)
                 ],
-                "independent_call_count": independent_call_count,
+                "independent_call_count": _independent_branch_call_count(result),
             },
             "finalist_count": request.finalist_count,
             "max_generations": request.max_generations,
@@ -338,6 +329,71 @@ def _serialize_result(
         "agent_handoff": agent_handoff,
         "finalists": finalists,
     }
+
+
+def _independent_branch_call_count(result: RunResult) -> int:
+    return sum(
+        _evidenced_branch_count(record.operation_trace)
+        for record in result.spend_records
+        if record.stage == "seeding" and record.operation_trace is not None
+    )
+
+
+def _evidenced_branch_count(operation_trace: object) -> int:
+    if not hasattr(operation_trace, "request_json") or not hasattr(
+        operation_trace, "response_json"
+    ):
+        return 0
+    try:
+        request = json.loads(operation_trace.request_json)
+        response = json.loads(operation_trace.response_json)
+    except (TypeError, ValueError):
+        return 0
+    if not isinstance(request, Mapping) or not isinstance(response, Mapping):
+        return 0
+    if request.get("operation") != "seed":
+        return 0
+
+    directives = request.get("branches")
+    completed = response.get("branches")
+    if not isinstance(directives, list) or not isinstance(completed, list):
+        return 0
+
+    requested_strategies: dict[int, str] = {}
+    for directive in directives:
+        if not isinstance(directive, Mapping):
+            return 0
+        index = directive.get("branch_index")
+        strategy = directive.get("strategy")
+        trace = directive.get("trace")
+        if (
+            isinstance(index, bool)
+            or not isinstance(index, int)
+            or not isinstance(strategy, str)
+            or not strategy
+            or not isinstance(trace, Mapping)
+            or index in requested_strategies
+        ):
+            return 0
+        requested_strategies[index] = strategy
+
+    completed_indices: set[int] = set()
+    for branch in completed:
+        if not isinstance(branch, Mapping):
+            continue
+        index = branch.get("branch_index")
+        strategy = branch.get("strategy")
+        trace = branch.get("trace")
+        if (
+            isinstance(index, bool)
+            or not isinstance(index, int)
+            or not isinstance(trace, Mapping)
+            or requested_strategies.get(index) != strategy
+            or index in completed_indices
+        ):
+            continue
+        completed_indices.add(index)
+    return len(completed_indices)
 
 
 def run_muse_plan(request: CreativePlanRequest | Mapping[str, object]) -> dict[str, Any]:

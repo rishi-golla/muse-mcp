@@ -395,7 +395,8 @@ instead of charging provider calls.
 
 For `provider_mode: "live_openai"`, each requested seed begins an independent live model
 trajectory rather than sharing a batched seed response. The response records the ordered
-creative strategies and the number of independent live seed calls in `config.branch_generation`:
+creative strategies and the number of independently completed seed branches in
+`config.branch_generation`:
 
 ```json
 {
@@ -411,6 +412,10 @@ creative strategies and the number of independent live seed calls in `config.bra
   }
 }
 ```
+
+`strategies` lists the ordered requested strategy directives. `independent_call_count`
+counts only evidenced completed branches from the run's metered seed trace, so it can be
+lower than `seed_count` after a branch failure and is zero when seeding never starts.
 
 The deterministic provider remains a no-network test fixture. Its metadata
 uses `independent_call_count: 0`, so a fixture result does not prove a provider

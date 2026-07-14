@@ -13,8 +13,98 @@ from muse.middleware import (
     ProviderMode,
     run_muse_plan,
 )
+from muse.models import OperationTrace
+from muse.providers import MeteredProviderFailure, OperationQuote
 from muse.search import DeterministicSearchProvider
 from muse.search_context import SearchContextResolver, SearchProviderPolicy
+
+
+class NonLiveFixtureProvider:
+    name = "fixture"
+    version = "fixture-v1"
+
+    def __init__(
+        self,
+        *,
+        fail_frame: bool = False,
+        fail_seed_quote: bool = False,
+        seed_quote: OperationQuote | None = None,
+    ) -> None:
+        self._delegate = DeterministicCreativeProvider()
+        self._fail_frame = fail_frame
+        self._fail_seed_quote = fail_seed_quote
+        self._seed_quote = seed_quote
+
+    def frame(self, task):
+        if self._fail_frame:
+            raise RuntimeError("fixture framing failed")
+        return self._delegate.frame(task).model_copy(update={"provider": self.name})
+
+    def quote_frame(self, task):
+        return self._delegate.quote_frame(task)
+
+    def seed(self, framed_task, config):
+        return self._delegate.seed(framed_task, config).model_copy(
+            update={"provider": self.name}
+        )
+
+    def quote_seed(self, framed_task, config):
+        if self._fail_seed_quote:
+            raise RuntimeError("fixture seed quote failed")
+        return self._seed_quote or self._delegate.quote_seed(framed_task, config)
+
+    def transform(self, request, parents, framed_task):
+        return self._delegate.transform(request, parents, framed_task).model_copy(
+            update={"provider": self.name}
+        )
+
+    def quote_transform(self, request, parents):
+        return self._delegate.quote_transform(request, parents)
+
+    def evaluate(self, candidate, framed_task):
+        return self._delegate.evaluate(candidate, framed_task).model_copy(
+            update={"provider": self.name}
+        )
+
+    def quote_evaluation(self, framed_task):
+        return self._delegate.quote_evaluation(framed_task)
+
+
+class PartiallyEvidencedBranchProvider(NonLiveFixtureProvider):
+    def seed(self, framed_task, config):
+        response = super().seed(framed_task, config)
+        partial = response.model_copy(
+            update={
+                "value": response.value[:1],
+                "calls": 1,
+                "operation_trace": OperationTrace.from_payload(
+                    request={
+                        "operation": "seed",
+                        "branches": [
+                            {
+                                "branch_index": 0,
+                                "strategy": "constraint_inversion",
+                                "trace": {"request": "fixture"},
+                            }
+                        ],
+                    },
+                    response={
+                        "branches": [
+                            {
+                                "branch_index": 0,
+                                "strategy": "constraint_inversion",
+                                "trace": {"response": "fixture"},
+                            }
+                        ],
+                    },
+                ),
+            }
+        )
+        raise MeteredProviderFailure("fixture branch failed", partial_response=partial)
+
+    def quote_seed(self, framed_task, config):
+        del framed_task, config
+        return OperationQuote(max_cost_usd=0.01, calls=3)
 
 
 def test_runner_returns_json_safe_operational_plan_from_repo_signals() -> None:
@@ -71,6 +161,65 @@ def test_runner_exposes_live_branch_metadata_without_claiming_fixture_calls() ->
     }
 
 
+def test_runner_reports_zero_branch_calls_when_seeding_never_starts() -> None:
+    providers = (
+        NonLiveFixtureProvider(fail_frame=True),
+        NonLiveFixtureProvider(fail_seed_quote=True),
+        NonLiveFixtureProvider(
+            seed_quote=OperationQuote(max_cost_usd=1.0, calls=1),
+        ),
+    )
+
+    for provider in providers:
+        result = CreativeMiddlewareRunner.live_openai(provider=provider).run(
+            CreativePlanRequest(
+                goal="Design a planning hook for arbitrary repos",
+                provider_mode="live_openai",
+                seed_count=2,
+                finalist_count=1,
+                max_generations=0,
+                budget_usd=0.20,
+            )
+        )
+
+        assert result["config"]["branch_generation"]["independent_call_count"] == 0
+
+
+def test_runner_reports_only_evidenced_completed_branches_after_seed_failure() -> None:
+    result = CreativeMiddlewareRunner.live_openai(
+        provider=PartiallyEvidencedBranchProvider(),
+    ).run(
+        CreativePlanRequest(
+            goal="Design a planning hook for arbitrary repos",
+            provider_mode="live_openai",
+            seed_count=3,
+            finalist_count=1,
+            max_generations=0,
+            budget_usd=0.20,
+        )
+    )
+
+    assert result["stopped_reason"] == "provider_error"
+    assert result["config"]["branch_generation"]["independent_call_count"] == 1
+
+
+def test_runner_does_not_classify_custom_non_live_fixtures_as_branch_evidence() -> None:
+    result = CreativeMiddlewareRunner.live_openai(
+        provider=NonLiveFixtureProvider(),
+    ).run(
+        CreativePlanRequest(
+            goal="Design a planning hook for arbitrary repos",
+            provider_mode="live_openai",
+            seed_count=2,
+            finalist_count=1,
+            max_generations=0,
+            budget_usd=0.20,
+        )
+    )
+
+    assert result["config"]["branch_generation"]["independent_call_count"] == 0
+
+
 def test_branch_generation_docs_distinguish_live_trajectories_from_fixtures() -> None:
     readme = " ".join(Path("README.md").read_text(encoding="utf-8").split())
     benchmarking = " ".join(
@@ -79,8 +228,14 @@ def test_branch_generation_docs_distinguish_live_trajectories_from_fixtures() ->
 
     assert "independent live model trajectory" in readme
     assert "does not prove a provider call" in readme
+    assert "requested strategy directives" in readme
+    assert "evidenced completed branches" in readme
+    assert "independently completed seed branches" in readme
     assert "independent live model trajectory" in benchmarking
     assert "do not report provider calls or spend" in benchmarking
+    assert "requested strategy directives" in benchmarking
+    assert "evidenced completed branches" in benchmarking
+    assert "independently completed seed branches" in benchmarking
 
 
 def test_runner_returns_quality_warnings_for_generic_finalists() -> None:
