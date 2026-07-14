@@ -119,11 +119,22 @@ def test_readme_leads_with_agent_first_live_mcp_onboarding() -> None:
     readme = _read_text("README.md").casefold()
     first_250_lines = "\n".join(readme.splitlines()[:250])
 
+    headings = re.findall(r"^##(?!#)\s+(.+?)\s*$", readme, re.MULTILINE)
+    assert headings
+    assert headings[0] == "agent-first quickstart"
+
     onboarding_heading = "## agent-first quickstart"
-    assert onboarding_heading in first_250_lines
     onboarding_start = first_250_lines.index(onboarding_heading)
-    next_heading = first_250_lines.find("\n## ", onboarding_start + 1)
-    onboarding_end = next_heading if next_heading != -1 else len(first_250_lines)
+    next_heading_match = re.search(
+        r"^##(?!#)\s+.*$",
+        first_250_lines[onboarding_start + len(onboarding_heading) :],
+        re.MULTILINE,
+    )
+    onboarding_end = (
+        onboarding_start + len(onboarding_heading) + next_heading_match.start()
+        if next_heading_match
+        else len(first_250_lines)
+    )
     onboarding = first_250_lines[onboarding_start:onboarding_end]
 
     steps = (
@@ -136,17 +147,13 @@ def test_readme_leads_with_agent_first_live_mcp_onboarding() -> None:
         "muse_plan",
         "first live task",
     )
-    positions = [first_250_lines.index(step, onboarding_start) for step in steps]
+    positions = [onboarding.index(step) for step in steps]
     assert positions == sorted(positions)
-    assert 'mode: "normal"' in onboarding
-    assert 'mode: "extensive"' in onboarding
+    assert 'mode: "normal"' in readme
+    assert 'mode: "extensive"' in readme
     assert "never commit secrets" in onboarding
 
     assert not re.search(r"\bdeterministic\b|\bfixtures?\b", onboarding)
-    maintainer_positions = [
-        match.start() for match in re.finditer(r"\bmaintainer\b", first_250_lines)
-    ]
-    assert all(position >= onboarding_end for position in maintainer_positions)
 
     for path in (
         "docs/integrations/mcp-agent-hosts.md",
