@@ -69,3 +69,22 @@
 - [ ] Surface non-secret branch-generation metadata and explain why seed count now measures independent trajectories.
 - [ ] Run focused/full tests and Ruff.
 - [ ] Commit as docs: expose independent branch evidence.
+
+### Task 2A: Preserve branch accounting through partial failures
+
+**Files:**
+- Modify: src/muse/providers.py
+- Modify: src/muse/openai_provider.py
+- Modify: src/muse/engine.py
+- Modify: tests/test_openai_provider.py
+- Modify: tests/test_engine.py
+
+**Interfaces:**
+- Produces: provider-neutral per-item metering and a metered provider failure that carries partial spend evidence.
+
+- [ ] Write failing tests proving that successful branch calls remain charged and traced when a later branch fails or aggregate validation rejects duplicates.
+- [ ] Write failing tests proving each candidate receives its branch's actual cost and latency when branch usage differs.
+- [ ] Verify RED.
+- [ ] Preserve partial metering across the provider/engine boundary and consume exact per-item attribution without weakening quote enforcement.
+- [ ] Run focused/full tests and Ruff.
+- [ ] Commit as fix: preserve independent branch accounting.
