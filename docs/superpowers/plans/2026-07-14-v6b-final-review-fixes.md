@@ -104,10 +104,10 @@
 **Files:**
 - Append: `.superpowers/sdd/final-review-fix-report.md`
 
-- [ ] Run all changed-path focused tests.
-- [ ] Run `python -m pytest -q`.
-- [ ] Run `python -m ruff check .`.
-- [ ] Run `git diff --check`.
-- [ ] Review the full diff against all five findings and prior V6-B guarantees.
-- [ ] Append RED/GREEN evidence, changed files, design decisions, self-review, concerns, and the final commit SHA to the report.
-- [ ] Commit with a terse fix message.
+- [x] Run all changed-path focused tests.
+- [x] Run `python -m pytest -q`.
+- [x] Run `python -m ruff check .`.
+- [x] Run `git diff --check`.
+- [x] Review the full diff against all five findings and prior V6-B guarantees.
+- [x] Append RED/GREEN evidence, changed files, design decisions, self-review, concerns, and the final commit SHA to the report.
+- [x] Commit with a terse fix message.
