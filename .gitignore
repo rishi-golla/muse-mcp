@@ -13,3 +13,4 @@ htmlcov/
 .task9-quality-*/
 __pycache__/
 *.py[cod]
+docs/
