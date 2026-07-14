@@ -115,6 +115,54 @@ def test_public_docs_include_copy_pasteable_first_run_path() -> None:
         assert phrase in combined
 
 
+def test_readme_leads_with_agent_first_live_mcp_onboarding() -> None:
+    readme = _read_text("README.md").casefold()
+    first_250_lines = "\n".join(readme.splitlines()[:250])
+
+    headings = re.findall(r"^##(?!#)\s+(.+?)\s*$", readme, re.MULTILINE)
+    assert headings
+    assert headings[0] == "agent-first quickstart"
+
+    onboarding_heading = "## agent-first quickstart"
+    onboarding_start = first_250_lines.index(onboarding_heading)
+    next_heading_match = re.search(
+        r"^##(?!#)\s+.*$",
+        first_250_lines[onboarding_start + len(onboarding_heading) :],
+        re.MULTILINE,
+    )
+    onboarding_end = (
+        onboarding_start + len(onboarding_heading) + next_heading_match.start()
+        if next_heading_match
+        else len(first_250_lines)
+    )
+    onboarding = first_250_lines[onboarding_start:onboarding_end]
+
+    steps = (
+        "paste this into your coding agent",
+        'python -m pip install -e ".[dev]"',
+        "muse-mcp-doctor --json",
+        "muse-mcp-config --host codex",
+        "muse-agent-instructions --target agents-md",
+        "restart the mcp-capable agent host",
+        "muse_plan",
+        "first live task",
+    )
+    positions = [onboarding.index(step) for step in steps]
+    assert positions == sorted(positions)
+    assert 'mode: "normal"' in readme
+    assert 'mode: "extensive"' in readme
+    assert "never commit secrets" in onboarding
+
+    assert not re.search(r"\bdeterministic\b|\bfixtures?\b", onboarding)
+
+    for path in (
+        "docs/integrations/mcp-agent-hosts.md",
+        "docs/quality/benchmarking.md",
+    ):
+        assert (ROOT / path).is_file()
+        assert re.search(rf"\[[^\]]+\]\({re.escape(path)}\)", readme)
+
+
 def test_public_docs_define_library_first_quality_benchmark_evidence() -> None:
     readme = _read_text("README.md").casefold()
     benchmark = _read_text("docs/quality/benchmarking.md").casefold()
