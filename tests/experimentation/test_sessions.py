@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
 
 from muse.experimentation.sessions import (
+    AuthorizationGrant,
     AuthorizationPolicy,
     CreativeSession,
     Objective,
@@ -64,6 +66,16 @@ def test_creative_session_rejects_duplicate_objective_names() -> None:
         _valid_session(objectives=objectives)
 
 
+def test_creative_session_rejects_canonically_equivalent_objective_names() -> None:
+    objectives = (
+        Objective(name="Caf\u00e9", direction="maximize", priority=1),
+        Objective(name="Cafe\u0301", direction="minimize", priority=2),
+    )
+
+    with pytest.raises(ValidationError, match="objective names"):
+        _valid_session(objectives=objectives)
+
+
 def test_creative_session_rejects_duplicate_objective_priorities() -> None:
     objectives = (
         Objective(name="usefulness", direction="maximize", priority=1),
@@ -112,6 +124,39 @@ def test_authorization_policy_rejects_forbidden_automatic_side_effects(
         AuthorizationPolicy(automatic_side_effects=(side_effect,))
 
 
+def test_authorization_policy_defaults_to_no_automatic_side_effects() -> None:
+    assert AuthorizationPolicy().automatic_side_effects == ()
+
+
+def test_authorization_grant_rejects_naive_expiration() -> None:
+    with pytest.raises(ValidationError):
+        AuthorizationGrant(
+            session_id=UUID("00000000-0000-0000-0000-000000000001"),
+            experiment_id=UUID("00000000-0000-0000-0000-000000000002"),
+            side_effect=SideEffectClass.READ_ONLY_EXTERNAL,
+            allowed_actions=("Inspect external evidence",),
+            expires_at=datetime(2026, 7, 17, 12, 0),
+            issuer="operator",
+            integrity_hash="sha256:grant",
+        )
+
+
+def test_authorization_grant_accepts_timezone_aware_expiration() -> None:
+    expires_at = datetime(2026, 7, 17, 12, 0, tzinfo=UTC)
+
+    grant = AuthorizationGrant(
+        session_id=UUID("00000000-0000-0000-0000-000000000001"),
+        experiment_id=UUID("00000000-0000-0000-0000-000000000002"),
+        side_effect=SideEffectClass.READ_ONLY_EXTERNAL,
+        allowed_actions=("Inspect external evidence",),
+        expires_at=expires_at,
+        issuer="operator",
+        integrity_hash="sha256:grant",
+    )
+
+    assert grant.expires_at == expires_at
+
+
 def test_session_statuses_are_exhaustive() -> None:
     assert {status.value for status in SessionStatus} == {
         "active",
@@ -136,6 +181,11 @@ def test_creative_session_rejects_blank_or_duplicate_constraints(
 ) -> None:
     with pytest.raises(ValidationError):
         _valid_session(hard_constraints=constraints)
+
+
+def test_creative_session_rejects_canonically_equivalent_constraints() -> None:
+    with pytest.raises(ValidationError, match="hard constraints"):
+        _valid_session(hard_constraints=("Caf\u00e9", "Cafe\u0301"))
 
 
 def test_session_contracts_are_frozen_and_reject_extra_fields() -> None:

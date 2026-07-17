@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import unicodedata
 from enum import StrEnum
 from uuid import UUID, uuid4
 
@@ -60,6 +61,11 @@ _FORBIDDEN_AUTOMATIC_SIDE_EFFECTS = frozenset(
 )
 
 
+def _identity_key(value: str) -> str:
+    """Use NFC so canonically equivalent text has one comparison identity."""
+    return unicodedata.normalize("NFC", value.strip()).casefold()
+
+
 class AuthorizationPolicy(FrozenModel):
     automatic_side_effects: tuple[SideEffectClass, ...] = ()
 
@@ -110,9 +116,7 @@ class CreativeSession(FrozenModel):
 
     @model_validator(mode="after")
     def require_unique_objectives_and_constraints(self) -> CreativeSession:
-        objective_names = tuple(
-            objective.name.strip().casefold() for objective in self.objectives
-        )
+        objective_names = tuple(_identity_key(objective.name) for objective in self.objectives)
         if len(objective_names) != len(set(objective_names)):
             raise ValueError("objective names must be unique")
 
@@ -123,7 +127,7 @@ class CreativeSession(FrozenModel):
             raise ValueError("objective priorities must be unique")
 
         normalized_constraints = tuple(
-            constraint.strip().casefold() for constraint in self.hard_constraints
+            _identity_key(constraint) for constraint in self.hard_constraints
         )
         if len(normalized_constraints) != len(set(normalized_constraints)):
             raise ValueError("hard constraints must be unique")
