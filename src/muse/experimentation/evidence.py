@@ -19,7 +19,7 @@ from muse.experimentation.candidates import (
     _deduplicate_text,
     _deduplicate_uuids,
 )
-from muse.experimentation.sessions import SideEffectClass
+from muse.experimentation.sessions import ExperimentStatus, SideEffectClass
 from muse.models import FrozenModel, RequiredText, _reject_trace_secrets
 
 
@@ -28,15 +28,6 @@ class EvidenceCapability(StrEnum):
     OBSERVATIONAL = "observational"
     HUMAN = "human"
     EXTERNAL = "external"
-
-
-class ExperimentStatus(StrEnum):
-    PROPOSED = "proposed"
-    AUTHORIZED = "authorized"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    INCONCLUSIVE = "inconclusive"
-    FAILED = "failed"
 
 
 class EvidenceValidationStatus(StrEnum):

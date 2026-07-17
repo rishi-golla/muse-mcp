@@ -28,6 +28,15 @@ class SessionStatus(StrEnum):
     FAILED = "failed"
 
 
+class ExperimentStatus(StrEnum):
+    PROPOSED = "proposed"
+    AUTHORIZED = "authorized"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    INCONCLUSIVE = "inconclusive"
+    FAILED = "failed"
+
+
 class ObjectiveDirection(StrEnum):
     MAXIMIZE = "maximize"
     MINIMIZE = "minimize"
@@ -144,6 +153,11 @@ class ExperimentCandidates(FrozenModel):
         return tuple(dict.fromkeys(values))
 
 
+class ExperimentStatusRecord(FrozenModel):
+    experiment_id: UUID
+    status: ExperimentStatus
+
+
 class ClaimOwnership(FrozenModel):
     claim_id: UUID
     candidate_id: UUID
@@ -185,6 +199,7 @@ class SessionProjection(FrozenModel):
     budget_reservation_ids: tuple[UUID, ...] = ()
     reconciled_budget_reservation_ids: tuple[UUID, ...] = ()
     terminal_experiment_ids: tuple[UUID, ...] = ()
+    experiment_statuses: tuple[ExperimentStatusRecord, ...] = ()
     experiment_candidates: tuple[ExperimentCandidates, ...] = ()
     claim_ownership: tuple[ClaimOwnership, ...] = ()
     authorization_grants: tuple[AuthorizationGrantExperiment, ...] = ()
@@ -210,6 +225,15 @@ class SessionProjection(FrozenModel):
                 raise ValueError("duplicate evidence history is not allowed")
             raw_evidence_by_id[entry.evidence_id] = entry
 
+        experiment_status_by_id: dict[UUID, ExperimentStatusRecord] = {}
+        for record in self.experiment_statuses:
+            existing = experiment_status_by_id.get(record.experiment_id)
+            if existing is not None:
+                if existing != record:
+                    raise ValueError("experiment status records conflict")
+                raise ValueError("duplicate experiment status record is not allowed")
+            experiment_status_by_id[record.experiment_id] = record
+
         active_candidate_ids = tuple(dict.fromkeys(self.active_candidate_ids))
         active_experiment_ids = tuple(dict.fromkeys(self.active_experiment_ids))
         candidate_ids = tuple(
@@ -218,6 +242,19 @@ class SessionProjection(FrozenModel):
         experiment_ids = tuple(
             dict.fromkeys((*self.experiment_ids, *active_experiment_ids))
         )
+        inferred_statuses = tuple(
+            ExperimentStatusRecord(
+                experiment_id=experiment_id,
+                status=ExperimentStatus.PROPOSED,
+            )
+            for experiment_id in active_experiment_ids
+            if experiment_id not in experiment_status_by_id
+        )
+        experiment_statuses = (*self.experiment_statuses, *inferred_statuses)
+        experiment_status_by_id.update(
+            (record.experiment_id, record) for record in inferred_statuses
+        )
+        object.__setattr__(self, "experiment_statuses", experiment_statuses)
         for field, values in (
             ("candidate_ids", candidate_ids),
             ("experiment_ids", experiment_ids),
@@ -299,6 +336,30 @@ class SessionProjection(FrozenModel):
             raise ValueError("terminal experiments must be known experiments")
         if set(self.terminal_experiment_ids).intersection(self.active_experiment_ids):
             raise ValueError("terminal experiments cannot remain active")
+        for record in self.experiment_statuses:
+            if record.experiment_id not in self.experiment_ids:
+                raise ValueError("experiment status references an unknown experiment")
+            is_active = record.experiment_id in self.active_experiment_ids
+            is_terminal = record.experiment_id in self.terminal_experiment_ids
+            if record.status in {
+                ExperimentStatus.COMPLETED,
+                ExperimentStatus.INCONCLUSIVE,
+                ExperimentStatus.FAILED,
+            }:
+                if is_active or not is_terminal:
+                    raise ValueError(
+                        "terminal experiment status must match terminal experiment IDs"
+                    )
+            elif not is_active or is_terminal:
+                raise ValueError(
+                    "nonterminal experiment status must match active experiment IDs"
+                )
+        if set(self.active_experiment_ids).difference(experiment_status_by_id):
+            raise ValueError("active experiments must have an experiment status")
+        if set(self.terminal_experiment_ids).difference(experiment_status_by_id):
+            raise ValueError("terminal experiments must have an experiment status")
+        if set(self.experiment_ids).difference(experiment_status_by_id):
+            raise ValueError("known experiments must have an experiment status")
         if not set(self.superseded_evidence_ids).issubset(self.evidence_ids):
             raise ValueError("superseded evidence must be recorded evidence")
         if not set(self.reconciled_budget_reservation_ids).issubset(
@@ -321,6 +382,24 @@ class SessionProjection(FrozenModel):
                 raise ValueError("grant relationship references an unknown grant")
             if relationship.experiment_id not in self.experiment_ids:
                 raise ValueError("grant relationship references an unknown experiment")
+        authorized_experiment_ids = {
+            relationship.experiment_id for relationship in self.authorization_grants
+        }
+        for record in self.experiment_statuses:
+            if (
+                record.status is ExperimentStatus.PROPOSED
+                and record.experiment_id in authorized_experiment_ids
+            ):
+                raise ValueError(
+                    "proposed experiment status cannot have authorization history"
+                )
+            if (
+                record.status is not ExperimentStatus.PROPOSED
+                and record.experiment_id not in authorized_experiment_ids
+            ):
+                raise ValueError(
+                    "post-proposal experiment status requires authorization history"
+                )
         evidence_positions = {
             entry.evidence_id: position
             for position, entry in enumerate(self.evidence_history)

@@ -53,6 +53,7 @@ from muse.experimentation.sessions import (
     CreativeSession,
     EvidenceHistoryEntry,
     ExperimentCandidates,
+    ExperimentStatusRecord,
     Objective,
     PrivacyPolicy,
     SessionBudgets,
@@ -149,6 +150,23 @@ def _evidence(
     )
 
 
+def _authorization_grant(
+    *,
+    grant_id: UUID = GRANT_ID,
+    experiment_id: UUID = EXPERIMENT_ID,
+) -> AuthorizationGrant:
+    return AuthorizationGrant(
+        id=grant_id,
+        session_id=SESSION_ID,
+        experiment_id=experiment_id,
+        side_effect=SideEffectClass.READ_ONLY_LOCAL,
+        allowed_actions=("Observe local result",),
+        expires_at=datetime(2026, 7, 18, tzinfo=UTC),
+        issuer="operator",
+        integrity_hash=f"sha256:{grant_id}",
+    )
+
+
 def _experiment() -> ExperimentSpec:
     return ExperimentSpec(
         id=EXPERIMENT_ID,
@@ -224,6 +242,7 @@ def _projection_with_known_graph(**overrides: object) -> SessionProjection:
         "sequence": 1,
         "candidate_ids": (CANDIDATE_ID,),
         "experiment_ids": (EXPERIMENT_ID,),
+        "active_experiment_ids": (EXPERIMENT_ID,),
         "experiment_candidates": (
             ExperimentCandidates(
                 experiment_id=EXPERIMENT_ID,
@@ -451,6 +470,7 @@ def test_projection_history_fields_have_backward_compatible_defaults() -> None:
     assert projection.claim_ownership == ()
     assert projection.authorization_grants == ()
     assert projection.evidence_history == ()
+    assert projection.experiment_statuses == ()
 
     restored_legacy = SessionProjection(
         session_id=SESSION_ID,
@@ -461,6 +481,203 @@ def test_projection_history_fields_have_backward_compatible_defaults() -> None:
     )
     assert restored_legacy.candidate_ids == (CANDIDATE_ID,)
     assert restored_legacy.experiment_ids == (EXPERIMENT_ID,)
+    assert restored_legacy.experiment_statuses == (
+        ExperimentStatusRecord(
+            experiment_id=EXPERIMENT_ID,
+            status=ExperimentStatus.PROPOSED,
+        ),
+    )
+
+
+def test_projection_infers_ordered_proposed_status_for_legacy_active_experiments() -> None:
+    projection = SessionProjection.model_validate(
+        {
+            "session_id": SESSION_ID,
+            "status": SessionStatus.ACTIVE,
+            "sequence": 2,
+            "experiment_ids": (EXPERIMENT_ID, EXPERIMENT_2_ID),
+            "active_experiment_ids": (EXPERIMENT_ID, EXPERIMENT_2_ID),
+        }
+    )
+
+    assert projection.experiment_statuses == (
+        ExperimentStatusRecord(
+            experiment_id=EXPERIMENT_ID,
+            status=ExperimentStatus.PROPOSED,
+        ),
+        ExperimentStatusRecord(
+            experiment_id=EXPERIMENT_2_ID,
+            status=ExperimentStatus.PROPOSED,
+        ),
+    )
+    assert SessionProjection.model_validate(projection.model_dump()) == projection
+
+
+@pytest.mark.parametrize(
+    "experiment_statuses",
+    [
+        (
+            ExperimentStatusRecord(
+                experiment_id=EXPERIMENT_ID,
+                status=ExperimentStatus.PROPOSED,
+            ),
+            ExperimentStatusRecord(
+                experiment_id=EXPERIMENT_ID,
+                status=ExperimentStatus.PROPOSED,
+            ),
+        ),
+        (
+            ExperimentStatusRecord(
+                experiment_id=EXPERIMENT_ID,
+                status=ExperimentStatus.PROPOSED,
+            ),
+            ExperimentStatusRecord(
+                experiment_id=EXPERIMENT_ID,
+                status=ExperimentStatus.RUNNING,
+            ),
+        ),
+    ],
+)
+def test_projection_restore_rejects_duplicate_experiment_status_records(
+    experiment_statuses: tuple[ExperimentStatusRecord, ...],
+) -> None:
+    with pytest.raises(ValidationError, match="experiment status"):
+        SessionProjection.model_validate(
+            {
+                "session_id": SESSION_ID,
+                "status": SessionStatus.ACTIVE,
+                "sequence": 2,
+                "experiment_ids": (EXPERIMENT_ID,),
+                "active_experiment_ids": (EXPERIMENT_ID,),
+                "experiment_statuses": experiment_statuses,
+            }
+        )
+
+
+def test_projection_restore_rejects_unknown_experiment_status_reference() -> None:
+    with pytest.raises(ValidationError, match="unknown experiment"):
+        SessionProjection.model_validate(
+            {
+                "session_id": SESSION_ID,
+                "status": SessionStatus.ACTIVE,
+                "sequence": 2,
+                "experiment_statuses": (
+                    ExperimentStatusRecord(
+                        experiment_id=EXPERIMENT_ID,
+                        status=ExperimentStatus.PROPOSED,
+                    ),
+                ),
+            }
+        )
+
+
+def test_projection_restore_rejects_known_experiment_without_lifecycle_status() -> None:
+    with pytest.raises(ValidationError, match="must have an experiment status"):
+        SessionProjection.model_validate(
+            {
+                "session_id": SESSION_ID,
+                "status": SessionStatus.ACTIVE,
+                "sequence": 2,
+                "experiment_ids": (EXPERIMENT_ID,),
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        ExperimentStatus.AUTHORIZED,
+        ExperimentStatus.RUNNING,
+        ExperimentStatus.COMPLETED,
+        ExperimentStatus.INCONCLUSIVE,
+        ExperimentStatus.FAILED,
+    ],
+)
+def test_projection_restore_rejects_post_proposal_status_without_authorization_history(
+    status: ExperimentStatus,
+) -> None:
+    is_terminal = status in {
+        ExperimentStatus.COMPLETED,
+        ExperimentStatus.INCONCLUSIVE,
+        ExperimentStatus.FAILED,
+    }
+
+    with pytest.raises(ValidationError, match="authorization history"):
+        SessionProjection.model_validate(
+            {
+                "session_id": SESSION_ID,
+                "status": SessionStatus.ACTIVE,
+                "sequence": 2,
+                "experiment_ids": (EXPERIMENT_ID,),
+                "active_experiment_ids": () if is_terminal else (EXPERIMENT_ID,),
+                "terminal_experiment_ids": (EXPERIMENT_ID,) if is_terminal else (),
+                "experiment_statuses": (
+                    ExperimentStatusRecord(
+                        experiment_id=EXPERIMENT_ID,
+                        status=status,
+                    ),
+                ),
+            }
+        )
+
+
+def test_projection_restore_rejects_proposed_status_with_authorization_history() -> None:
+    with pytest.raises(ValidationError, match="proposed experiment status"):
+        SessionProjection.model_validate(
+            {
+                "session_id": SESSION_ID,
+                "status": SessionStatus.ACTIVE,
+                "sequence": 2,
+                "experiment_ids": (EXPERIMENT_ID,),
+                "active_experiment_ids": (EXPERIMENT_ID,),
+                "authorization_grant_ids": (GRANT_ID,),
+                "authorization_grants": (
+                    AuthorizationGrantExperiment(
+                        grant_id=GRANT_ID,
+                        experiment_id=EXPERIMENT_ID,
+                    ),
+                ),
+                "experiment_statuses": (
+                    ExperimentStatusRecord(
+                        experiment_id=EXPERIMENT_ID,
+                        status=ExperimentStatus.PROPOSED,
+                    ),
+                ),
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    ("active_experiment_ids", "terminal_experiment_ids", "status"),
+    [
+        ((EXPERIMENT_ID,), (), ExperimentStatus.COMPLETED),
+        ((), (EXPERIMENT_ID,), ExperimentStatus.RUNNING),
+        ((), (), ExperimentStatus.AUTHORIZED),
+        ((), (), ExperimentStatus.FAILED),
+    ],
+)
+def test_projection_restore_rejects_contradictory_experiment_lifecycle(
+    active_experiment_ids: tuple[UUID, ...],
+    terminal_experiment_ids: tuple[UUID, ...],
+    status: ExperimentStatus,
+) -> None:
+    with pytest.raises(ValidationError, match="experiment status"):
+        SessionProjection.model_validate(
+            {
+                "session_id": SESSION_ID,
+                "status": SessionStatus.ACTIVE,
+                "sequence": 2,
+                "experiment_ids": (EXPERIMENT_ID,),
+                "active_experiment_ids": active_experiment_ids,
+                "terminal_experiment_ids": terminal_experiment_ids,
+                "experiment_statuses": (
+                    ExperimentStatusRecord(
+                        experiment_id=EXPERIMENT_ID,
+                        status=status,
+                    ),
+                ),
+            }
+        )
 
 
 def test_projection_deduplicates_all_identity_history_preserving_order() -> None:
@@ -536,6 +753,7 @@ def test_projection_rejects_evidence_candidate_outside_its_experiment() -> None:
             sequence=1,
             candidate_ids=(CANDIDATE_ID, CANDIDATE_2_ID),
             experiment_ids=(EXPERIMENT_ID,),
+            active_experiment_ids=(EXPERIMENT_ID,),
             evidence_ids=(EVIDENCE_ID,),
             experiment_candidates=(
                 ExperimentCandidates(
@@ -561,9 +779,16 @@ def test_projection_relationships_round_trip_deterministically() -> None:
         sequence=4,
         candidate_ids=(CANDIDATE_ID, CANDIDATE_2_ID),
         experiment_ids=(EXPERIMENT_ID,),
+        active_experiment_ids=(EXPERIMENT_ID,),
         evidence_ids=(EVIDENCE_ID,),
         claim_ids=(CLAIM_ID,),
         authorization_grant_ids=(GRANT_ID,),
+        experiment_statuses=(
+            ExperimentStatusRecord(
+                experiment_id=EXPERIMENT_ID,
+                status=ExperimentStatus.AUTHORIZED,
+            ),
+        ),
         experiment_candidates=(
             ExperimentCandidates(
                 experiment_id=EXPERIMENT_ID,
@@ -605,6 +830,7 @@ def test_projection_restore_rejects_superseded_evidence_without_correction() -> 
                 "sequence": 1,
                 "candidate_ids": (CANDIDATE_ID,),
                 "experiment_ids": (EXPERIMENT_ID,),
+                "active_experiment_ids": (EXPERIMENT_ID,),
                 "evidence_ids": (EVIDENCE_ID,),
                 "superseded_evidence_ids": (EVIDENCE_ID,),
                 "evidence_history": (initial,),
@@ -623,6 +849,7 @@ def test_projection_restore_rejects_unrecorded_correction_target() -> None:
                 "sequence": 2,
                 "candidate_ids": (CANDIDATE_ID,),
                 "experiment_ids": (EXPERIMENT_ID,),
+                "active_experiment_ids": (EXPERIMENT_ID,),
                 "evidence_ids": (EVIDENCE_ID, REPLACEMENT_EVIDENCE_ID),
                 "evidence_history": (initial, replacement),
             }
@@ -647,6 +874,7 @@ def test_projection_restore_rejects_multiple_children_for_one_target() -> None:
                 "sequence": 3,
                 "candidate_ids": (CANDIDATE_ID,),
                 "experiment_ids": (EXPERIMENT_ID,),
+                "active_experiment_ids": (EXPERIMENT_ID,),
                 "evidence_ids": (
                     EVIDENCE_ID,
                     REPLACEMENT_EVIDENCE_ID,
@@ -669,6 +897,7 @@ def test_projection_restore_rejects_correction_before_target() -> None:
                 "sequence": 2,
                 "candidate_ids": (CANDIDATE_ID,),
                 "experiment_ids": (EXPERIMENT_ID,),
+                "active_experiment_ids": (EXPERIMENT_ID,),
                 "evidence_ids": (EVIDENCE_ID, REPLACEMENT_EVIDENCE_ID),
                 "superseded_evidence_ids": (EVIDENCE_ID,),
                 "evidence_history": (replacement, initial),
@@ -687,6 +916,7 @@ def test_projection_restore_rejects_lineage_order_mismatch() -> None:
                 "sequence": 3,
                 "candidate_ids": (CANDIDATE_ID,),
                 "experiment_ids": (EXPERIMENT_ID,),
+                "active_experiment_ids": (EXPERIMENT_ID,),
                 "evidence_ids": (
                     EVIDENCE_ID,
                     REPLACEMENT_EVIDENCE_ID,
@@ -773,6 +1003,7 @@ def test_projection_restore_round_trips_valid_multi_step_lineage() -> None:
             "sequence": 3,
             "candidate_ids": (CANDIDATE_ID,),
             "experiment_ids": (EXPERIMENT_ID,),
+            "active_experiment_ids": (EXPERIMENT_ID,),
             "evidence_ids": (
                 EVIDENCE_ID,
                 REPLACEMENT_EVIDENCE_ID,
@@ -950,6 +1181,19 @@ def test_terminal_experiment_status_is_retained_outside_active_ids() -> None:
         sequence=1,
         experiment_ids=(EXPERIMENT_ID,),
         active_experiment_ids=(EXPERIMENT_ID,),
+        authorization_grant_ids=(GRANT_ID,),
+        authorization_grants=(
+            AuthorizationGrantExperiment(
+                grant_id=GRANT_ID,
+                experiment_id=EXPERIMENT_ID,
+            ),
+        ),
+        experiment_statuses=(
+            ExperimentStatusRecord(
+                experiment_id=EXPERIMENT_ID,
+                status=ExperimentStatus.RUNNING,
+            ),
+        ),
     )
     completed = _event(
         2,
@@ -965,6 +1209,12 @@ def test_terminal_experiment_status_is_retained_outside_active_ids() -> None:
 
     assert result.active_experiment_ids == ()
     assert result.terminal_experiment_ids == (EXPERIMENT_ID,)
+    assert result.experiment_statuses == (
+        ExperimentStatusRecord(
+            experiment_id=EXPERIMENT_ID,
+            status=ExperimentStatus.COMPLETED,
+        ),
+    )
 
 
 @pytest.mark.parametrize("status", [ExperimentStatus.AUTHORIZED, ExperimentStatus.RUNNING])
@@ -977,6 +1227,19 @@ def test_terminal_experiment_cannot_reopen_without_an_explicit_resume_event(
         sequence=2,
         experiment_ids=(EXPERIMENT_ID,),
         terminal_experiment_ids=(EXPERIMENT_ID,),
+        authorization_grant_ids=(GRANT_ID,),
+        authorization_grants=(
+            AuthorizationGrantExperiment(
+                grant_id=GRANT_ID,
+                experiment_id=EXPERIMENT_ID,
+            ),
+        ),
+        experiment_statuses=(
+            ExperimentStatusRecord(
+                experiment_id=EXPERIMENT_ID,
+                status=ExperimentStatus.COMPLETED,
+            ),
+        ),
     )
     reopen = _event(
         3,
@@ -992,7 +1255,7 @@ def test_terminal_experiment_cannot_reopen_without_an_explicit_resume_event(
         reduce_session(projection, reopen)
 
 
-def test_known_nonterminal_experiment_can_advance_to_running() -> None:
+def test_proposed_experiment_cannot_run_without_authorization_event() -> None:
     projection = SessionProjection(
         session_id=SESSION_ID,
         status=SessionStatus.ACTIVE,
@@ -1000,17 +1263,8 @@ def test_known_nonterminal_experiment_can_advance_to_running() -> None:
         experiment_ids=(EXPERIMENT_ID,),
         active_experiment_ids=(EXPERIMENT_ID,),
     )
-    authorized = _event(
-        2,
-        EventKind.EXPERIMENT_STATUS_CHANGED,
-        ExperimentStatusChange(
-            session_id=SESSION_ID,
-            experiment_id=EXPERIMENT_ID,
-            status=ExperimentStatus.AUTHORIZED,
-        ),
-    )
     running = _event(
-        3,
+        2,
         EventKind.EXPERIMENT_STATUS_CHANGED,
         ExperimentStatusChange(
             session_id=SESSION_ID,
@@ -1019,11 +1273,164 @@ def test_known_nonterminal_experiment_can_advance_to_running() -> None:
         ),
     )
 
-    after_authorization = reduce_session(projection, authorized)
-    after_running = reduce_session(after_authorization, running)
+    with pytest.raises(ValueError, match="invalid experiment status transition"):
+        reduce_session(projection, running)
 
-    assert after_running.active_experiment_ids == (EXPERIMENT_ID,)
-    assert after_running.terminal_experiment_ids == ()
+
+@pytest.mark.parametrize(
+    "status",
+    [ExperimentStatus.PROPOSED, ExperimentStatus.AUTHORIZED],
+)
+def test_running_experiment_cannot_regress_or_synthesize_authorization(
+    status: ExperimentStatus,
+) -> None:
+    projection = SessionProjection(
+        session_id=SESSION_ID,
+        status=SessionStatus.ACTIVE,
+        sequence=3,
+        experiment_ids=(EXPERIMENT_ID,),
+        active_experiment_ids=(EXPERIMENT_ID,),
+        authorization_grant_ids=(GRANT_ID,),
+        authorization_grants=(
+            AuthorizationGrantExperiment(
+                grant_id=GRANT_ID,
+                experiment_id=EXPERIMENT_ID,
+            ),
+        ),
+        experiment_statuses=(
+            ExperimentStatusRecord(
+                experiment_id=EXPERIMENT_ID,
+                status=ExperimentStatus.RUNNING,
+            ),
+        ),
+    )
+    invalid_change = _event(
+        4,
+        EventKind.EXPERIMENT_STATUS_CHANGED,
+        ExperimentStatusChange(
+            session_id=SESSION_ID,
+            experiment_id=EXPERIMENT_ID,
+            status=status,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="invalid experiment status transition"):
+        reduce_session(projection, invalid_change)
+
+
+@pytest.mark.parametrize(
+    "terminal_status",
+    [
+        ExperimentStatus.COMPLETED,
+        ExperimentStatus.INCONCLUSIVE,
+        ExperimentStatus.FAILED,
+    ],
+)
+def test_authorized_experiment_runs_and_reaches_terminal_status(
+    terminal_status: ExperimentStatus,
+) -> None:
+    started, first_candidate, second_candidate, proposed = _introduced_graph()
+    authorized = _event(
+        5,
+        EventKind.EXPERIMENT_AUTHORIZED,
+        _authorization_grant(),
+        proposed,
+    )
+    running = _event(
+        6,
+        EventKind.EXPERIMENT_STATUS_CHANGED,
+        ExperimentStatusChange(
+            session_id=SESSION_ID,
+            experiment_id=EXPERIMENT_ID,
+            status=ExperimentStatus.RUNNING,
+        ),
+        authorized,
+    )
+    terminal = _event(
+        7,
+        EventKind.EXPERIMENT_STATUS_CHANGED,
+        ExperimentStatusChange(
+            session_id=SESSION_ID,
+            experiment_id=EXPERIMENT_ID,
+            status=terminal_status,
+        ),
+        running,
+    )
+
+    projection = reduce_events(
+        (
+            started,
+            first_candidate,
+            second_candidate,
+            proposed,
+            authorized,
+            running,
+            terminal,
+        )
+    )
+    restored = SessionProjection.model_validate(projection.model_dump())
+
+    assert projection.experiment_statuses == (
+        ExperimentStatusRecord(
+            experiment_id=EXPERIMENT_ID,
+            status=terminal_status,
+        ),
+    )
+    assert projection.active_experiment_ids == ()
+    assert projection.terminal_experiment_ids == (EXPERIMENT_ID,)
+    assert restored == projection
+
+
+def test_authorized_experiment_can_fail_before_running() -> None:
+    projection = _projection_with_known_graph()
+    authorized = reduce_session(
+        projection,
+        _event(2, EventKind.EXPERIMENT_AUTHORIZED, _authorization_grant()),
+    )
+    failed = _event(
+        3,
+        EventKind.EXPERIMENT_STATUS_CHANGED,
+        ExperimentStatusChange(
+            session_id=SESSION_ID,
+            experiment_id=EXPERIMENT_ID,
+            status=ExperimentStatus.FAILED,
+        ),
+    )
+
+    result = reduce_session(authorized, failed)
+
+    assert result.experiment_statuses[0].status is ExperimentStatus.FAILED
+
+
+def test_multiple_distinct_grants_keep_experiment_authorized() -> None:
+    projection = _projection_with_known_graph()
+    first = reduce_session(
+        projection,
+        _event(2, EventKind.EXPERIMENT_AUTHORIZED, _authorization_grant()),
+    )
+    second_grant_id = UUID("00000000-0000-0000-0000-00000000000c")
+    second = reduce_session(
+        first,
+        _event(
+            3,
+            EventKind.EXPERIMENT_AUTHORIZED,
+            _authorization_grant(grant_id=second_grant_id),
+        ),
+    )
+
+    assert first.experiment_statuses == (
+        ExperimentStatusRecord(
+            experiment_id=EXPERIMENT_ID,
+            status=ExperimentStatus.AUTHORIZED,
+        ),
+    )
+    assert second.authorization_grant_ids == (GRANT_ID, second_grant_id)
+    assert second.experiment_statuses == (
+        ExperimentStatusRecord(
+            experiment_id=EXPERIMENT_ID,
+            status=ExperimentStatus.AUTHORIZED,
+        ),
+    )
 
 
 def test_experiment_proposal_rejects_unknown_candidate_references() -> None:
@@ -1071,6 +1478,19 @@ def test_terminal_experiment_cannot_receive_new_authorization() -> None:
         sequence=2,
         experiment_ids=(EXPERIMENT_ID,),
         terminal_experiment_ids=(EXPERIMENT_ID,),
+        authorization_grant_ids=(GRANT_ID,),
+        authorization_grants=(
+            AuthorizationGrantExperiment(
+                grant_id=GRANT_ID,
+                experiment_id=EXPERIMENT_ID,
+            ),
+        ),
+        experiment_statuses=(
+            ExperimentStatusRecord(
+                experiment_id=EXPERIMENT_ID,
+                status=ExperimentStatus.COMPLETED,
+            ),
+        ),
     )
     authorized = _event(
         3,
@@ -1124,6 +1544,7 @@ def test_authorization_rejects_a_duplicate_grant_identity() -> None:
         status=SessionStatus.ACTIVE,
         sequence=1,
         experiment_ids=(EXPERIMENT_ID,),
+        active_experiment_ids=(EXPERIMENT_ID,),
         authorization_grant_ids=(GRANT_ID,),
     )
     duplicate = _event(
@@ -1152,7 +1573,18 @@ def test_evidence_grants_must_belong_to_the_same_experiment() -> None:
         sequence=1,
         candidate_ids=(CANDIDATE_ID,),
         experiment_ids=(EXPERIMENT_ID, EXPERIMENT_2_ID),
+        active_experiment_ids=(EXPERIMENT_ID, EXPERIMENT_2_ID),
         authorization_grant_ids=(GRANT_ID,),
+        experiment_statuses=(
+            ExperimentStatusRecord(
+                experiment_id=EXPERIMENT_ID,
+                status=ExperimentStatus.PROPOSED,
+            ),
+            ExperimentStatusRecord(
+                experiment_id=EXPERIMENT_2_ID,
+                status=ExperimentStatus.AUTHORIZED,
+            ),
+        ),
         experiment_candidates=(
             ExperimentCandidates(
                 experiment_id=EXPERIMENT_ID,
@@ -1190,6 +1622,7 @@ def test_evidence_candidate_must_belong_to_its_experiment() -> None:
         sequence=1,
         candidate_ids=(CANDIDATE_ID, CANDIDATE_2_ID),
         experiment_ids=(EXPERIMENT_ID,),
+        active_experiment_ids=(EXPERIMENT_ID,),
         experiment_candidates=(
             ExperimentCandidates(
                 experiment_id=EXPERIMENT_ID,
@@ -1225,6 +1658,7 @@ def test_evidence_rejects_unknown_candidate_or_experiment_references(
         sequence=1,
         candidate_ids=candidate_ids,
         experiment_ids=experiment_ids,
+        active_experiment_ids=experiment_ids,
     )
     accepted = _event(
         2,
@@ -1334,6 +1768,7 @@ def test_belief_evidence_and_claim_must_share_candidate_ownership() -> None:
         sequence=1,
         candidate_ids=(CANDIDATE_ID, CANDIDATE_2_ID),
         experiment_ids=(EXPERIMENT_ID,),
+        active_experiment_ids=(EXPERIMENT_ID,),
         evidence_ids=(EVIDENCE_ID,),
         claim_ids=(CLAIM_ID,),
         claim_ownership=(
@@ -1372,6 +1807,7 @@ def test_selection_requires_known_experiment_candidates_and_evidence() -> None:
         sequence=1,
         candidate_ids=(CANDIDATE_ID, CANDIDATE_2_ID),
         experiment_ids=(EXPERIMENT_ID,),
+        active_experiment_ids=(EXPERIMENT_ID,),
     )
     selection = _event(
         2,
@@ -1409,6 +1845,7 @@ def test_selection_relationships_must_belong_to_the_decision_experiment(
         sequence=1,
         candidate_ids=(CANDIDATE_ID, CANDIDATE_2_ID, CANDIDATE_3_ID),
         experiment_ids=(EXPERIMENT_ID, EXPERIMENT_2_ID),
+        active_experiment_ids=(EXPERIMENT_ID, EXPERIMENT_2_ID),
         evidence_ids=(EVIDENCE_ID,),
         experiment_candidates=(
             ExperimentCandidates(

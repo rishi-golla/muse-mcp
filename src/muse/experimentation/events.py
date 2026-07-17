@@ -27,6 +27,7 @@ from muse.experimentation.sessions import (
     CreativeSession,
     EvidenceHistoryEntry,
     ExperimentCandidates,
+    ExperimentStatusRecord,
     SessionProjection,
     SessionStatus,
 )
@@ -360,6 +361,18 @@ _TERMINAL_SESSION_STATUSES = frozenset(
 _TERMINAL_EXPERIMENT_STATUSES = frozenset(
     {ExperimentStatus.COMPLETED, ExperimentStatus.INCONCLUSIVE, ExperimentStatus.FAILED}
 )
+_EXPERIMENT_STATUS_CHANGE_TRANSITIONS: Mapping[
+    ExperimentStatus, frozenset[ExperimentStatus]
+] = {
+    ExperimentStatus.PROPOSED: frozenset(),
+    ExperimentStatus.AUTHORIZED: frozenset(
+        {ExperimentStatus.RUNNING, ExperimentStatus.FAILED}
+    ),
+    ExperimentStatus.RUNNING: _TERMINAL_EXPERIMENT_STATUSES,
+    ExperimentStatus.COMPLETED: frozenset(),
+    ExperimentStatus.INCONCLUSIVE: frozenset(),
+    ExperimentStatus.FAILED: frozenset(),
+}
 
 
 def reduce_events(events: Iterable[SessionEvent]) -> SessionProjection:
@@ -533,6 +546,13 @@ def reduce_session(
             *projection.active_experiment_ids,
             experiment.id,
         )
+        updates["experiment_statuses"] = (
+            *projection.experiment_statuses,
+            ExperimentStatusRecord(
+                experiment_id=experiment.id,
+                status=ExperimentStatus.PROPOSED,
+            ),
+        )
     elif event.kind is EventKind.EXPERIMENT_STATUS_CHANGED:
         status_change = event.payload
         if type(status_change) is not ExperimentStatusChange:
@@ -541,6 +561,20 @@ def reduce_session(
             raise ValueError("cannot change status for an unknown experiment")
         if status_change.experiment_id in projection.terminal_experiment_ids:
             raise ValueError("cannot change status for a terminal experiment")
+        current_status = _experiment_status(projection, status_change.experiment_id)
+        allowed_statuses = _EXPERIMENT_STATUS_CHANGE_TRANSITIONS.get(
+            current_status, frozenset()
+        )
+        if status_change.status not in allowed_statuses:
+            raise ValueError(
+                "invalid experiment status transition: "
+                f"{current_status.value} -> {status_change.status.value}"
+            )
+        updates["experiment_statuses"] = _replace_experiment_status(
+            projection,
+            status_change.experiment_id,
+            status_change.status,
+        )
         active_ids = projection.active_experiment_ids
         if status_change.status in _TERMINAL_EXPERIMENT_STATUSES:
             updates["active_experiment_ids"] = tuple(
@@ -564,6 +598,19 @@ def reduce_session(
             raise ValueError("cannot authorize a terminal experiment")
         if grant.id in projection.authorization_grant_ids:
             raise ValueError("authorization grant identity has already been recorded")
+        current_status = _experiment_status(projection, grant.experiment_id)
+        if current_status not in {
+            ExperimentStatus.PROPOSED,
+            ExperimentStatus.AUTHORIZED,
+        }:
+            raise ValueError(
+                "experiment authorization requires proposed or authorized status"
+            )
+        updates["experiment_statuses"] = _replace_experiment_status(
+            projection,
+            grant.experiment_id,
+            ExperimentStatus.AUTHORIZED,
+        )
         updates["authorization_grant_ids"] = (
             *projection.authorization_grant_ids,
             grant.id,
@@ -778,6 +825,29 @@ def _evidence_history_entry(evidence: EvidenceEnvelope) -> EvidenceHistoryEntry:
         candidate_id=evidence.candidate_id,
         correction_sequence=evidence.correction_sequence,
         corrects_evidence_id=evidence.corrects_evidence_id,
+    )
+
+
+def _experiment_status(
+    projection: SessionProjection,
+    experiment_id: UUID,
+) -> ExperimentStatus:
+    for record in projection.experiment_statuses:
+        if record.experiment_id == experiment_id:
+            return record.status
+    raise ValueError("known experiment has no lifecycle status")
+
+
+def _replace_experiment_status(
+    projection: SessionProjection,
+    experiment_id: UUID,
+    status: ExperimentStatus,
+) -> tuple[ExperimentStatusRecord, ...]:
+    return tuple(
+        ExperimentStatusRecord(experiment_id=experiment_id, status=status)
+        if record.experiment_id == experiment_id
+        else record
+        for record in projection.experiment_statuses
     )
 
 
