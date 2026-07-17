@@ -22,7 +22,11 @@ from muse.experimentation.evidence import (
 )
 from muse.experimentation.sessions import (
     AuthorizationGrant,
+    AuthorizationGrantExperiment,
+    ClaimOwnership,
     CreativeSession,
+    EvidenceHistoryEntry,
+    ExperimentCandidates,
     SessionProjection,
     SessionStatus,
 )
@@ -437,8 +441,9 @@ def reduce_session(
     if projection.status in _TERMINAL_SESSION_STATUSES:
         if event.kind is not EventKind.SESSION_RESUMED:
             raise ValueError("a terminal session requires an explicit resume event")
-        return projection.model_copy(
-            update={"status": SessionStatus.ACTIVE, "sequence": event.sequence}
+        return _updated_projection(
+            projection,
+            {"status": SessionStatus.ACTIVE, "sequence": event.sequence},
         )
     if event.kind is EventKind.SESSION_RESUMED:
         raise ValueError("a non-terminal session is not terminal and cannot be resumed")
@@ -482,8 +487,27 @@ def reduce_session(
         new_claim_ids = tuple(
             claim.id for claim in candidate.claims if claim.id not in projection.claim_ids
         )
+        ownership_by_claim_id = {
+            relationship.claim_id: relationship
+            for relationship in projection.claim_ownership
+        }
+        for claim in candidate.claims:
+            existing_ownership = ownership_by_claim_id.get(claim.id)
+            if (
+                existing_ownership is not None
+                and existing_ownership.candidate_id != candidate.id
+            ):
+                raise ValueError("claim ownership cannot move between candidates")
         if new_claim_ids:
             updates["claim_ids"] = (*projection.claim_ids, *new_claim_ids)
+            updates["claim_ownership"] = (
+                *projection.claim_ownership,
+                *(
+                    ClaimOwnership(claim_id=claim.id, candidate_id=candidate.id)
+                    for claim in candidate.claims
+                    if claim.id not in ownership_by_claim_id
+                ),
+            )
     elif event.kind is EventKind.EXPERIMENT_PROPOSED:
         experiment = event.payload
         if type(experiment) is not ExperimentSpec:
@@ -498,6 +522,13 @@ def reduce_session(
         if experiment.id in projection.experiment_ids:
             raise ValueError("experiment has already been proposed")
         updates["experiment_ids"] = (*projection.experiment_ids, experiment.id)
+        updates["experiment_candidates"] = (
+            *projection.experiment_candidates,
+            ExperimentCandidates(
+                experiment_id=experiment.id,
+                candidate_ids=experiment.candidate_ids,
+            ),
+        )
         updates["active_experiment_ids"] = (
             *projection.active_experiment_ids,
             experiment.id,
@@ -508,12 +539,18 @@ def reduce_session(
             raise ValueError("invalid experiment status payload")
         if status_change.experiment_id not in projection.experiment_ids:
             raise ValueError("cannot change status for an unknown experiment")
+        if status_change.experiment_id in projection.terminal_experiment_ids:
+            raise ValueError("cannot change status for a terminal experiment")
         active_ids = projection.active_experiment_ids
         if status_change.status in _TERMINAL_EXPERIMENT_STATUSES:
             updates["active_experiment_ids"] = tuple(
                 experiment_id
                 for experiment_id in active_ids
                 if experiment_id != status_change.experiment_id
+            )
+            updates["terminal_experiment_ids"] = (
+                *projection.terminal_experiment_ids,
+                status_change.experiment_id,
             )
         elif status_change.experiment_id not in active_ids:
             updates["active_experiment_ids"] = (*active_ids, status_change.experiment_id)
@@ -523,11 +560,20 @@ def reduce_session(
             raise ValueError("invalid experiment authorization payload")
         if grant.experiment_id not in projection.experiment_ids:
             raise ValueError("cannot authorize an unknown experiment")
+        if grant.experiment_id in projection.terminal_experiment_ids:
+            raise ValueError("cannot authorize a terminal experiment")
         if grant.id in projection.authorization_grant_ids:
             raise ValueError("authorization grant identity has already been recorded")
         updates["authorization_grant_ids"] = (
             *projection.authorization_grant_ids,
             grant.id,
+        )
+        updates["authorization_grants"] = (
+            *projection.authorization_grants,
+            AuthorizationGrantExperiment(
+                grant_id=grant.id,
+                experiment_id=grant.experiment_id,
+            ),
         )
     elif event.kind in {EventKind.EVIDENCE_ACCEPTED, EventKind.EVIDENCE_REJECTED}:
         payload = event.payload
@@ -536,14 +582,15 @@ def reduce_session(
         else:
             raise ValueError("invalid evidence payload")
         _require_known_evidence_graph(projection, evidence)
-        if (
-            event.kind is EventKind.EVIDENCE_ACCEPTED
-            and evidence.corrects_evidence_id is not None
-        ):
-            raise ValueError("accepted correction requires an explicit supersession event")
+        if evidence.corrects_evidence_id is not None or evidence.correction_sequence > 0:
+            raise ValueError("evidence correction requires an explicit supersession event")
         if evidence.id in projection.evidence_ids:
             raise ValueError("evidence identity has already been recorded")
         updates["evidence_ids"] = (*projection.evidence_ids, evidence.id)
+        updates["evidence_history"] = (
+            *projection.evidence_history,
+            _evidence_history_entry(evidence),
+        )
     elif event.kind is EventKind.EVIDENCE_SUPERSEDED:
         supersession = event.payload
         if type(supersession) is not EvidenceSupersession:
@@ -552,11 +599,32 @@ def reduce_session(
         _require_known_evidence_graph(projection, replacement)
         if supersession.superseded_evidence_id not in projection.evidence_ids:
             raise ValueError("cannot supersede unknown evidence")
+        target = next(
+            (
+                entry
+                for entry in projection.evidence_history
+                if entry.evidence_id == supersession.superseded_evidence_id
+            ),
+            None,
+        )
+        if target is None:
+            raise ValueError("cannot supersede evidence without recorded history")
+        if replacement.correction_sequence != target.correction_sequence + 1:
+            raise ValueError("replacement correction sequence must follow its target")
+        if (
+            replacement.experiment_id != target.experiment_id
+            or replacement.candidate_id != target.candidate_id
+        ):
+            raise ValueError("replacement must preserve evidence graph identity")
         if supersession.superseded_evidence_id in projection.superseded_evidence_ids:
             raise ValueError("evidence has already been superseded")
         if replacement.id in projection.evidence_ids:
             raise ValueError("replacement must have a new evidence identity")
         updates["evidence_ids"] = (*projection.evidence_ids, replacement.id)
+        updates["evidence_history"] = (
+            *projection.evidence_history,
+            _evidence_history_entry(replacement),
+        )
         updates["superseded_evidence_ids"] = (
             *projection.superseded_evidence_ids,
             supersession.superseded_evidence_id,
@@ -569,6 +637,26 @@ def reduce_session(
             raise ValueError("belief update references unknown evidence")
         if belief.claim_id not in projection.claim_ids:
             raise ValueError("belief update references an unknown claim")
+        evidence_entry = next(
+            (
+                entry
+                for entry in projection.evidence_history
+                if entry.evidence_id == belief.evidence_id
+            ),
+            None,
+        )
+        ownership = next(
+            (
+                relationship
+                for relationship in projection.claim_ownership
+                if relationship.claim_id == belief.claim_id
+            ),
+            None,
+        )
+        if evidence_entry is None or ownership is None:
+            raise ValueError("belief update requires recorded relationship history")
+        if evidence_entry.candidate_id != ownership.candidate_id:
+            raise ValueError("belief evidence and claim must belong to the same candidate")
     elif event.kind is EventKind.SELECTION_DECIDED:
         selection = event.payload
         if type(selection) is not SelectionDecision:
@@ -579,6 +667,32 @@ def reduce_session(
             raise ValueError("selection references an unknown candidate")
         if set(selection.supporting_evidence_ids).difference(projection.evidence_ids):
             raise ValueError("selection references unknown evidence")
+        experiment_relationship = next(
+            (
+                relationship
+                for relationship in projection.experiment_candidates
+                if relationship.experiment_id == selection.experiment_id
+            ),
+            None,
+        )
+        if experiment_relationship is None:
+            raise ValueError("selection requires experiment candidate history")
+        if set(selection.considered_candidate_ids).difference(
+            experiment_relationship.candidate_ids
+        ):
+            raise ValueError("selection candidate does not belong to its experiment")
+        evidence_entries = {
+            entry.evidence_id: entry for entry in projection.evidence_history
+        }
+        if any(
+            evidence_entries[evidence_id].experiment_id != selection.experiment_id
+            for evidence_id in selection.supporting_evidence_ids
+            if evidence_id in evidence_entries
+        ) or any(
+            evidence_id not in evidence_entries
+            for evidence_id in selection.supporting_evidence_ids
+        ):
+            raise ValueError("selection evidence does not belong to its experiment")
     elif event.kind is EventKind.BUDGET_RESERVED:
         reservation = event.payload
         if type(reservation) is not BudgetReservation:
@@ -612,7 +726,7 @@ def reduce_session(
             raise ValueError("invalid taste snapshot payload")
         updates["taste_snapshot_id"] = snapshot.snapshot_id
 
-    return projection.model_copy(update=updates)
+    return _updated_projection(projection, updates)
 
 
 def _payload_session_id(payload: EventPayload) -> UUID:
@@ -629,7 +743,48 @@ def _require_known_evidence_graph(
         raise ValueError("evidence references an unknown candidate")
     if evidence.experiment_id not in projection.experiment_ids:
         raise ValueError("evidence references an unknown experiment")
+    experiment_relationship = next(
+        (
+            relationship
+            for relationship in projection.experiment_candidates
+            if relationship.experiment_id == evidence.experiment_id
+        ),
+        None,
+    )
+    if experiment_relationship is None:
+        raise ValueError("evidence requires experiment candidate history")
+    if evidence.candidate_id not in experiment_relationship.candidate_ids:
+        raise ValueError("evidence candidate does not belong to its experiment")
     if set(evidence.request.authorization_grant_ids).difference(
         projection.authorization_grant_ids
     ):
         raise ValueError("evidence references an unknown authorization grant")
+    grants_by_id = {
+        relationship.grant_id: relationship
+        for relationship in projection.authorization_grants
+    }
+    if any(
+        grant_id not in grants_by_id
+        or grants_by_id[grant_id].experiment_id != evidence.experiment_id
+        for grant_id in evidence.request.authorization_grant_ids
+    ):
+        raise ValueError("evidence authorization grants must belong to the same experiment")
+
+
+def _evidence_history_entry(evidence: EvidenceEnvelope) -> EvidenceHistoryEntry:
+    return EvidenceHistoryEntry(
+        evidence_id=evidence.id,
+        experiment_id=evidence.experiment_id,
+        candidate_id=evidence.candidate_id,
+        correction_sequence=evidence.correction_sequence,
+        corrects_evidence_id=evidence.corrects_evidence_id,
+    )
+
+
+def _updated_projection(
+    projection: SessionProjection,
+    updates: dict[str, object],
+) -> SessionProjection:
+    values = projection.model_dump()
+    values.update(updates)
+    return SessionProjection.model_validate(values)
