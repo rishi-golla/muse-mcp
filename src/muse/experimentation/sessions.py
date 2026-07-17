@@ -138,7 +138,29 @@ class SessionProjection(FrozenModel):
     session_id: UUID
     status: SessionStatus
     sequence: int = Field(strict=True, ge=0)
+    candidate_ids: tuple[UUID, ...] = ()
+    experiment_ids: tuple[UUID, ...] = ()
+    evidence_ids: tuple[UUID, ...] = ()
+    superseded_evidence_ids: tuple[UUID, ...] = ()
+    claim_ids: tuple[UUID, ...] = ()
+    authorization_grant_ids: tuple[UUID, ...] = ()
+    budget_reservation_ids: tuple[UUID, ...] = ()
+    reconciled_budget_reservation_ids: tuple[UUID, ...] = ()
     active_candidate_ids: tuple[UUID, ...] = ()
     active_experiment_ids: tuple[UUID, ...] = ()
     memory_snapshot_id: UUID | None = None
     taste_snapshot_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def retain_legacy_active_entity_history(self) -> SessionProjection:
+        object.__setattr__(
+            self,
+            "candidate_ids",
+            tuple(dict.fromkeys((*self.candidate_ids, *self.active_candidate_ids))),
+        )
+        object.__setattr__(
+            self,
+            "experiment_ids",
+            tuple(dict.fromkeys((*self.experiment_ids, *self.active_experiment_ids))),
+        )
+        return self
