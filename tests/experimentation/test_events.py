@@ -235,6 +235,32 @@ def _projection_with_known_graph(**overrides: object) -> SessionProjection:
     return SessionProjection.model_validate(values)
 
 
+def _evidence_lineage() -> tuple[
+    EvidenceHistoryEntry, EvidenceHistoryEntry, EvidenceHistoryEntry
+]:
+    initial = EvidenceHistoryEntry(
+        evidence_id=EVIDENCE_ID,
+        experiment_id=EXPERIMENT_ID,
+        candidate_id=CANDIDATE_ID,
+        correction_sequence=0,
+    )
+    replacement = EvidenceHistoryEntry(
+        evidence_id=REPLACEMENT_EVIDENCE_ID,
+        experiment_id=EXPERIMENT_ID,
+        candidate_id=CANDIDATE_ID,
+        correction_sequence=1,
+        corrects_evidence_id=EVIDENCE_ID,
+    )
+    third = EvidenceHistoryEntry(
+        evidence_id=THIRD_EVIDENCE_ID,
+        experiment_id=EXPERIMENT_ID,
+        candidate_id=CANDIDATE_ID,
+        correction_sequence=2,
+        corrects_evidence_id=REPLACEMENT_EVIDENCE_ID,
+    )
+    return initial, replacement, third
+
+
 def test_pending_event_requires_idempotency_key_and_validates_payload_by_kind() -> None:
     with pytest.raises(ValidationError, match="idempotency_key"):
         PendingEvent.model_validate(
@@ -566,6 +592,208 @@ def test_projection_relationships_round_trip_deterministically() -> None:
     restored = SessionProjection.model_validate(projection.model_dump())
 
     assert restored == projection
+
+
+def test_projection_restore_rejects_superseded_evidence_without_correction() -> None:
+    initial, _, _ = _evidence_lineage()
+
+    with pytest.raises(ValidationError, match="exactly one correction child"):
+        SessionProjection.model_validate(
+            {
+                "session_id": SESSION_ID,
+                "status": SessionStatus.ACTIVE,
+                "sequence": 1,
+                "candidate_ids": (CANDIDATE_ID,),
+                "experiment_ids": (EXPERIMENT_ID,),
+                "evidence_ids": (EVIDENCE_ID,),
+                "superseded_evidence_ids": (EVIDENCE_ID,),
+                "evidence_history": (initial,),
+            }
+        )
+
+
+def test_projection_restore_rejects_unrecorded_correction_target() -> None:
+    initial, replacement, _ = _evidence_lineage()
+
+    with pytest.raises(ValidationError, match="correction target must be superseded"):
+        SessionProjection.model_validate(
+            {
+                "session_id": SESSION_ID,
+                "status": SessionStatus.ACTIVE,
+                "sequence": 2,
+                "candidate_ids": (CANDIDATE_ID,),
+                "experiment_ids": (EXPERIMENT_ID,),
+                "evidence_ids": (EVIDENCE_ID, REPLACEMENT_EVIDENCE_ID),
+                "evidence_history": (initial, replacement),
+            }
+        )
+
+
+def test_projection_restore_rejects_multiple_children_for_one_target() -> None:
+    initial, replacement, _ = _evidence_lineage()
+    competing_replacement = EvidenceHistoryEntry(
+        evidence_id=THIRD_EVIDENCE_ID,
+        experiment_id=EXPERIMENT_ID,
+        candidate_id=CANDIDATE_ID,
+        correction_sequence=1,
+        corrects_evidence_id=EVIDENCE_ID,
+    )
+
+    with pytest.raises(ValidationError, match="multiple correction children"):
+        SessionProjection.model_validate(
+            {
+                "session_id": SESSION_ID,
+                "status": SessionStatus.ACTIVE,
+                "sequence": 3,
+                "candidate_ids": (CANDIDATE_ID,),
+                "experiment_ids": (EXPERIMENT_ID,),
+                "evidence_ids": (
+                    EVIDENCE_ID,
+                    REPLACEMENT_EVIDENCE_ID,
+                    THIRD_EVIDENCE_ID,
+                ),
+                "superseded_evidence_ids": (EVIDENCE_ID,),
+                "evidence_history": (initial, replacement, competing_replacement),
+            }
+        )
+
+
+def test_projection_restore_rejects_correction_before_target() -> None:
+    initial, replacement, _ = _evidence_lineage()
+
+    with pytest.raises(ValidationError, match="after its target"):
+        SessionProjection.model_validate(
+            {
+                "session_id": SESSION_ID,
+                "status": SessionStatus.ACTIVE,
+                "sequence": 2,
+                "candidate_ids": (CANDIDATE_ID,),
+                "experiment_ids": (EXPERIMENT_ID,),
+                "evidence_ids": (EVIDENCE_ID, REPLACEMENT_EVIDENCE_ID),
+                "superseded_evidence_ids": (EVIDENCE_ID,),
+                "evidence_history": (replacement, initial),
+            }
+        )
+
+
+def test_projection_restore_rejects_lineage_order_mismatch() -> None:
+    initial, replacement, third = _evidence_lineage()
+
+    with pytest.raises(ValidationError, match="supersession order"):
+        SessionProjection.model_validate(
+            {
+                "session_id": SESSION_ID,
+                "status": SessionStatus.ACTIVE,
+                "sequence": 3,
+                "candidate_ids": (CANDIDATE_ID,),
+                "experiment_ids": (EXPERIMENT_ID,),
+                "evidence_ids": (
+                    EVIDENCE_ID,
+                    REPLACEMENT_EVIDENCE_ID,
+                    THIRD_EVIDENCE_ID,
+                ),
+                "superseded_evidence_ids": (
+                    REPLACEMENT_EVIDENCE_ID,
+                    EVIDENCE_ID,
+                ),
+                "evidence_history": (initial, replacement, third),
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    ("superseded_evidence_ids", "evidence_history", "message"),
+    [
+        (
+            (EVIDENCE_ID, EVIDENCE_ID),
+            _evidence_lineage()[:2],
+            "duplicate superseded evidence",
+        ),
+        (
+            (EVIDENCE_ID,),
+            (*_evidence_lineage()[:2], _evidence_lineage()[1]),
+            "duplicate evidence history",
+        ),
+    ],
+)
+def test_projection_restore_rejects_duplicate_lineage_records_before_normalizing(
+    superseded_evidence_ids: tuple[UUID, ...],
+    evidence_history: tuple[EvidenceHistoryEntry, ...],
+    message: str,
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        SessionProjection.model_validate(
+            {
+                "session_id": SESSION_ID,
+                "status": SessionStatus.ACTIVE,
+                "sequence": 3,
+                "candidate_ids": (CANDIDATE_ID,),
+                "experiment_ids": (EXPERIMENT_ID,),
+                "evidence_ids": (EVIDENCE_ID, REPLACEMENT_EVIDENCE_ID),
+                "superseded_evidence_ids": superseded_evidence_ids,
+                "evidence_history": evidence_history,
+            }
+        )
+
+
+def test_projection_restore_rejects_conflicting_duplicate_evidence_history() -> None:
+    initial, replacement, _ = _evidence_lineage()
+    conflicting_replacement = EvidenceHistoryEntry(
+        evidence_id=REPLACEMENT_EVIDENCE_ID,
+        experiment_id=EXPERIMENT_ID,
+        candidate_id=CANDIDATE_ID,
+        correction_sequence=0,
+    )
+
+    with pytest.raises(ValidationError, match="evidence history relationship conflicts"):
+        SessionProjection.model_validate(
+            {
+                "session_id": SESSION_ID,
+                "status": SessionStatus.ACTIVE,
+                "sequence": 3,
+                "candidate_ids": (CANDIDATE_ID,),
+                "experiment_ids": (EXPERIMENT_ID,),
+                "evidence_ids": (EVIDENCE_ID, REPLACEMENT_EVIDENCE_ID),
+                "superseded_evidence_ids": (EVIDENCE_ID,),
+                "evidence_history": (
+                    initial,
+                    replacement,
+                    conflicting_replacement,
+                ),
+            }
+        )
+
+
+def test_projection_restore_round_trips_valid_multi_step_lineage() -> None:
+    initial, replacement, third = _evidence_lineage()
+    projection = SessionProjection.model_validate(
+        {
+            "session_id": SESSION_ID,
+            "status": SessionStatus.ACTIVE,
+            "sequence": 3,
+            "candidate_ids": (CANDIDATE_ID,),
+            "experiment_ids": (EXPERIMENT_ID,),
+            "evidence_ids": (
+                EVIDENCE_ID,
+                REPLACEMENT_EVIDENCE_ID,
+                THIRD_EVIDENCE_ID,
+            ),
+            "superseded_evidence_ids": (
+                EVIDENCE_ID,
+                REPLACEMENT_EVIDENCE_ID,
+            ),
+            "evidence_history": (initial, replacement, third),
+        }
+    )
+
+    restored = SessionProjection.model_validate(projection.model_dump())
+
+    assert restored == projection
+    assert restored.evidence_history == (initial, replacement, third)
+    assert restored.superseded_evidence_ids == (
+        EVIDENCE_ID,
+        REPLACEMENT_EVIDENCE_ID,
+    )
 
 
 @pytest.mark.parametrize("sequences", [(2,), (1, 3), (1, 1)])

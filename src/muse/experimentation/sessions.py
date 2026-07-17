@@ -196,6 +196,20 @@ class SessionProjection(FrozenModel):
 
     @model_validator(mode="after")
     def normalize_and_validate_history(self) -> SessionProjection:
+        if len(self.superseded_evidence_ids) != len(
+            set(self.superseded_evidence_ids)
+        ):
+            raise ValueError("duplicate superseded evidence is not allowed")
+
+        raw_evidence_by_id: dict[UUID, EvidenceHistoryEntry] = {}
+        for entry in self.evidence_history:
+            existing = raw_evidence_by_id.get(entry.evidence_id)
+            if existing is not None:
+                if existing != entry:
+                    raise ValueError("evidence history relationship conflicts")
+                raise ValueError("duplicate evidence history is not allowed")
+            raw_evidence_by_id[entry.evidence_id] = entry
+
         active_candidate_ids = tuple(dict.fromkeys(self.active_candidate_ids))
         active_experiment_ids = tuple(dict.fromkeys(self.active_experiment_ids))
         candidate_ids = tuple(
@@ -307,7 +321,13 @@ class SessionProjection(FrozenModel):
                 raise ValueError("grant relationship references an unknown grant")
             if relationship.experiment_id not in self.experiment_ids:
                 raise ValueError("grant relationship references an unknown experiment")
-        for entry in self.evidence_history:
+        evidence_positions = {
+            entry.evidence_id: position
+            for position, entry in enumerate(self.evidence_history)
+        }
+        correction_children_by_target: dict[UUID, list[EvidenceHistoryEntry]] = {}
+        correction_targets_in_history_order: list[UUID] = []
+        for position, entry in enumerate(self.evidence_history):
             if entry.evidence_id not in self.evidence_ids:
                 raise ValueError("evidence history references unknown evidence")
             if entry.experiment_id not in self.experiment_ids:
@@ -326,6 +346,8 @@ class SessionProjection(FrozenModel):
                 target = evidence_by_id.get(entry.corrects_evidence_id)
                 if target is None:
                     raise ValueError("evidence correction target must have history")
+                if evidence_positions[target.evidence_id] >= position:
+                    raise ValueError("evidence correction must appear after its target")
                 if entry.correction_sequence != target.correction_sequence + 1:
                     raise ValueError("evidence correction sequence must follow its target")
                 if (
@@ -333,5 +355,27 @@ class SessionProjection(FrozenModel):
                     or entry.candidate_id != target.candidate_id
                 ):
                     raise ValueError("evidence correction must preserve graph identity")
+                correction_children_by_target.setdefault(target.evidence_id, []).append(
+                    entry
+                )
+                correction_targets_in_history_order.append(target.evidence_id)
+
+        for evidence_id in self.superseded_evidence_ids:
+            if evidence_id not in correction_children_by_target:
+                raise ValueError(
+                    "superseded evidence must have exactly one correction child"
+                )
+        for children in correction_children_by_target.values():
+            if len(children) > 1:
+                raise ValueError(
+                    "evidence target cannot have multiple correction children"
+                )
+        for evidence_id in correction_targets_in_history_order:
+            if evidence_id not in self.superseded_evidence_ids:
+                raise ValueError("evidence correction target must be superseded")
+        if tuple(correction_targets_in_history_order) != self.superseded_evidence_ids:
+            raise ValueError(
+                "supersession order must match correction history order"
+            )
 
         return self
