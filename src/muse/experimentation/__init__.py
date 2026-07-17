@@ -44,6 +44,12 @@ from muse.experimentation.sessions import (
     SessionStatus,
     SideEffectClass,
 )
+from muse.experimentation.store import (
+    EventStore,
+    SequenceConflict,
+    SessionNotFound,
+    SQLiteEventStore,
+)
 
 __all__ = (
     "AuthorizationDenied",
@@ -64,6 +70,7 @@ __all__ = (
     "EvidenceRequest",
     "EvidenceValidationStatus",
     "EventKind",
+    "EventStore",
     "ExperimentSpec",
     "ExperimentStatus",
     "Measurement",
@@ -74,9 +81,12 @@ __all__ = (
     "PendingEvent",
     "PrivacyPolicy",
     "Reducibility",
+    "SQLiteEventStore",
     "SelectionDecision",
+    "SequenceConflict",
     "SessionBudgets",
     "SessionEvent",
+    "SessionNotFound",
     "SessionProjection",
     "SessionStatus",
     "SideEffectClass",
