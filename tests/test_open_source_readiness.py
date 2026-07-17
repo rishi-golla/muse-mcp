@@ -91,28 +91,27 @@ def test_openai_pricing_example_uses_current_schema() -> None:
     assert pricing.embedding_price("text-embedding-3-small").input_per_million > 0
 
 
-def test_public_docs_include_copy_pasteable_first_run_path() -> None:
+def test_public_repository_does_not_require_tracked_docs() -> None:
     readme = _read_text("README.md").casefold()
-    host_guide = _read_text("docs/integrations/mcp-agent-hosts.md").casefold()
-    combined = "\n".join((readme, host_guide))
+    assert "docs/integrations/" not in readme
+    assert "docs/quality/" not in readme
 
-    for phrase in (
-        "open-source quickstart",
-        'python -m pip install -e ".[dev]"',
-        "muse-mcp-doctor",
-        "muse-mcp-config",
-        "muse-agent-instructions",
+
+def test_public_package_excludes_private_planning_docs() -> None:
+    pyproject = tomllib.loads(_read_text("pyproject.toml"))
+    packages = pyproject["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"]
+    assert packages == ["src/muse"]
+
+
+def test_public_guidance_points_to_generators_and_library_api() -> None:
+    readme = _read_text("README.md")
+    for command in (
+        "muse-mcp-config --host codex",
+        "muse-agent-instructions --target agents-md",
         "muse-project-init",
-        "muse-dogfood-quality",
-        "mode: \"normal\"",
-        "live-only",
-        "packaged default pricing",
-        ".env.example",
-        "openai-pricing.example.json",
-        "muse_plan",
-        "mcp",
     ):
-        assert phrase in combined
+        assert command in readme
+    assert "run_quality_benchmark" in readme
 
 
 def test_readme_leads_with_agent_first_live_mcp_onboarding() -> None:
@@ -154,39 +153,6 @@ def test_readme_leads_with_agent_first_live_mcp_onboarding() -> None:
     assert "never commit secrets" in onboarding
 
     assert not re.search(r"\bdeterministic\b|\bfixtures?\b", onboarding)
-
-    for path in (
-        "docs/integrations/mcp-agent-hosts.md",
-        "docs/quality/benchmarking.md",
-    ):
-        assert (ROOT / path).is_file()
-        assert re.search(rf"\[[^\]]+\]\({re.escape(path)}\)", readme)
-
-
-def test_public_docs_define_library_first_quality_benchmark_evidence() -> None:
-    readme = _read_text("README.md").casefold()
-    benchmark = _read_text("docs/quality/benchmarking.md").casefold()
-    combined = "\n".join((readme, benchmark))
-
-    for phrase in (
-        "library-first",
-        "run_quality_benchmark",
-        "direct strong-model baseline",
-        "blinded pairwise",
-        "repeated runs",
-        "runmetadata",
-        "task-level",
-        "label-leak rejection",
-        "judge cost/latency",
-        "run timestamp",
-        "prompt version",
-        "secret_values",
-        "cost, latency, and failure",
-        "not a public cli",
-        "unit tests do not establish creative quality",
-    ):
-        assert phrase in combined
-
 
 def test_github_templates_request_quality_and_verification_evidence() -> None:
     bug = _read_text(".github/ISSUE_TEMPLATE/bug_report.yml").casefold()

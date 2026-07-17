@@ -58,19 +58,9 @@ def test_agent_loop_proof_calls_mcp_and_repairs_sample_repo(
     assert result["selected_plan"]["verification_strategy"]
 
 
-def test_agent_loop_proof_console_script_and_docs_are_registered() -> None:
+def test_agent_loop_proof_console_script_is_registered() -> None:
     pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
-    proof_doc = Path("docs/integrations/agent-loop-proof.md")
-    readme = Path("README.md").read_text(encoding="utf-8")
 
     assert pyproject["project"]["scripts"]["muse-agent-proof"] == (
         "muse.agent_loop_proof:main"
     )
-    assert proof_doc.exists()
-
-    proof_text = proof_doc.read_text(encoding="utf-8").casefold()
-    assert "mcp" in proof_text
-    assert "deterministic" in proof_text
-    assert "bounded repair" in proof_text
-    assert "muse-agent-proof" in proof_text
-    assert "docs/integrations/agent-loop-proof.md" in readme
