@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Sequence
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
@@ -71,7 +72,7 @@ class SQLiteEventStore:
     def __init__(self, database: str | Path) -> None:
         self._database = Path(database)
         self._database.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.executescript(_SCHEMA)
 
     def append(
@@ -179,7 +180,7 @@ class SQLiteEventStore:
         after_sequence: int = 0,
     ) -> tuple[SessionEvent, ...]:
         _require_sequence(after_sequence, name="after_sequence")
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             session_row = connection.execute(
                 """
                 SELECT current_sequence, current_hash
@@ -201,10 +202,14 @@ class SQLiteEventStore:
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self._database, timeout=30.0)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA journal_mode = WAL")
-        return connection
+        try:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("PRAGMA journal_mode = WAL")
+            return connection
+        except BaseException:
+            connection.close()
+            raise
 
     @staticmethod
     def _load_rows(

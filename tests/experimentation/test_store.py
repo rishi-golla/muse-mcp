@@ -5,10 +5,12 @@ import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Barrier
+from types import TracebackType
 from uuid import UUID
 
 import pytest
 
+import muse.experimentation.store as store_module
 from muse.experimentation.events import (
     EventKind,
     PendingEvent,
@@ -29,6 +31,57 @@ from muse.experimentation.store import (
 )
 
 SESSION_ID = UUID("00000000-0000-0000-0000-000000000001")
+
+
+class _TrackedConnection(sqlite3.Connection):
+    fail_configuration = False
+    lifecycle: list[str]
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self.lifecycle = []
+
+    def commit(self) -> None:
+        self.lifecycle.append("commit")
+        super().commit()
+
+    def rollback(self) -> None:
+        self.lifecycle.append("rollback")
+        super().rollback()
+
+    def execute(self, sql: str, parameters: object = (), /) -> sqlite3.Cursor:
+        if self.fail_configuration and "journal_mode" in sql:
+            raise sqlite3.OperationalError("simulated connection configuration failure")
+        return super().execute(sql, parameters)
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool:
+        result = super().__exit__(exc_type, exc_value, traceback)
+        self.lifecycle.append("rollback" if exc_type is not None else "commit")
+        return result
+
+    def close(self) -> None:
+        self.lifecycle.append("close")
+        super().close()
+
+
+def _track_connections(monkeypatch: pytest.MonkeyPatch) -> list[_TrackedConnection]:
+    original_connect = sqlite3.connect
+    tracked: list[_TrackedConnection] = []
+
+    def connect(*args: object, **kwargs: object) -> _TrackedConnection:
+        kwargs["factory"] = _TrackedConnection
+        connection = original_connect(*args, **kwargs)
+        assert isinstance(connection, _TrackedConnection)
+        tracked.append(connection)
+        return connection
+
+    monkeypatch.setattr(store_module.sqlite3, "connect", connect)
+    return tracked
 
 
 def _session() -> CreativeSession:
@@ -67,6 +120,129 @@ def _status_changed(*, key: str = "status") -> PendingEvent:
         ),
         idempotency_key=key,
     )
+
+
+def test_constructor_closes_its_schema_connection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tracked = _track_connections(monkeypatch)
+
+    SQLiteEventStore(tmp_path / "muse.db")
+
+    assert len(tracked) == 1
+    assert tracked[0].lifecycle[-2:] == ["commit", "close"]
+
+
+def test_connection_configuration_error_closes_without_changing_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tracked = _track_connections(monkeypatch)
+    monkeypatch.setattr(_TrackedConnection, "fail_configuration", True)
+
+    with pytest.raises(sqlite3.OperationalError, match="configuration failure"):
+        SQLiteEventStore(tmp_path / "muse.db")
+
+    assert tracked[0].lifecycle == ["close"]
+
+
+def test_load_success_closes_its_connection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = SQLiteEventStore(tmp_path / "muse.db")
+    store.append(SESSION_ID, 0, (_started(),))
+    tracked = _track_connections(monkeypatch)
+
+    assert store.load(SESSION_ID)[0].sequence == 1
+
+    assert len(tracked) == 1
+    assert tracked[0].lifecycle[-2:] == ["commit", "close"]
+
+
+def test_load_session_not_found_rolls_back_then_closes_without_changing_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = SQLiteEventStore(tmp_path / "muse.db")
+    tracked = _track_connections(monkeypatch)
+
+    with pytest.raises(SessionNotFound, match=str(SESSION_ID)):
+        store.load(SESSION_ID)
+
+    assert tracked[0].lifecycle[-2:] == ["rollback", "close"]
+
+
+def test_load_validation_error_rolls_back_then_closes_without_changing_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = tmp_path / "muse.db"
+    store = SQLiteEventStore(database)
+    store.append(SESSION_ID, 0, (_started(),))
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "UPDATE session_events SET event_hash = ? WHERE session_id = ?",
+            ("f" * 64, str(SESSION_ID)),
+        )
+    tracked = _track_connections(monkeypatch)
+
+    with pytest.raises(ValueError, match="event hash"):
+        store.load(SESSION_ID)
+
+    assert tracked[0].lifecycle[-2:] == ["rollback", "close"]
+
+
+def test_append_success_commits_then_closes_its_connection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = SQLiteEventStore(tmp_path / "muse.db")
+    tracked = _track_connections(monkeypatch)
+
+    store.append(SESSION_ID, 0, (_started(),))
+
+    assert tracked[0].lifecycle[-2:] == ["commit", "close"]
+
+
+def test_append_conflict_rolls_back_then_closes_without_changing_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = SQLiteEventStore(tmp_path / "muse.db")
+    store.append(SESSION_ID, 0, (_started(),))
+    tracked = _track_connections(monkeypatch)
+
+    with pytest.raises(SequenceConflict, match="expected sequence 0"):
+        store.append(SESSION_ID, 0, (_status_changed(),))
+
+    assert tracked[0].lifecycle[-2:] == ["rollback", "close"]
+
+
+def test_append_validation_error_rolls_back_then_closes_without_changing_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = SQLiteEventStore(tmp_path / "muse.db")
+    tracked = _track_connections(monkeypatch)
+
+    with pytest.raises(ValueError, match="only be started once"):
+        store.append(SESSION_ID, 0, (_started(key="first"), _started(key="second")))
+
+    assert tracked[0].lifecycle[-2:] == ["rollback", "close"]
+
+
+def test_database_can_be_removed_and_reopened_immediately_after_use(tmp_path: Path) -> None:
+    database = tmp_path / "muse.db"
+    store = SQLiteEventStore(database)
+    store.append(SESSION_ID, 0, (_started(),))
+    store.load(SESSION_ID)
+
+    database.unlink()
+    SQLiteEventStore(database)
+
+    assert database.exists()
 
 
 def test_sqlite_store_creates_durable_schema_and_pragmas(tmp_path: Path) -> None:
