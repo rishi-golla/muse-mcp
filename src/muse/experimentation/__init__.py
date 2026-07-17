@@ -10,6 +10,13 @@ from muse.experimentation.candidates import (
     SourceExposure,
     Uncertainty,
 )
+from muse.experimentation.events import (
+    EventKind,
+    PendingEvent,
+    SessionEvent,
+    reduce_events,
+    reduce_session,
+)
 from muse.experimentation.evidence import (
     BeliefUpdate,
     DecisionRuleKind,
@@ -56,6 +63,7 @@ __all__ = (
     "EvidenceEnvelope",
     "EvidenceRequest",
     "EvidenceValidationStatus",
+    "EventKind",
     "ExperimentSpec",
     "ExperimentStatus",
     "Measurement",
@@ -63,13 +71,17 @@ __all__ = (
     "Objective",
     "ObjectiveDirection",
     "OperationalContract",
+    "PendingEvent",
     "PrivacyPolicy",
     "Reducibility",
     "SelectionDecision",
     "SessionBudgets",
+    "SessionEvent",
     "SessionProjection",
     "SessionStatus",
     "SideEffectClass",
     "SourceExposure",
     "Uncertainty",
+    "reduce_events",
+    "reduce_session",
 )
