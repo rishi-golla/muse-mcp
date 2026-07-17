@@ -1,3 +1,9 @@
+from muse.experimentation.artifacts import (
+    ArtifactRef,
+    ArtifactStore,
+    EvidenceIntegrityError,
+    LocalArtifactStore,
+)
 from muse.experimentation.candidates import (
     Candidate,
     CandidatePrediction,
@@ -55,6 +61,8 @@ __all__ = (
     "AuthorizationDenied",
     "AuthorizationGrant",
     "AuthorizationPolicy",
+    "ArtifactRef",
+    "ArtifactStore",
     "BeliefUpdate",
     "Candidate",
     "CandidatePrediction",
@@ -67,6 +75,7 @@ __all__ = (
     "DecisionRuleSpec",
     "EvidenceCapability",
     "EvidenceEnvelope",
+    "EvidenceIntegrityError",
     "EvidenceRequest",
     "EvidenceValidationStatus",
     "EventKind",
@@ -75,6 +84,7 @@ __all__ = (
     "ExperimentStatus",
     "Measurement",
     "MeasurementSpec",
+    "LocalArtifactStore",
     "Objective",
     "ObjectiveDirection",
     "OperationalContract",
