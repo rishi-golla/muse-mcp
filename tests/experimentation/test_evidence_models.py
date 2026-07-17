@@ -152,12 +152,18 @@ def test_experiment_rejects_decision_rule_for_an_unregistered_measurement() -> N
         )
 
 
-def test_threshold_and_boolean_decision_rules_require_kind_parameters() -> None:
-    threshold = DecisionRuleSpec(
-        kind=DecisionRuleKind.THRESHOLD,
-        measurement="unowned_count",
-        inconclusive_margin=0.0,
-        threshold=1.0,
+@pytest.mark.parametrize("comparison", ["at_least", "at_most"])
+def test_threshold_and_boolean_decision_rules_require_kind_parameters(
+    comparison: str,
+) -> None:
+    threshold = DecisionRuleSpec.model_validate(
+        {
+            "kind": DecisionRuleKind.THRESHOLD,
+            "measurement": "unowned_count",
+            "inconclusive_margin": 0.0,
+            "threshold": 1.0,
+            "comparison": comparison,
+        }
     )
     boolean = DecisionRuleSpec(
         kind=DecisionRuleKind.BOOLEAN,
@@ -167,6 +173,7 @@ def test_threshold_and_boolean_decision_rules_require_kind_parameters() -> None:
     )
 
     assert threshold.threshold == 1.0
+    assert threshold.comparison == comparison
     assert boolean.expected_boolean is True
 
 
@@ -175,9 +182,19 @@ def test_threshold_and_boolean_decision_rules_require_kind_parameters() -> None:
     [
         (DecisionRuleKind.THRESHOLD, {}),
         (DecisionRuleKind.BOOLEAN, {}),
+        (DecisionRuleKind.THRESHOLD, {"threshold": 1.0}),
+        (
+            DecisionRuleKind.THRESHOLD,
+            {"threshold": 1.0, "comparison": "greater_than"},
+        ),
         (DecisionRuleKind.THRESHOLD, {"expected_boolean": True}),
         (DecisionRuleKind.BOOLEAN, {"threshold": 1.0}),
+        (
+            DecisionRuleKind.BOOLEAN,
+            {"expected_boolean": True, "comparison": "at_least"},
+        ),
         (DecisionRuleKind.LOWER_IS_BETTER, {"threshold": 1.0}),
+        (DecisionRuleKind.LOWER_IS_BETTER, {"comparison": "at_most"}),
         (DecisionRuleKind.HIGHER_IS_BETTER, {"expected_boolean": False}),
     ],
 )
@@ -185,7 +202,7 @@ def test_decision_rule_parameters_are_mutually_exclusive_by_kind(
     kind: DecisionRuleKind,
     parameters: dict[str, object],
 ) -> None:
-    with pytest.raises(ValidationError, match="decision rule"):
+    with pytest.raises(ValidationError):
         DecisionRuleSpec(
             kind=kind,
             measurement="unowned_count",
@@ -202,6 +219,7 @@ def test_threshold_is_a_finite_strict_float(threshold: object) -> None:
             measurement="unowned_count",
             inconclusive_margin=0.0,
             threshold=threshold,
+            comparison="at_least",
         )
 
 
@@ -285,6 +303,26 @@ def test_source_attributed_interpretation_cannot_be_raw_evidence(
         _envelope(raw_observation=raw_observation)
 
 
+@pytest.mark.parametrize(
+    "raw_observation",
+    [
+        {
+            "provider": "openai",
+            "response": {"analysis": "candidate A wins"},
+        },
+        {
+            "model": {"name": "gpt-5"},
+            "output": {"conclusion": "candidate A wins"},
+        },
+    ],
+)
+def test_nested_interpretation_inherits_provider_or_model_provenance(
+    raw_observation: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError, match="interpretation"):
+        _envelope(raw_observation=raw_observation)
+
+
 def test_generic_non_model_analysis_remains_valid_raw_evidence() -> None:
     envelope = _envelope(
         raw_observation={
@@ -299,6 +337,21 @@ def test_generic_non_model_analysis_remains_valid_raw_evidence() -> None:
         "detail_analysis": "mass-to-charge",
         "result": 2,
     }
+
+
+@pytest.mark.parametrize(
+    "raw_observation",
+    [
+        {"physical_model": "bridge-v2", "analysis": "finite element stress"},
+        {"modeling_analysis": "finite element stress", "result": 2},
+    ],
+)
+def test_domain_model_analysis_is_not_provider_interpretation(
+    raw_observation: dict[str, object],
+) -> None:
+    envelope = _envelope(raw_observation=raw_observation)
+
+    assert envelope.model_dump(mode="json")["raw_observation"] == raw_observation
 
 
 def test_raw_evidence_rejects_secret_bearing_data() -> None:

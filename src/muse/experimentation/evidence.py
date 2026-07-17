@@ -7,6 +7,7 @@ import unicodedata
 from collections.abc import Mapping
 from enum import StrEnum
 from types import MappingProxyType
+from typing import Literal
 from uuid import UUID, uuid4
 
 from pydantic import Field, field_serializer, field_validator, model_validator
@@ -61,6 +62,7 @@ class DecisionRuleSpec(FrozenModel):
     measurement: RequiredText
     inconclusive_margin: float = Field(strict=True, ge=0.0)
     threshold: float | None = Field(default=None, strict=True)
+    comparison: Literal["at_least", "at_most"] | None = None
     expected_boolean: bool | None = Field(default=None, strict=True)
 
     @field_validator("threshold", mode="before")
@@ -73,18 +75,32 @@ class DecisionRuleSpec(FrozenModel):
     @model_validator(mode="after")
     def require_kind_specific_parameters(self) -> DecisionRuleSpec:
         if self.kind is DecisionRuleKind.THRESHOLD:
-            if self.threshold is None or self.expected_boolean is not None:
+            if (
+                self.threshold is None
+                or self.comparison is None
+                or self.expected_boolean is not None
+            ):
                 raise ValueError(
-                    "threshold decision rule requires only a finite strict threshold"
+                    "threshold decision rule requires only a finite strict threshold "
+                    "and at_least/at_most comparison"
                 )
         elif self.kind is DecisionRuleKind.BOOLEAN:
-            if self.expected_boolean is None or self.threshold is not None:
+            if (
+                self.expected_boolean is None
+                or self.threshold is not None
+                or self.comparison is not None
+            ):
                 raise ValueError(
                     "boolean decision rule requires only a strict expected boolean"
                 )
-        elif self.threshold is not None or self.expected_boolean is not None:
+        elif (
+            self.threshold is not None
+            or self.comparison is not None
+            or self.expected_boolean is not None
+        ):
             raise ValueError(
-                "lower/higher decision rules cannot carry threshold or boolean parameters"
+                "lower/higher decision rules cannot carry threshold, comparison, or "
+                "boolean parameters"
             )
         return self
 
@@ -324,20 +340,19 @@ def _identity_key(value: str) -> str:
     return unicodedata.normalize("NFC", value.strip()).casefold()
 
 
-def _reject_interpretation(value: object) -> None:
+def _reject_interpretation(value: object, *, provenance: bool = False) -> None:
     if isinstance(value, dict):
         keys = tuple(str(key) for key in value)
-        has_source_key = any(_key_has_source(key) for key in keys)
-        has_interpretive_key = any(_key_has_interpretive_term(key) for key in keys)
-        if has_source_key and has_interpretive_key:
-            raise ValueError("provider or model interpretation is not raw evidence")
+        nested_provenance = provenance or any(
+            _key_establishes_provenance(key) for key in keys
+        )
         for key, item in value.items():
-            if _key_has_source(str(key)) and _key_has_interpretive_term(str(key)):
+            if nested_provenance and _key_has_interpretive_term(str(key)):
                 raise ValueError("provider or model interpretation is not raw evidence")
-            _reject_interpretation(item)
+            _reject_interpretation(item, provenance=nested_provenance)
     elif isinstance(value, (list, tuple)):
         for item in value:
-            _reject_interpretation(item)
+            _reject_interpretation(item, provenance=provenance)
 
 
 def _freeze_json(value: object) -> object:
@@ -361,25 +376,16 @@ def _key_tokens(value: str) -> tuple[str, ...]:
     return tuple(re.findall(r"[a-z0-9]+", normalized))
 
 
-def _key_has_source(value: str) -> bool:
+def _key_establishes_provenance(value: str) -> bool:
     tokens = _key_tokens(value)
-    compact = "".join(tokens)
-    if any(token in _INTERPRETATION_SOURCES for token in tokens):
-        return True
-    if any(source in compact for source in _LONG_INTERPRETATION_SOURCES):
-        return True
-    return any(
-        compact in {f"ai{term}", f"{term}ai"} for term in _INTERPRETATION_TERMS
-    )
+    return bool(tokens) and tokens[0] in _INTERPRETATION_SOURCES
 
 
 def _key_has_interpretive_term(value: str) -> bool:
-    compact = "".join(_key_tokens(value))
-    return any(term in compact for term in _INTERPRETATION_TERMS)
+    return any(token in _INTERPRETATION_TERMS for token in _key_tokens(value))
 
 
 _INTERPRETATION_SOURCES = frozenset({"provider", "model", "llm", "ai"})
-_LONG_INTERPRETATION_SOURCES = frozenset({"provider", "model", "llm"})
 _INTERPRETATION_TERMS = frozenset(
     {"analysis", "inference", "rationale", "conclusion", "interpretation"}
 )
