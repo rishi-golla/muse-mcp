@@ -4,11 +4,12 @@ import json
 import math
 import re
 import unicodedata
+from collections.abc import Mapping
 from enum import StrEnum
-from typing import Any
+from types import MappingProxyType
 from uuid import UUID, uuid4
 
-from pydantic import Field, field_validator, model_serializer, model_validator
+from pydantic import Field, field_serializer, field_validator, model_validator
 
 from muse.experimentation.candidates import (
     CandidatePrediction,
@@ -59,6 +60,33 @@ class DecisionRuleSpec(FrozenModel):
     kind: DecisionRuleKind
     measurement: RequiredText
     inconclusive_margin: float = Field(strict=True, ge=0.0)
+    threshold: float | None = Field(default=None, strict=True)
+    expected_boolean: bool | None = Field(default=None, strict=True)
+
+    @field_validator("threshold", mode="before")
+    @classmethod
+    def require_strict_float_threshold(cls, value: object) -> float | None:
+        if value is not None and type(value) is not float:
+            raise ValueError("decision rule threshold must be a strict float")
+        return value
+
+    @model_validator(mode="after")
+    def require_kind_specific_parameters(self) -> DecisionRuleSpec:
+        if self.kind is DecisionRuleKind.THRESHOLD:
+            if self.threshold is None or self.expected_boolean is not None:
+                raise ValueError(
+                    "threshold decision rule requires only a finite strict threshold"
+                )
+        elif self.kind is DecisionRuleKind.BOOLEAN:
+            if self.expected_boolean is None or self.threshold is not None:
+                raise ValueError(
+                    "boolean decision rule requires only a strict expected boolean"
+                )
+        elif self.threshold is not None or self.expected_boolean is not None:
+            raise ValueError(
+                "lower/higher decision rules cannot carry threshold or boolean parameters"
+            )
+        return self
 
 
 class ExperimentSpec(FrozenModel):
@@ -129,6 +157,13 @@ class ExperimentSpec(FrozenModel):
         prediction_ids = {prediction.candidate_id for prediction in self.predictions}
         if prediction_ids != set(self.candidate_ids):
             raise ValueError("predictions must cover every competing candidate exactly once")
+        prediction_expectations = {
+            _identity_key(prediction.expected) for prediction in self.predictions
+        }
+        if len(prediction_expectations) < 2:
+            raise ValueError(
+                "experiment predictions require at least two distinct competing expectations"
+            )
         measurement_names = {
             _identity_key(measurement.name) for measurement in self.measurements
         }
@@ -140,6 +175,7 @@ class ExperimentSpec(FrozenModel):
 class EvidenceRequest(FrozenModel):
     id: UUID = Field(default_factory=uuid4)
     experiment_id: UUID
+    candidate_id: UUID
     capability: EvidenceCapability
     adapter_id: RequiredText
     adapter_contract_version: int = Field(strict=True, ge=1)
@@ -170,6 +206,7 @@ class EvidenceEnvelope(FrozenModel):
     id: UUID = Field(default_factory=uuid4)
     request: EvidenceRequest
     experiment_id: UUID
+    candidate_id: UUID
     raw_observation: object | None = None
     artifact_hash: RequiredText | None = None
     measurements: tuple[Measurement, ...] = ()
@@ -218,6 +255,8 @@ class EvidenceEnvelope(FrozenModel):
             raise ValueError("evidence must contain either a raw observation or an artifact hash")
         if self.request.experiment_id != self.experiment_id:
             raise ValueError("request experiment ID must match the evidence experiment ID")
+        if self.request.candidate_id != self.candidate_id:
+            raise ValueError("request candidate ID must match the evidence candidate ID")
         if self.corrects_evidence_id == self.id:
             raise ValueError("evidence cannot be its own correction target")
         if self.correction_sequence == 0 and self.corrects_evidence_id is not None:
@@ -226,11 +265,9 @@ class EvidenceEnvelope(FrozenModel):
             raise ValueError("a correction must name the evidence it corrects")
         return self
 
-    @model_serializer(mode="wrap")
-    def serialize_raw_observation(self, handler: Any) -> dict[str, object]:
-        payload = handler(self)
-        payload["raw_observation"] = _thaw_json(self.raw_observation)
-        return payload
+    @field_serializer("raw_observation")
+    def serialize_raw_observation(self, value: object) -> object:
+        return _thaw_json(value)
 
 
 class BeliefUpdate(FrozenModel):
@@ -261,15 +298,25 @@ class SelectionDecision(FrozenModel):
 
     @model_validator(mode="after")
     def require_selection_or_inconclusive_result(self) -> SelectionDecision:
-        if self.inconclusive == (self.selected_candidate_id is not None):
+        if len(self.considered_candidate_ids) < 2:
+            raise ValueError(
+                "selection decision requires at least two distinct considered candidates"
+            )
+        if self.inconclusive:
+            if self.selected_candidate_id is not None or self.resulting_state is not None:
+                raise ValueError(
+                    "an inconclusive decision cannot select a candidate or assign a resulting state"
+                )
+            return self
+        if self.selected_candidate_id is None:
             raise ValueError("selection decision must select a candidate or be inconclusive")
         if (
             self.selected_candidate_id is not None
             and self.selected_candidate_id not in self.considered_candidate_ids
         ):
             raise ValueError("selected candidate must be one of the considered candidates")
-        if self.selected_candidate_id is None and self.resulting_state is not None:
-            raise ValueError("an inconclusive decision cannot assign a candidate state")
+        if self.resulting_state is not CandidateSelectionState.SELECTED:
+            raise ValueError("a conclusive selection must have selected as its resulting state")
         return self
 
 
@@ -279,13 +326,13 @@ def _identity_key(value: str) -> str:
 
 def _reject_interpretation(value: object) -> None:
     if isinstance(value, dict):
+        keys = tuple(str(key) for key in value)
+        has_source_key = any(_key_has_source(key) for key in keys)
+        has_interpretive_key = any(_key_has_interpretive_term(key) for key in keys)
+        if has_source_key and has_interpretive_key:
+            raise ValueError("provider or model interpretation is not raw evidence")
         for key, item in value.items():
-            normalized = re.sub(
-                r"[^a-z0-9]+",
-                "_",
-                unicodedata.normalize("NFKC", str(key)).casefold(),
-            )
-            if normalized in {"provider_interpretation", "model_interpretation"}:
+            if _key_has_source(str(key)) and _key_has_interpretive_term(str(key)):
                 raise ValueError("provider or model interpretation is not raw evidence")
             _reject_interpretation(item)
     elif isinstance(value, (list, tuple)):
@@ -295,30 +342,44 @@ def _reject_interpretation(value: object) -> None:
 
 def _freeze_json(value: object) -> object:
     if isinstance(value, dict):
-        return _FrozenJsonDict({key: _freeze_json(item) for key, item in value.items()})
+        return MappingProxyType({key: _freeze_json(item) for key, item in value.items()})
     if isinstance(value, list):
         return tuple(_freeze_json(item) for item in value)
     return value
 
 
 def _thaw_json(value: object) -> object:
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return {key: _thaw_json(item) for key, item in value.items()}
     if isinstance(value, tuple):
         return [_thaw_json(item) for item in value]
     return value
 
 
-class _FrozenJsonDict(dict[str, object]):
-    def _reject_mutation(self, *args: object, **kwargs: object) -> None:
-        del args, kwargs
-        raise TypeError("raw evidence is immutable")
+def _key_tokens(value: str) -> tuple[str, ...]:
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    return tuple(re.findall(r"[a-z0-9]+", normalized))
 
-    __setitem__ = _reject_mutation
-    __delitem__ = _reject_mutation
-    clear = _reject_mutation
-    pop = _reject_mutation
-    popitem = _reject_mutation
-    setdefault = _reject_mutation
-    update = _reject_mutation
-    __ior__ = _reject_mutation
+
+def _key_has_source(value: str) -> bool:
+    tokens = _key_tokens(value)
+    compact = "".join(tokens)
+    if any(token in _INTERPRETATION_SOURCES for token in tokens):
+        return True
+    if any(source in compact for source in _LONG_INTERPRETATION_SOURCES):
+        return True
+    return any(
+        compact in {f"ai{term}", f"{term}ai"} for term in _INTERPRETATION_TERMS
+    )
+
+
+def _key_has_interpretive_term(value: str) -> bool:
+    compact = "".join(_key_tokens(value))
+    return any(term in compact for term in _INTERPRETATION_TERMS)
+
+
+_INTERPRETATION_SOURCES = frozenset({"provider", "model", "llm", "ai"})
+_LONG_INTERPRETATION_SOURCES = frozenset({"provider", "model", "llm"})
+_INTERPRETATION_TERMS = frozenset(
+    {"analysis", "inference", "rationale", "conclusion", "interpretation"}
+)

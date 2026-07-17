@@ -5,7 +5,10 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from muse.experimentation.candidates import CandidatePrediction
+from muse.experimentation.candidates import (
+    CandidatePrediction,
+    CandidateSelectionState,
+)
 from muse.experimentation.evidence import (
     DecisionRuleKind,
     DecisionRuleSpec,
@@ -17,6 +20,7 @@ from muse.experimentation.evidence import (
     ExperimentStatus,
     Measurement,
     MeasurementSpec,
+    SelectionDecision,
 )
 
 SESSION_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -59,6 +63,7 @@ def _request(**overrides: object) -> EvidenceRequest:
     values: dict[str, object] = {
         "id": REQUEST_ID,
         "experiment_id": EXPERIMENT_ID,
+        "candidate_id": CANDIDATE_A,
         "capability": EvidenceCapability.EXECUTABLE,
         "adapter_id": "executable-v1",
         "adapter_contract_version": 1,
@@ -72,6 +77,7 @@ def _envelope(**overrides: object) -> EvidenceEnvelope:
         "id": EVIDENCE_ID,
         "request": _request(),
         "experiment_id": EXPERIMENT_ID,
+        "candidate_id": CANDIDATE_A,
         "raw_observation": {"candidate": str(CANDIDATE_A), "unowned_count": 1},
         "measurements": (Measurement(name="unowned_count", value=1, unit="count"),),
         "validation_status": EvidenceValidationStatus.VALID,
@@ -110,6 +116,23 @@ def test_experiment_requires_two_distinct_competing_candidates() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("first_expected", "second_expected"),
+    [("fewer", "FEWER"), ("Caf\u00e9", "Cafe\u0301")],
+)
+def test_experiment_requires_distinct_unicode_normalized_predictions(
+    first_expected: str,
+    second_expected: str,
+) -> None:
+    with pytest.raises(ValidationError, match="distinct competing expectations"):
+        _experiment(
+            predictions=(
+                CandidatePrediction(candidate_id=CANDIDATE_A, expected=first_expected),
+                CandidatePrediction(candidate_id=CANDIDATE_B, expected=second_expected),
+            )
+        )
+
+
 def test_experiment_rejects_missing_decision_rule() -> None:
     values = _experiment().model_dump()
     del values["decision_rule"]
@@ -126,6 +149,70 @@ def test_experiment_rejects_decision_rule_for_an_unregistered_measurement() -> N
                 measurement="latency",
                 inconclusive_margin=0.0,
             )
+        )
+
+
+def test_threshold_and_boolean_decision_rules_require_kind_parameters() -> None:
+    threshold = DecisionRuleSpec(
+        kind=DecisionRuleKind.THRESHOLD,
+        measurement="unowned_count",
+        inconclusive_margin=0.0,
+        threshold=1.0,
+    )
+    boolean = DecisionRuleSpec(
+        kind=DecisionRuleKind.BOOLEAN,
+        measurement="passed",
+        inconclusive_margin=0.0,
+        expected_boolean=True,
+    )
+
+    assert threshold.threshold == 1.0
+    assert boolean.expected_boolean is True
+
+
+@pytest.mark.parametrize(
+    ("kind", "parameters"),
+    [
+        (DecisionRuleKind.THRESHOLD, {}),
+        (DecisionRuleKind.BOOLEAN, {}),
+        (DecisionRuleKind.THRESHOLD, {"expected_boolean": True}),
+        (DecisionRuleKind.BOOLEAN, {"threshold": 1.0}),
+        (DecisionRuleKind.LOWER_IS_BETTER, {"threshold": 1.0}),
+        (DecisionRuleKind.HIGHER_IS_BETTER, {"expected_boolean": False}),
+    ],
+)
+def test_decision_rule_parameters_are_mutually_exclusive_by_kind(
+    kind: DecisionRuleKind,
+    parameters: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError, match="decision rule"):
+        DecisionRuleSpec(
+            kind=kind,
+            measurement="unowned_count",
+            inconclusive_margin=0.0,
+            **parameters,
+        )
+
+
+@pytest.mark.parametrize("threshold", [True, 1, float("nan"), float("inf"), float("-inf")])
+def test_threshold_is_a_finite_strict_float(threshold: object) -> None:
+    with pytest.raises(ValidationError):
+        DecisionRuleSpec(
+            kind=DecisionRuleKind.THRESHOLD,
+            measurement="unowned_count",
+            inconclusive_margin=0.0,
+            threshold=threshold,
+        )
+
+
+@pytest.mark.parametrize("expected_boolean", [1, "true"])
+def test_expected_boolean_is_strict(expected_boolean: object) -> None:
+    with pytest.raises(ValidationError):
+        DecisionRuleSpec(
+            kind=DecisionRuleKind.BOOLEAN,
+            measurement="passed",
+            inconclusive_margin=0.0,
+            expected_boolean=expected_boolean,
         )
 
 
@@ -153,6 +240,17 @@ def test_raw_evidence_serializes_as_json_safe_data() -> None:
     }
 
 
+def test_raw_evidence_cannot_be_mutated_through_dict_primitives() -> None:
+    envelope = _envelope(raw_observation={"events": [{"kind": "handoff"}]})
+    nested = envelope.raw_observation["events"][0]  # type: ignore[index]
+
+    with pytest.raises(TypeError):
+        dict.__setitem__(nested, "kind", "mutated")
+    assert envelope.model_dump(mode="json")["raw_observation"] == {
+        "events": [{"kind": "handoff"}]
+    }
+
+
 def test_raw_evidence_is_json_safe_or_an_artifact_hash_but_not_both() -> None:
     with pytest.raises(ValidationError, match="raw observation or an artifact hash"):
         _envelope(raw_observation={"ok": True}, artifact_hash="sha256:evidence")
@@ -169,6 +267,40 @@ def test_provider_interpretation_cannot_masquerade_as_raw_evidence() -> None:
         _envelope(raw_observation={"provider_interpretation": "candidate A wins"})
 
 
+@pytest.mark.parametrize(
+    "raw_observation",
+    [
+        {"model_analysis": "candidate A wins"},
+        {"llm-inference": "candidate A wins"},
+        {"AI Rationale": "candidate A wins"},
+        {"provider_conclusion": "candidate A wins"},
+        {"model": "gpt", "analysis": "candidate A wins"},
+        {"provider": "adapter-v1", "conclusion": "candidate A wins"},
+    ],
+)
+def test_source_attributed_interpretation_cannot_be_raw_evidence(
+    raw_observation: dict[str, str],
+) -> None:
+    with pytest.raises(ValidationError, match="interpretation"):
+        _envelope(raw_observation=raw_observation)
+
+
+def test_generic_non_model_analysis_remains_valid_raw_evidence() -> None:
+    envelope = _envelope(
+        raw_observation={
+            "analysis": "spectrometry",
+            "detail_analysis": "mass-to-charge",
+            "result": 2,
+        }
+    )
+
+    assert envelope.model_dump(mode="json")["raw_observation"] == {
+        "analysis": "spectrometry",
+        "detail_analysis": "mass-to-charge",
+        "result": 2,
+    }
+
+
 def test_raw_evidence_rejects_secret_bearing_data() -> None:
     with pytest.raises(ValidationError, match="secret"):
         _envelope(raw_observation={"api_key": "private"})
@@ -177,6 +309,32 @@ def test_raw_evidence_rejects_secret_bearing_data() -> None:
 def test_evidence_request_and_envelope_experiment_ids_must_match() -> None:
     with pytest.raises(ValidationError, match="request experiment"):
         _envelope(experiment_id=UNCERTAINTY_ID)
+
+
+def test_evidence_request_and_envelope_candidate_ids_must_match() -> None:
+    with pytest.raises(ValidationError, match="request candidate"):
+        _envelope(candidate_id=CANDIDATE_B)
+
+
+def test_separate_candidate_envelopes_preserve_same_named_measurements() -> None:
+    envelope_a = _envelope()
+    request_b = _request(
+        id=UUID("00000000-0000-0000-0000-000000000006"),
+        candidate_id=CANDIDATE_B,
+    )
+    envelope_b = _envelope(
+        id=UUID("00000000-0000-0000-0000-000000000007"),
+        request=request_b,
+        candidate_id=CANDIDATE_B,
+        raw_observation={"candidate": str(CANDIDATE_B), "unowned_count": 3},
+        measurements=(Measurement(name="unowned_count", value=3, unit="count"),),
+    )
+
+    assert envelope_a.candidate_id == CANDIDATE_A
+    assert envelope_b.candidate_id == CANDIDATE_B
+    assert envelope_a.measurements[0].name == envelope_b.measurements[0].name
+    assert envelope_a.measurements[0].value == 1
+    assert envelope_b.measurements[0].value == 3
 
 
 @pytest.mark.parametrize(
@@ -202,3 +360,44 @@ def test_experiment_identity_tuples_deduplicate_without_reordering() -> None:
 
     assert spec.target_uncertainty_ids == (UNCERTAINTY_ID,)
     assert spec.stopping_conditions == ("Complete", "Archive")
+
+
+def _selection_decision(**overrides: object) -> SelectionDecision:
+    values: dict[str, object] = {
+        "session_id": SESSION_ID,
+        "experiment_id": EXPERIMENT_ID,
+        "considered_candidate_ids": (CANDIDATE_A, CANDIDATE_B),
+        "selected_candidate_id": CANDIDATE_A,
+        "resulting_state": CandidateSelectionState.SELECTED,
+        "supporting_evidence_ids": (EVIDENCE_ID,),
+        "rationale": "Candidate A produced the lower preregistered measurement.",
+    }
+    values.update(overrides)
+    return SelectionDecision.model_validate(values)
+
+
+def test_selection_decision_requires_two_distinct_considered_candidates() -> None:
+    with pytest.raises(ValidationError, match="distinct considered candidates"):
+        _selection_decision(considered_candidate_ids=(CANDIDATE_A, CANDIDATE_A))
+
+
+@pytest.mark.parametrize(
+    "resulting_state",
+    [None, CandidateSelectionState.ACTIVE, CandidateSelectionState.REJECTED],
+)
+def test_conclusive_selection_requires_selected_resulting_state(
+    resulting_state: CandidateSelectionState | None,
+) -> None:
+    with pytest.raises(ValidationError, match="resulting state"):
+        _selection_decision(resulting_state=resulting_state)
+
+
+def test_inconclusive_selection_has_no_candidate_or_resulting_state() -> None:
+    decision = _selection_decision(
+        selected_candidate_id=None,
+        resulting_state=None,
+        inconclusive=True,
+    )
+
+    assert decision.selected_candidate_id is None
+    assert decision.resulting_state is None
