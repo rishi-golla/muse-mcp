@@ -540,17 +540,28 @@ def test_runner_does_not_classify_custom_non_live_fixtures_as_branch_evidence() 
     assert result["config"]["branch_generation"]["independent_call_count"] == 0
 
 
-def test_branch_generation_docs_distinguish_live_trajectories_from_fixtures() -> None:
+def test_branch_generation_public_contract_distinguishes_live_trajectories_from_fixtures() -> None:
     readme = " ".join(Path("README.md").read_text(encoding="utf-8").split())
-    benchmarking = " ".join(
-        Path("docs/quality/benchmarking.md").read_text(encoding="utf-8").split()
+    fixture_result = CreativeMiddlewareRunner.live_openai(
+        provider=DeterministicCreativeProvider(),
+    ).run(
+        CreativePlanRequest(
+            goal="Design a planning hook for arbitrary repos",
+            provider_mode="live_openai",
+            seed_count=2,
+            finalist_count=1,
+            max_generations=0,
+            budget_usd=0.20,
+        )
     )
 
     assert (
         "`seed_count` requests an ordered schedule of independent live model trajectories"
         in readme
     )
-    assert "does not prove a provider call" in readme
+    assert "A deterministic fixture result does not prove a provider call" in readme
+    assert "metadata can report modeled spend" in readme
+    assert "zero without evidenced live branch calls" in readme
     assert "requested strategy directives" in readme
     assert "evidenced completed branches" in readme
     assert "ordered prefix" in readme
@@ -560,20 +571,9 @@ def test_branch_generation_docs_distinguish_live_trajectories_from_fixtures() ->
     assert "calls and token usage exactly reconcile" in readme
     assert "independently completed seed branches" in readme
     assert "`seed_count` requests" in readme
-    assert (
-        "`seed_count` requests an ordered schedule of independent live model trajectories"
-        in benchmarking
-    )
-    assert "do not report provider calls or spend" in benchmarking
-    assert "requested strategy directives" in benchmarking
-    assert "evidenced completed branches" in benchmarking
-    assert "ordered prefix" in benchmarking
-    assert "complete canonical branch directive" in benchmarking
-    assert "exact instruction" in benchmarking
-    assert "nested request and response traces" in benchmarking
-    assert "calls and token usage exactly reconcile" in benchmarking
-    assert "independently completed seed branches" in benchmarking
-    assert "`seed_count` requests" in benchmarking
+    assert fixture_result["provider_mode"] == "live_openai"
+    assert fixture_result["spend_usd"] > 0
+    assert fixture_result["config"]["branch_generation"]["independent_call_count"] == 0
 
 
 def test_runner_returns_quality_warnings_for_generic_finalists() -> None:

@@ -96,8 +96,12 @@ verification remain the calling agent's responsibility. Treat returned finalists
 as advice, select a bounded action, and run the narrowest relevant repository
 check.
 
-For host setup and agent-loop guidance, see the [MCP host guide](docs/integrations/mcp-agent-hosts.md)
-and [Agent dogfood playbook](docs/integrations/agent-dogfood-playbook.md).
+## Agent Loop
+
+Use `muse_plan` for a new task. Follow the returned bounded next action, run
+repository-owned verification, and return evidence through the session tools.
+Muse never replaces the calling agent's observation, authorization, editing,
+or verification responsibilities.
 
 ## Expected Output
 
@@ -109,9 +113,6 @@ making provider calls.
 Quality warnings and the quality action policy are planning signals. An agent can
 add repository signals, choose another finalist, or request `mode: "extensive"`,
 then still verify the work in the repository.
-
-For a deterministic local proof that an agent loop can consume MCP output and
-apply a bounded repair, see [Agent loop proof](docs/integrations/agent-loop-proof.md).
 
 ## Privacy and Live Configuration
 
@@ -132,9 +133,11 @@ unit tests do not establish creative quality. Comparative claims need a direct
 strong-model baseline, blinded pairwise judging, repeated runs, per-task
 uncertainty, and complete cost, latency, and failure accounting.
 
-The quality benchmark is a library-first maintainer workflow, not a public CLI.
-Read the [Benchmarking guide](docs/quality/benchmarking.md) before producing or
-interpreting a quality claim.
+## Quality Benchmark Library
+
+`muse.quality_benchmark.run_quality_benchmark` supports repeated, blinded
+comparisons against a direct strong-model baseline. A quality claim requires
+per-task outcomes, uncertainty, cost, latency, and failure accounting.
 
 ## Roadmap
 
@@ -178,8 +181,8 @@ Evidence requires an ordered prefix of the strategy schedule, a complete
 canonical branch directive with its exact instruction, non-empty structurally
 valid nested request and response traces, and calls and token usage exactly
 reconcile with the charged seeding spend record. A deterministic fixture result
-does not prove a provider call; its metadata does not report provider calls or
-spend.
+does not prove a provider call. Its metadata can report modeled spend, while
+`independent_call_count` remains zero without evidenced live branch calls.
 
 ## License
 
