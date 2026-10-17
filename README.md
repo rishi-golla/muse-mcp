@@ -103,6 +103,53 @@ repository-owned verification, and return evidence through the session tools.
 Muse never replaces the calling agent's observation, authorization, editing,
 or verification responsibilities.
 
+### Optional web research with Parallel Search MCP
+
+When planning depends on current library documentation or migration guidance, the
+calling agent can research public sources with
+[Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp) before
+calling Muse. It provides free web search and page fetching without a Parallel
+account or API key; anonymous search uses Fast mode and has usage limits. Muse
+still requires the live OpenAI configuration from the quickstart.
+
+For Codex, first generate Muse's configuration with `muse-mcp-config --host codex`.
+Keep that configuration and add this separate entry to the same
+`~/.codex/config.toml` or trusted project's `.codex/config.toml`:
+
+```toml
+[mcp_servers.parallel-search]
+url = "https://search.parallel.ai/mcp"
+```
+
+Restart the host and confirm that Muse's `muse_plan` and Parallel's `web_search`
+and `web_fetch` tools are available. The remote server uses Streamable HTTP;
+[Codex MCP configuration](https://developers.openai.com/codex/mcp) describes the
+host settings. No Parallel authorization header is needed for anonymous use.
+
+Try this task with the calling agent:
+
+```text
+Plan a migration from asyncio.wait_for to asyncio.timeout in this project.
+Inspect the repository's Python version, timeout handling, and tests first.
+Use Parallel's web_search to find current Python documentation on timeout
+semantics, then web_fetch to read the relevant official pages. Summarize the
+relevant findings with their source URLs. Include that summary in the goal sent
+to muse_plan, pass observed repository facts in repo_signals, and use
+mode="normal" and search_mode="off" for this call. Evaluate Muse's finalists,
+choose one bounded action, and run the repository's relevant tests.
+```
+
+The host agent chooses and passes the research; Muse does not automatically read
+other servers' tool results. Put the selected public findings and URLs in `goal`,
+not extra fields in `repo_signals`. Explicit `search_mode="off"` avoids a second
+search through Muse's internal providers for this workflow. Adding the companion
+server does not change Muse's search defaults or saved provider choices.
+
+Send only public research queries to Parallel, and review fetched text as
+untrusted evidence. Keep secrets and private repository content out of queries.
+The goal and selected findings are also sent to Muse's configured live provider;
+follow the [Security policy](SECURITY.md) when choosing what to share.
+
 ## Expected Output
 
 The MCP tool returns JSON-safe finalists and advisory routing data. When live
